@@ -218,21 +218,16 @@ function doPost(e) {
     const chatId = callbackQuery.message.chat.id.toString();
     const messageId = callbackQuery.message.message_id;
     const data = callbackQuery.data;
-    // Giữ nội dung GD gốc trên tin nhắn (Telegram trả plain text)
-    const originalText = (callbackQuery.message && callbackQuery.message.text) ? callbackQuery.message.text : '';
+    answerCallbackQuery(callbackQuery.id);
 
     if (data.startsWith("CONFIRM_")) {
       const uniqueKey = data.replace("CONFIRM_", "");
       const isFound = clearStatusInSheet(uniqueKey);
       const footer = isFound
         ? `✅ <b>Đã xác nhận</b>`
-        : `❌ <b>Không tìm thấy GD</b> <code>${uniqueKey}</code>`;
-      editMessage(
-        chatId,
-        messageId,
-        buildCallbackResultText(originalText, uniqueKey, footer),
-        { inline_keyboard: [] }
-      );
+        : `❌ <b>Không tìm thấy GD</b> <code>${escapeHtml(uniqueKey)}</code>`;
+      // Luôn dựng lại nội dung từ Sheet — không phụ thuộc text tin cũ
+      editMessage(chatId, messageId, buildGdHtmlFromSheet(uniqueKey, footer), { inline_keyboard: [] });
       return;
     }
 
@@ -240,14 +235,9 @@ function doPost(e) {
       const uniqueKey = data.replace("EDIT_", "");
       const isFound = updateStatusInSheet(uniqueKey);
       const footer = isFound
-        ? `🟡 <b>Đã đánh dấu sửa trên Sheet</b>\nMở Sheet → tìm dòng status CHECK (vàng).`
-        : `❌ <b>Không tìm thấy GD</b> <code>${uniqueKey}</code>`;
-      editMessage(
-        chatId,
-        messageId,
-        buildCallbackResultText(originalText, uniqueKey, footer),
-        { inline_keyboard: [] }
-      );
+        ? `🟡 <b>Đã đánh dấu CHECK</b> — mở Sheet sửa dòng vàng.`
+        : `❌ <b>Không tìm thấy GD</b> <code>${escapeHtml(uniqueKey)}</code>`;
+      editMessage(chatId, messageId, buildGdHtmlFromSheet(uniqueKey, footer), { inline_keyboard: [] });
       return;
     }
 
@@ -346,29 +336,36 @@ function isUncategorizedGd(gd) {
     isUncategorizedValue(gd.doi_tuong);
 }
 
-/** Mỗi GD: thiếu field → chỉ nút Sửa; map đủ → Đúng + Sửa */
+/**
+ * Mỗi GD một tin:
+ * - Thiếu field (Chưa phân loại): đã auto CHECK → KHÔNG gắn nút (thừa)
+ * - Map đủ: nút ✅ Đúng / ✏️ Sửa
+ */
 function sendTransactionCheckMessage(chatId, gd, uniqueKey, stt) {
   const mustFix = isUncategorizedGd(gd);
   const dau = (gd.phan_loai || "").toLowerCase() === "chi" ? "-" : "+";
   let text = mustFix
-    ? `⚠️ <b>GD #${stt} — BẮT BUỘC SỬA</b>\n`
+    ? `⚠️ <b>GD #${stt} — BẮT BUỘC SỬA TRÊN SHEET</b>\n`
     : `🔹 <b>GD #${stt} — kiểm tra</b>\n`;
 
-  text += `${gd.phan_loai || ''} ${dau}${formatMoney(gd.so_tien)}\n` +
-    `├ Nguồn: ${gd.vi || 'Chưa phân loại'}\n` +
-    `├ Danh mục: ${gd.danh_muc_con || 'Chưa phân loại'}\n` +
-    `├ 👤: ${gd.doi_tuong || 'Chưa phân loại'}\n` +
-    `└ Mã: <code>${uniqueKey}</code>`;
+  text += `${escapeHtml(gd.phan_loai || '')} ${dau}${formatMoney(gd.so_tien)}\n` +
+    `├ Nguồn: ${escapeHtml(gd.vi || 'Chưa phân loại')}\n` +
+    `├ Danh mục: ${escapeHtml(gd.danh_muc_con || 'Chưa phân loại')}\n` +
+    `├ 👤: ${escapeHtml(gd.doi_tuong || 'Chưa phân loại')}\n` +
+    `└ Mã: <code>${escapeHtml(uniqueKey)}</code>`;
 
-  let keyboard;
   if (mustFix) {
-    keyboard = {
-      inline_keyboard: [[
-        { text: "✏️ Mở Sheet sửa", callback_data: `EDIT_${uniqueKey}` }
-      ]]
-    };
-  } else {
-    keyboard = {
+    text += `\n\n👉 Đã đánh dấu <b>CHECK</b> — mở Sheet sửa dòng vàng.`;
+  }
+
+  const payload = {
+    chat_id: chatId,
+    text: text,
+    parse_mode: "HTML"
+  };
+  // Chỉ GD map đủ mới có nút
+  if (!mustFix) {
+    payload.reply_markup = {
       inline_keyboard: [[
         { text: "✅ Đúng", callback_data: `CONFIRM_${uniqueKey}` },
         { text: "✏️ Sửa", callback_data: `EDIT_${uniqueKey}` }
@@ -379,12 +376,7 @@ function sendTransactionCheckMessage(chatId, gd, uniqueKey, stt) {
   const token = PROP.getProperty('bot_token');
   UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "post", contentType: "application/json",
-    payload: JSON.stringify({
-      chat_id: chatId,
-      text: text,
-      parse_mode: "HTML",
-      reply_markup: keyboard
-    }),
+    payload: JSON.stringify(payload),
     muteHttpExceptions: true
   });
 }
@@ -813,31 +805,24 @@ function escapeHtml(text) {
     .replace(/>/g, '&gt;');
 }
 
-/**
- * Giữ nội dung GD gốc, bỏ footer trạng thái cũ (nếu có), gắn footer mới.
- * Ưu tiên text trên tin Telegram; nếu đã bị ghi đè mất chi tiết thì lấy lại từ Sheet.
- */
-function buildCallbackResultText(originalText, uniqueKey, footerHtml) {
-  let base = String(originalText || '').trim();
-  // Gỡ footer lần bấm trước: ✅ / 🟡 / ❌ ...
-  base = base.replace(/\n\n(?:✅|🟡|❌)[\s\S]*$/, '').trim();
-
-  // Nếu tin đã mất block chi tiết (chỉ còn trạng thái ngắn) → dựng lại từ Sheet
-  const looksEmpty = !base || !/Nguồn:|Danh mục:|👤:/.test(base);
-  if (looksEmpty) {
-    const fromSheet = buildGdTextFromSheet(uniqueKey);
-    if (fromSheet) base = fromSheet;
-  }
-
-  if (!base) base = 'Mã: ' + uniqueKey;
-  return escapeHtml(base) + '\n\n' + footerHtml;
+function answerCallbackQuery(callbackQueryId) {
+  if (!callbackQueryId) return;
+  const token = PROP.getProperty('bot_token');
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/answerCallbackQuery`, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({ callback_query_id: callbackQueryId }),
+    muteHttpExceptions: true
+  });
 }
 
-/** Đọc lại 1 GD từ Sheet theo uniqueKey để hiển thị khi tin Telegram đã bị ghi đè */
-function buildGdTextFromSheet(uniqueKey) {
+/** Dựng HTML GD từ Sheet + footer trạng thái (tránh ghi đè mất chi tiết) */
+function buildGdHtmlFromSheet(uniqueKey, footerHtml) {
   try {
     const found = findLogRowsByUniqueKey(uniqueKey);
-    if (!found || found.rows.length === 0) return '';
+    if (!found || found.rows.length === 0) {
+      return `❌ Không đọc được GD <code>${escapeHtml(uniqueKey)}</code>\n\n${footerHtml}`;
+    }
     const row = found.rows[0];
     const vals = found.sheet.getRange(row, found.startCol, 1, 10).getValues()[0];
     const phanLoai = vals[LOG_COL.PHAN_LOAI] || '';
@@ -847,15 +832,17 @@ function buildGdTextFromSheet(uniqueKey) {
     const dm = vals[LOG_COL.DANH_MUC_CON] || 'Chưa phân loại';
     const amountNum = Math.abs(parseFloat(soTien) || 0);
     const dau = String(phanLoai).toLowerCase() === 'chi' || (parseFloat(soTien) || 0) < 0 ? '-' : '+';
+
     return (
-      'GD — ' + phanLoai + ' ' + dau + formatMoney(amountNum) + '\n' +
-      '├ Nguồn: ' + vi + '\n' +
-      '├ Danh mục: ' + dm + '\n' +
-      '├ 👤: ' + doiTuong + '\n' +
-      '└ Mã: ' + uniqueKey
+      `<b>GD</b> ${escapeHtml(phanLoai)} ${dau}${formatMoney(amountNum)}\n` +
+      `├ Nguồn: ${escapeHtml(vi)}\n` +
+      `├ Danh mục: ${escapeHtml(dm)}\n` +
+      `├ 👤: ${escapeHtml(doiTuong)}\n` +
+      `└ Mã: <code>${escapeHtml(uniqueKey)}</code>\n\n` +
+      footerHtml
     );
   } catch (e) {
-    return '';
+    return `❌ Lỗi đọc Sheet: ${escapeHtml(e.message)}\n\n${footerHtml}`;
   }
 }
 
