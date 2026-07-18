@@ -88,28 +88,33 @@ function showConfigDialog() {
 }
 
 /**
- * URL Web App cho Telegram phải là /exec (Anyone), KHÔNG phải /dev.
- * /dev chỉ dùng khi đang login Google → Telegram bị 401 Unauthorized.
- *
- * Ưu tiên Script Property `webapp_url` (paste từ Deploy → Manage deployments).
- * Nếu không có: lấy getService().getUrl() và ép /dev → /exec.
+ * BẮT BUỘC: Script Property `webapp_url` = URL Deploy đuôi /exec
+ * (Deploy → Manage deployments → copy Web app URL).
+ * Không dùng ScriptApp.getService().getUrl() — dễ trả /dev → Telegram 401.
  */
 function getWebAppExecUrl() {
-  let base = PROP.getProperty('webapp_url') || ScriptApp.getService().getUrl() || '';
-  base = String(base).trim().replace(/\/dev\/?($|\?)/, '/exec$1');
-  // Bỏ query cũ nếu user paste cả ?wh=
-  base = base.split('?')[0];
-  if (base.indexOf('/exec') === -1) {
-    throw new Error('URL web app phải kết thúc bằng /exec. Vào Deploy → Manage deployments copy URL, lưu vào Property webapp_url');
+  let base = PROP.getProperty('webapp_url');
+  if (!base) {
+    throw new Error(
+      'Chưa có Property webapp_url. Vào Deploy → Manage deployments, copy URL kết thúc /exec, ' +
+      'dán vào Script Properties tên webapp_url, rồi chạy lại setWebhook.'
+    );
+  }
+  base = String(base).trim().split('?')[0].replace(/\/+$/, '');
+  if (/\/dev$/i.test(base)) {
+    throw new Error(
+      'webapp_url đang là /dev (sai). Đổi thành URL /exec từ Manage deployments.'
+    );
+  }
+  if (!/\/exec$/i.test(base)) {
+    throw new Error('webapp_url phải kết thúc bằng /exec. Giá trị hiện tại: ' + base);
   }
   return base;
 }
 
 /**
- * Đăng ký webhook Telegram kèm secret.
- * GAS không đọc được header X-Telegram-Bot-Api-Secret-Token,
- * nên gắn secret vào query URL (?wh=...) để doPost verify.
- * Luôn deleteWebhook trước để tránh kẹt URL cũ.
+ * Đăng ký webhook Telegram kèm secret (?wh=).
+ * Chạy SAU khi đã lưu đúng webapp_url (/exec).
  */
 function setWebhook() {
   const token = PROP.getProperty('bot_token');
@@ -117,12 +122,12 @@ function setWebhook() {
   if (!token) throw new Error('Thiếu bot_token trong Script Properties');
   if (!secret) throw new Error('Thiếu webhook_secret trong Script Properties');
 
-  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`, {
+  const baseUrl = getWebAppExecUrl(); // fail sớm nếu thiếu / sai webapp_url
+  const url = baseUrl + '?wh=' + encodeURIComponent(secret);
+
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=true`, {
     muteHttpExceptions: true
   });
-
-  const baseUrl = getWebAppExecUrl();
-  const url = baseUrl + '?wh=' + encodeURIComponent(secret);
 
   const res = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
     method: 'post',
@@ -134,7 +139,7 @@ function setWebhook() {
     }),
     muteHttpExceptions: true
   });
-  Logger.log('setWebhook URL: ' + url);
+  Logger.log('setWebhook URL (phải là /exec?wh=...): ' + url);
   Logger.log(res.getContentText());
   return res.getContentText();
 }
