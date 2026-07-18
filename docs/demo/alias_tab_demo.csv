@@ -1,15 +1,7 @@
-tu_khoa,vi,doi_tuong,danh_muc_con,ghi_chu_mau
-cf|cafe|cà phê|coffee,Tiền mặt,Tôi,Cà phê,cf 45k
-trà sữa|ts|milktea,Momo,Tôi,Đồ uống,trà sữa 55k
-grab|be|xanh sm|gojek,Momo,Tôi,Di chuyển,grab 80k
-xăng|đổ xăng|petrol,Tiền mặt,Tôi,Xăng xe,xăng 200k
-chợ|đi chợ|siêu thị|coop|winmart,Tiền mặt,Tôi,Thực phẩm,đi chợ 350k
-cơm|ăn trưa|ăn tối|phở|bún,Momo,Tôi,Ăn uống,cơm trưa 45k
-lương|salary|nhận lương,Ngân hàng,Công ty,Lương,nhận lương 15tr
-điện|tiền điện|evn,Ngân hàng,Nhà,Điện nước,đóng tiền điện 450k
-nước|tiền nước,Ngân hàng,Nhà,Điện nước,tiền nước 120k
-net|wifi|fpt|viettel,Ngân hàng,Nhà,Internet,đóng net 220k
-học|học phí|học thêm,Ngân hàng,Con,Học phí,học phí 2tr
-thuốc|nhà thuốc|pharmacy,Momo,Tôi,Sức khỏe,mua thuốc 85k
-shopee|lazada|tiki,Momo,Tôi,Mua sắm online,shopee 199k
-chuyển|ck cho|gửi,Ngân hàng,Bố,Chuyển khoản gia đình,ck bố 1tr
+Keyword,Wallet,Categories,User
+ăn sáng,,Ăn sáng,Bản thân
+ăn trưa,,Ăn trưa,Bản thân
+Minh Nghĩa,Bank,ADS,Minh Nghĩa
+cf|cafe|cà phê,,Cà phê,Bản thân
+xăng|đổ xăng,,Xăng xe,Bản thân
+grab|be|xanh sm,Momo,Di chuyển,Bản thân

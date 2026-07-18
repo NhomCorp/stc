@@ -1,54 +1,53 @@
-# Demo tab Alias — hybrid AI + Alias
+# Tab Alias — schema thật trên Sheet
 
-Một tab `Alias` dạng rộng (đúng như bạn chốt).  
-**Alias = gợi ý mặc định theo thói quen. AI đọc ngữ cảnh và được ghi đè.**
+- Sheet chứa Alias: `gid=1498755942`
+- Data bắt đầu **dòng 2** (dòng 1 = header)
+- Dropdown ở cột Wallet / Categories / User
 
-## Cấu trúc tab (1 sheet)
+## Cột (trái → phải)
 
-| tu_khoa | vi | doi_tuong | danh_muc_con | ghi_chu_mau |
-|---------|----|----------|--------------|-------------|
-| cf\|cafe\|cà phê\|coffee | Tiền mặt | Tôi | Cà phê | cf 45k |
-| xăng\|đổ xăng\|petrol | Tiền mặt | Tôi | Xăng xe | xăng 200k |
-| grab\|be\|xanh sm\|gojek | Momo | Tôi | Di chuyển | grab 80k |
-| lương\|salary\|nhận lương | Ngân hàng | Công ty | Lương | nhận lương 15tr |
+| Cot | Header | Ý nghĩa | Bắt buộc? |
+|-----|--------|---------|-----------|
+| A | `Keyword` | Từ khóa / cụm match trong text Telegram | Có |
+| B | `Wallet` | Nguồn tiền mặc định | Không — **để trống được** |
+| C | `Categories` | Danh mục con | Khuyến nghị |
+| D | `User` | Đối tượng | Khuyến nghị |
 
-File mẫu: `alias_tab_demo.csv`
+Ví dụ đang có:
 
-## Luật hybrid (quan trọng)
+| Keyword | Wallet | Categories | User |
+|---------|--------|------------|------|
+| ăn sáng | *(trống)* | Ăn sáng | Bản thân |
+| ăn trưa | *(trống)* | Ăn trưa | Bản thân |
+| Minh Nghĩa | Bank | ADS | Minh Nghĩa |
 
-1. **Match Alias** theo `tu_khoa` trong text/caption (hoặc text OCR từ ảnh).
-2. **Alias chỉ là default** cho `vi` / `doi_tuong` / `danh_muc_con`.
-3. **AI đọc ngữ cảnh** — nếu câu có tín hiệu khác thì **ghi đè Alias**:
-   - `xăng 200k` → DM Xăng xe, ví Tiền mặt (theo Alias)
-   - `xăng 200k bank` → DM Xăng xe, ví **Ngân hàng** (AI ghi đè, không kẹt Tiền mặt)
-   - `grab công ty 80k` → DM Di chuyển, đối tượng **Công ty** nếu có trong list
-4. Field AI + Alias vẫn không chắc → `"Chưa phân loại"` + **bắt buộc sửa** (auto `CHECK`, không hỏi có cần check không).
-5. Map đủ field vẫn có **nút check từng GD** (vì có thể map sai).
-6. **Không dùng 20 dòng Log history** làm thói quen (mail scan dễ chen).
-
-## Thứ tự ưu tiên khi điền field
+## Hybrid (đã chốt)
 
 ```text
-Tín hiệu rõ trong câu/ảnh  >  Alias match  >  "Chưa phân loại"
+Tín hiệu trong câu/ảnh  >  Alias  >  "Chưa phân loại"
 ```
 
-List hợp lệ vẫn lấy từ Sheet: Wallet / userr / Category (đúng tên dropdown).
+- Match Keyword → lấy Categories / User / Wallet (nếu có) làm **default**
+- Wallet trống trong Alias → AI tự đọc ngữ cảnh; không có tín hiệu → `"Chưa phân loại"` + bắt buộc sửa
+- Có tín hiệu ví trong câu (bank, momo, tm…) → AI **ghi đè** Wallet Alias
+- Không dùng history Log 20 dòng
 
-## Cách tạo trên Google Sheet
+Ví dụ:
+- `ăn sáng 40k` → Category Ăn sáng, User Bản thân, Wallet chưa rõ → check
+- `ăn sáng 40k momo` → giữ Category/User, Wallet = Momo (AI ghi đè)
+- `Minh Nghĩa 500k` → Wallet Bank, Category ADS, User Minh Nghĩa
 
-1. Tạo sheet tên `Alias`
-2. Import `alias_tab_demo.csv` hoặc copy/paste
-3. Đổi `vi` / `doi_tuong` / `danh_muc_con` cho **khớp Exact** dropdown đang dùng
-4. (Sau) Named Range `Alias` = vùng data không gồm header — GAS đọc đưa vào prompt
+## GAS đọc sau này
 
-## Việc GAS sẽ làm (bản code sau)
+```text
+Sheet theo gid 1498755942
+Range: A2:D (bỏ hàng trống Keyword)
+Không phụ thuộc tên cột tiếng Việt trong demo cũ
+```
 
-- `getLiveData()` thêm đọc tab `Alias` (không inject history Log)
-- Prompt Gemini nhận: list ví/DM/đối tượng + bảng Alias + luật ghi đè ngữ cảnh
-- Telegram: mỗi GD một nút check; thiếu field → chỉ nút Sửa
+Named Range (optional): đặt `Alias` = `A2:D` trên đúng sheet đó.
 
-## Lưu ý
+## Note cập nhật sau
 
-- `ghi_chu_mau` chủ yếu để bạn nhớ / few-shot; có thể không bắt buộc đưa hết vào prompt
-- Danh mục cha: không đụng — Sheet tự công thức
-- Bản cập nhật tiếp: xóa Script Property `key_counter` (không dùng)
+- Xóa Script Property `key_counter`
+- Danh mục cha: không đụng (Sheet công thức)
