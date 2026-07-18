@@ -162,6 +162,9 @@ function onEdit(e) {
 // 🤖 PHẦN 3: TELEGRAM
 // ==========================================
 function doPost(e) {
+  // Chặn request không có đúng webhook_secret (query ?wh=)
+  if (!isValidWebhookRequest(e)) return;
+
   if (!e || !e.postData || !e.postData.contents) return;
   const contents = JSON.parse(e.postData.contents);
 
