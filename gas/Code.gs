@@ -248,16 +248,7 @@ function doPost(e) {
     const saveRes = saveBatchToSheet(batchData);
     if (saveRes !== true) return sendMessage(chatId, `❌ <b>Lỗi ghi Sheet:</b> ${saveRes}`);
 
-    // Tóm tắt batch — không gắn nút chung
-    let summary = `✅ <b>ĐÃ GHI SỔ ${aiResult.giao_dich.length} GD</b>\n🆔 Batch: <code>${txId}</code>`;
-    if (needReviewCount > 0) {
-      summary += `\n⚠️ ${needReviewCount} GD chưa phân loại đủ → bắt buộc sửa (không có nút Đúng).`;
-    } else {
-      summary += `\nMỗi GD bên dưới có nút ✅ Đúng / ✏️ Sửa.`;
-    }
-    sendMessage(chatId, summary);
-
-    // Mỗi GD một message + nút riêng
+    // Mỗi GD một message + nút riêng (không gửi tin tóm tắt batch)
     aiResult.giao_dich.forEach((gd, index) => {
       sendTransactionCheckMessage(chatId, gd, `${txId}_${index}`, index + 1);
     });
