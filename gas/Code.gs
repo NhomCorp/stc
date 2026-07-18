@@ -23,19 +23,62 @@ function doGet(e) {
   return HtmlService.createHtmlOutputFromFile('configui').setTitle('Cấu hình Sổ Thu Chi AI v2').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+/** Che API key khi đưa lên UI: AIza••••xxxx */
+function maskApiKey(key) {
+  const s = String(key || '');
+  if (s.length < 12) return '••••••••';
+  return s.slice(0, 4) + '••••••••' + s.slice(-4);
+}
+
+function isMaskedApiKey(value) {
+  return String(value || '').indexOf('••••') !== -1;
+}
+
+function getStoredAiKeys() {
+  const keysRaw = PropertiesService.getScriptProperties().getProperty('ai_keys');
+  if (!keysRaw) return [];
+  try {
+    const parsed = JSON.parse(keysRaw);
+    if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    if (parsed) return [String(parsed)];
+  } catch (e) {
+    if (String(keysRaw).startsWith('AIza')) return [String(keysRaw).trim()];
+  }
+  return [];
+}
+
 function getConfigToUI() {
-  let props = PropertiesService.getScriptProperties();
-  let keysRaw = props.getProperty('ai_keys');
-  let keysArr = [];
-  if (keysRaw) { try { keysArr = JSON.parse(keysRaw); } catch(e) {} }
-  return { model: props.getProperty('ai_model') || 'gemini-2.5-flash', prompt: props.getProperty('ai_prompt') || '', keys: keysArr };
+  const props = PropertiesService.getScriptProperties();
+  const keysArr = getStoredAiKeys().map(maskApiKey);
+  return {
+    model: props.getProperty('ai_model') || 'gemini-2.5-flash',
+    prompt: props.getProperty('ai_prompt') || '',
+    keys: keysArr
+  };
 }
 
 function saveConfigFromUI(data) {
-  let props = PropertiesService.getScriptProperties();
+  const props = PropertiesService.getScriptProperties();
+  const oldKeys = getStoredAiKeys();
+  const incoming = Array.isArray(data.keys) ? data.keys : [];
+  const resolved = [];
+
+  incoming.forEach(function(raw) {
+    const k = String(raw || '').trim();
+    if (!k) return;
+    if (isMaskedApiKey(k)) {
+      const match = oldKeys.find(function(ok) { return maskApiKey(ok) === k; });
+      if (match) resolved.push(match);
+      // Ô mask không khớp key cũ → bỏ qua (không lưu chuỗi ••••)
+    } else {
+      resolved.push(k);
+    }
+  });
+
   props.setProperty('ai_model', data.model || '');
+  // ai_prompt = prompt CÁ NHÂN only (hybrid/JSON nằm trong Code.gs)
   props.setProperty('ai_prompt', data.prompt || '');
-  props.setProperty('ai_keys', JSON.stringify(Array.isArray(data.keys) ? data.keys : []));
+  props.setProperty('ai_keys', JSON.stringify(resolved));
   return "Đã lưu cấu hình thành công!";
 }
 
@@ -105,22 +148,23 @@ function doPost(e) {
     const data = callbackQuery.data;
 
     if (data.startsWith("CONFIRM_")) {
-      const token = PROP.getProperty('bot_token');
-      UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/editMessageReplyMarkup`, {
-        method: "post", contentType: "application/json",
-        payload: JSON.stringify({ chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }),
-        muteHttpExceptions: true
-      });
+      const uniqueKey = data.replace("CONFIRM_", "");
+      const isFound = clearStatusInSheet(uniqueKey);
+      if (isFound) {
+        editMessage(chatId, messageId, `✅ <b>Đã xác nhận GD</b>\nMã: <code>${uniqueKey}</code>`);
+      } else {
+        editMessage(chatId, messageId, `❌ <b>Không tìm thấy giao dịch!</b>\nMã <code>${uniqueKey}</code>`);
+      }
       return;
     }
 
     if (data.startsWith("EDIT_")) {
-      const txId = data.replace("EDIT_", "");
-      const isFound = updateStatusInSheet(txId);
+      const uniqueKey = data.replace("EDIT_", "");
+      const isFound = updateStatusInSheet(uniqueKey);
       if (isFound) {
-        editMessage(chatId, messageId, `🟡 <b>Đã báo cáo sửa giao dịch!</b>\nMã: #${txId}. Sếp mở Sheet kiểm tra các ô màu vàng nhé.`);
+        editMessage(chatId, messageId, `🟡 <b>Bắt buộc sửa trên Sheet</b>\nMã: <code>${uniqueKey}</code>\nMở Sheet → tìm dòng status CHECK (vàng).`);
       } else {
-        editMessage(chatId, messageId, `❌ <b>Không tìm thấy giao dịch!</b>\nMã #${txId} có thể đã bị xóa hoặc chưa được lưu.`);
+        editMessage(chatId, messageId, `❌ <b>Không tìm thấy giao dịch!</b>\nMã <code>${uniqueKey}</code>`);
       }
       return;
     }
@@ -193,44 +237,86 @@ function doPost(e) {
   if (aiResult && !aiResult.error && aiResult.giao_dich && aiResult.giao_dich.length > 0) {
     const txId = "TX_" + new Date().getTime().toString().slice(-6);
     let batchData = [];
-    let msgText = `✅ <b>ĐÃ GHI SỔ (${aiResult.giao_dich.length} GD):</b>\n`;
-    let needReview = false;
+    let needReviewCount = 0;
 
     aiResult.giao_dich.forEach((gd, index) => {
-      let uniqueKey = `${txId}_${index}`;
+      const uniqueKey = `${txId}_${index}`;
       batchData.push({ data: gd, uniqueKey: uniqueKey });
-
-      let flag = "";
-      const isUncat = (val) => !val || val === "Chưa phân loại" || val === "Khác";
-      if (isUncat(gd.vi) || isUncat(gd.danh_muc_con) || isUncat(gd.doi_tuong)) {
-        needReview = true; flag = " ⚠️(Cần sửa)";
-      }
-
-      let dau = (gd.phan_loai || "").toLowerCase() === "chi" ? "-" : "+";
-      msgText += `\n🔹 <b>#${index + 1}:</b> ${gd.phan_loai} ${dau}${formatMoney(gd.so_tien)}\n      ├ Nguồn: ${gd.vi}\n      ├ Danh mục: ${gd.danh_muc_con}${flag}\n      └ 👤: ${gd.doi_tuong || "N/A"}`;
+      if (isUncategorizedGd(gd)) needReviewCount++;
     });
 
     const saveRes = saveBatchToSheet(batchData);
     if (saveRes !== true) return sendMessage(chatId, `❌ <b>Lỗi ghi Sheet:</b> ${saveRes}`);
 
-    msgText += `\n\n🆔 Tracking: <code>${txId}</code>`;
-    if (needReview) msgText = "⚠️ <b>HỆ THỐNG CẢNH BÁO: CÓ THÔNG TIN CẦN SỬA</b>\n" + msgText;
+    // Tóm tắt batch — không gắn nút chung
+    let summary = `✅ <b>ĐÃ GHI SỔ ${aiResult.giao_dich.length} GD</b>\n🆔 Batch: <code>${txId}</code>`;
+    if (needReviewCount > 0) {
+      summary += `\n⚠️ ${needReviewCount} GD chưa phân loại đủ → bắt buộc sửa (không có nút Đúng).`;
+    } else {
+      summary += `\nMỗi GD bên dưới có nút ✅ Đúng / ✏️ Sửa.`;
+    }
+    sendMessage(chatId, summary);
 
-    const replyMarkup = {
-      inline_keyboard: [[
-        { text: "✅ Đã kiểm tra (Đóng)", callback_data: `CONFIRM_${txId}` },
-        { text: "⚠️ Yêu cầu sửa", callback_data: `EDIT_${txId}` }
-      ]]
-    };
-
-    const token = PROP.getProperty('bot_token');
-    UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "post", contentType: "application/json",
-      payload: JSON.stringify({ chat_id: chatId, text: msgText, parse_mode: "HTML", reply_markup: replyMarkup }), muteHttpExceptions: true
+    // Mỗi GD một message + nút riêng
+    aiResult.giao_dich.forEach((gd, index) => {
+      sendTransactionCheckMessage(chatId, gd, `${txId}_${index}`, index + 1);
     });
   } else {
     sendMessage(chatId, "❌ AI không tìm thấy giao dịch: " + ((aiResult && aiResult.error) || ""));
   }
+}
+
+function isUncategorizedValue(val) {
+  return !val || val === "Chưa phân loại" || val === "Khác";
+}
+
+function isUncategorizedGd(gd) {
+  return isUncategorizedValue(gd.vi) ||
+    isUncategorizedValue(gd.danh_muc_con) ||
+    isUncategorizedValue(gd.doi_tuong);
+}
+
+/** Mỗi GD: thiếu field → chỉ nút Sửa; map đủ → Đúng + Sửa */
+function sendTransactionCheckMessage(chatId, gd, uniqueKey, stt) {
+  const mustFix = isUncategorizedGd(gd);
+  const dau = (gd.phan_loai || "").toLowerCase() === "chi" ? "-" : "+";
+  let text = mustFix
+    ? `⚠️ <b>GD #${stt} — BẮT BUỘC SỬA</b>\n`
+    : `🔹 <b>GD #${stt} — kiểm tra</b>\n`;
+
+  text += `${gd.phan_loai || ''} ${dau}${formatMoney(gd.so_tien)}\n` +
+    `├ Nguồn: ${gd.vi || 'Chưa phân loại'}\n` +
+    `├ Danh mục: ${gd.danh_muc_con || 'Chưa phân loại'}\n` +
+    `├ 👤: ${gd.doi_tuong || 'Chưa phân loại'}\n` +
+    `└ Mã: <code>${uniqueKey}</code>`;
+
+  let keyboard;
+  if (mustFix) {
+    keyboard = {
+      inline_keyboard: [[
+        { text: "✏️ Mở Sheet sửa", callback_data: `EDIT_${uniqueKey}` }
+      ]]
+    };
+  } else {
+    keyboard = {
+      inline_keyboard: [[
+        { text: "✅ Đúng", callback_data: `CONFIRM_${uniqueKey}` },
+        { text: "✏️ Sửa", callback_data: `EDIT_${uniqueKey}` }
+      ]]
+    };
+  }
+
+  const token = PROP.getProperty('bot_token');
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify({
+      chat_id: chatId,
+      text: text,
+      parse_mode: "HTML",
+      reply_markup: keyboard
+    }),
+    muteHttpExceptions: true
+  });
 }
 
 // ==========================================
@@ -303,11 +389,13 @@ function callGeminiAPI(text, base64Image, liveData) {
   if (keys.length === 0) return { error: "Chưa cấu hình API Key hoặc Key bị sai định dạng." };
 
   const model = PROP.getProperty('ai_model') || 'gemini-2.5-flash';
-  const systemPrompt = PROP.getProperty('ai_prompt') || 'Bạn là trợ lý bóc tách thu chi.';
+  // Lớp 1: prompt CÁ NHÂN từ Config UI (thói quen nhà). Lớp 2: hybrid/JSON cố định bên dưới.
+  const personalPrompt = PROP.getProperty('ai_prompt') || 'Bạn là trợ lý bóc tách thu chi.';
 
   const aliasText = formatAliasForPrompt(liveData.alias);
 
-  const dynamicPrompt = `${systemPrompt}
+  const dynamicPrompt = `PROMPT CÁ NHÂN (thói quen người dùng):
+${personalPrompt}
 
 NỘI DUNG NGƯỜI DÙNG GỬI: "${text}"
 
@@ -519,8 +607,8 @@ function saveBatchToSheet(batchData) {
       if (phanLoai === "Chi" && finalAmount > 0) finalAmount = -finalAmount;
 
       let status = "";
-      const isUncat = (val) => !val || val === "Chưa phân loại" || val === "Khác";
-      if (isUncat(data.vi) || isUncat(data.danh_muc_con) || isUncat(data.doi_tuong) || finalAmount === 0) {
+      if (isUncategorizedValue(data.vi) || isUncategorizedValue(data.danh_muc_con) ||
+          isUncategorizedValue(data.doi_tuong) || finalAmount === 0) {
         status = "CHECK";
       }
 
@@ -555,26 +643,52 @@ function saveBatchToSheet(batchData) {
   }
 }
 
-function updateStatusInSheet(txId) {
-  try {
-    const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
-    const logRange = ss.getRangeByName("Log");
-    if (!logRange) return false;
+function findLogRowsByUniqueKey(uniqueKey) {
+  const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+  const logRange = ss.getRangeByName("Log");
+  if (!logRange) return null;
 
-    const sheet = logRange.getSheet();
-    const startRow = logRange.getRow();
-    const startCol = logRange.getColumn();
+  const sheet = logRange.getSheet();
+  const startRow = logRange.getRow();
+  const startCol = logRange.getColumn();
+  const idData = sheet.getRange(startRow, startCol + LOG_COL.UNIQUE_KEY, logRange.getNumRows(), 1).getValues();
+  const rows = [];
+  const key = String(uniqueKey || '');
 
-    const idData = sheet.getRange(startRow, startCol + LOG_COL.UNIQUE_KEY, logRange.getNumRows(), 1).getValues();
-
-    let found = false;
-    for (let i = 0; i < idData.length; i++) {
-      if (idData[i][0] && idData[i][0].toString().includes(txId)) {
-        sheet.getRange(startRow + i, startCol + LOG_COL.STATUS).setValue("CHECK");
-        found = true;
-      }
+  for (let i = 0; i < idData.length; i++) {
+    const cell = idData[i][0] ? idData[i][0].toString() : '';
+    if (!cell) continue;
+    // Ưu tiên khớp đúng uniqueKey (TX_xxx_0); fallback includes cho tương thích
+    if (cell === key || cell.indexOf(key) !== -1) {
+      rows.push(startRow + i);
     }
-    return found;
+  }
+  return { sheet: sheet, startCol: startCol, rows: rows };
+}
+
+/** Đánh CHECK — bắt buộc sửa trên Sheet */
+function updateStatusInSheet(uniqueKey) {
+  try {
+    const found = findLogRowsByUniqueKey(uniqueKey);
+    if (!found || found.rows.length === 0) return false;
+    found.rows.forEach(function(row) {
+      found.sheet.getRange(row, found.startCol + LOG_COL.STATUS).setValue("CHECK");
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Xác nhận Đúng — xóa status CHECK */
+function clearStatusInSheet(uniqueKey) {
+  try {
+    const found = findLogRowsByUniqueKey(uniqueKey);
+    if (!found || found.rows.length === 0) return false;
+    found.rows.forEach(function(row) {
+      found.sheet.getRange(row, found.startCol + LOG_COL.STATUS).setValue("");
+    });
+    return true;
   } catch (e) {
     return false;
   }

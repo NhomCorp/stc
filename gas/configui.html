@@ -5,7 +5,8 @@
     body { font-family: Arial, sans-serif; padding: 15px; color: #333; background: #f8f9fa; }
     .group { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     h3 { margin-top: 0; font-size: 14px; color: #1a73e8; border-bottom: 1px solid #eee; padding-bottom: 8px; }
-    input[type="text"], textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; margin-bottom: 8px; font-family: monospace;}
+    .hint { font-size: 12px; color: #5f6368; margin: -4px 0 10px; line-height: 1.4; }
+    input[type="text"], input[type="password"], textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; margin-bottom: 8px; font-family: monospace;}
     textarea { height: 180px; resize: vertical; }
     .key-row { display: flex; gap: 5px; margin-bottom: 8px; }
     .btn { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
@@ -24,69 +25,77 @@
   </div>
 
   <div class="group">
-    <h3>2. API KEYS (TỰ ĐỘNG XOAY VÒNG)</h3>
-    <div id="keys-container">
-      </div>
-    <button class="btn btn-add" onclick="addKeyRow('')">+ Thêm API Key</button>
+    <h3>2. API KEYS (ẨN KHI HIỂN THỊ)</h3>
+    <p class="hint">Key đã lưu hiện dạng che (AIza••••xxxx). Muốn đổi: xóa ô cũ hoặc gõ đè key mới rồi Lưu. Ô còn dấu •••• sẽ giữ key cũ.</p>
+    <div id="keys-container"></div>
+    <button class="btn btn-add" onclick="addKeyRow('', false)">+ Thêm API Key</button>
   </div>
 
   <div class="group">
-    <h3>3. NGỮ CẢNH ĐÀO TẠO (PROMPT)</h3>
-    <textarea id="ai-prompt" placeholder="Nhập vai trò, quy tắc đọc hóa đơn, phân loại thu chi..."></textarea>
+    <h3>3. PROMPT CÁ NHÂN</h3>
+    <p class="hint">Chỉ ghi thói quen nhà bạn (k/m/tr, ai chuyển = thu/chi, biệt danh…). Luật Alias + JSON do code xử lý — không cần paste vào đây.</p>
+    <textarea id="ai-prompt" placeholder="Ví dụ:&#10;- k = nghìn, m/tr = triệu, t/tỷ = tỷ&#10;- Trung Hiếu chuyển = Chi; người khác chuyển cho mình = Thu&#10;- MN = Minh Nghĩa"></textarea>
   </div>
 
   <button class="btn btn-save" id="btn-save" onclick="saveData()">💾 LƯU CẤU HÌNH</button>
   <div id="status">Đã lưu thành công! Đang đóng...</div>
 
 <script>
-    // Khi load popup, gọi hàm lấy data từ hệ thống
     window.onload = function() {
-      // Bật chế độ làm mờ màn hình
       document.body.classList.add('loading');
-      
       google.script.run
         .withSuccessHandler(populateData)
         .withFailureHandler(function(err) {
-            // Cứu cánh: Nếu có lỗi hệ thống, bắt buộc gỡ mờ màn hình và báo lỗi để tránh kẹt
             document.body.classList.remove('loading');
-            alert("Lỗi tải dữ liệu từ Google Sheet: " + err.message);
+            alert("Lỗi tải cấu hình: " + err.message);
         })
-        .getConfigToUI(); // Lưu ý: hàm này bên file .gs phải tên đúng là getConfigToUI nhé
+        .getConfigToUI();
     };
 
     function populateData(data) {
-      // Điền dữ liệu cơ bản, nếu không có thì để trống
       if (data && data.model) document.getElementById('ai-model').value = data.model;
       if (data && data.prompt) document.getElementById('ai-prompt').value = data.prompt;
-      
+
       var keysContainer = document.getElementById('keys-container');
-      keysContainer.innerHTML = ''; 
-      
-      // BỘ LỌC AN TOÀN: Sửa dứt điểm lỗi màn hình mờ ở đây
+      keysContainer.innerHTML = '';
+
       if (data && data.keys && Array.isArray(data.keys) && data.keys.length > 0) {
-        // Nếu đã có sẵn danh sách keys thì lặp để in ra
         data.keys.forEach(function(key) {
-          if (key && key.trim() !== '') { 
-            addKeyRow(key);
+          if (key && String(key).trim() !== '') {
+            addKeyRow(String(key).trim(), true);
           }
         });
       } else {
-        // Nếu chưa có key nào (mới cài đặt), tự động tạo sẵn 1 ô trống để bạn nhập
-        addKeyRow('');
+        addKeyRow('', false);
       }
 
-      // Xử lý xong xuôi thì mở khóa màn hình
       document.body.classList.remove('loading');
     }
 
-    function addKeyRow(value) {
+    function addKeyRow(value, isMasked) {
       var container = document.getElementById('keys-container');
       var div = document.createElement('div');
       div.className = 'key-row';
-      div.innerHTML = `
-        <input type="text" class="api-key-input" value="${value}" placeholder="Nhập API Key vào đây...">
-        <button class="btn btn-del" onclick="this.parentElement.remove()">X</button>
-      `;
+      var input = document.createElement('input');
+      input.type = isMasked ? 'password' : 'text';
+      input.className = 'api-key-input';
+      input.value = value || '';
+      input.placeholder = 'Nhập API Key mới...';
+      input.setAttribute('data-masked', isMasked ? '1' : '0');
+      input.setAttribute('autocomplete', 'off');
+      input.addEventListener('focus', function() {
+        if (input.getAttribute('data-masked') === '1') {
+          input.type = 'text';
+          // Giữ giá trị mask; user phải xóa rồi gõ key mới nếu muốn đổi
+        }
+      });
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-del';
+      btn.type = 'button';
+      btn.textContent = 'X';
+      btn.onclick = function() { div.remove(); };
+      div.appendChild(input);
+      div.appendChild(btn);
       container.appendChild(div);
     }
 
@@ -95,35 +104,28 @@
       btnSave.innerText = "⏳ Đang lưu...";
       btnSave.disabled = true;
 
-      // Gom toàn bộ API Keys vào một danh sách (mảng)
       var keysInputs = document.querySelectorAll('.api-key-input');
       var keysArr = [];
-      keysInputs.forEach(function(input) { 
-        // Chỉ lưu những ô có nhập chữ, bỏ qua ô trống
+      keysInputs.forEach(function(input) {
         if (input.value.trim() !== '') {
-          keysArr.push(input.value.trim()); 
+          keysArr.push(input.value.trim());
         }
       });
 
-      // Gói dữ liệu lại
       var aiData = {
         model: document.getElementById('ai-model').value,
         keys: keysArr,
         prompt: document.getElementById('ai-prompt').value
       };
 
-      // Gửi xuống file code .gs để lưu
       google.script.run
         .withSuccessHandler(function(res) {
           var status = document.getElementById('status');
-          status.innerText = res; // Thường là "Đã lưu thành công"
+          status.innerText = res;
           status.style.display = 'block';
-          
-          // Tự động đóng popup sau 1.5 giây
           setTimeout(function() { google.script.host.close(); }, 1500);
         })
         .withFailureHandler(function(err) {
-          // Báo lỗi nếu lưu thất bại và mở lại nút Save
           btnSave.innerText = "💾 LƯU CẤU HÌNH";
           btnSave.disabled = false;
           alert("Lỗi khi lưu: " + err.message);

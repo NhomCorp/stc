@@ -19,6 +19,11 @@
 - Wallet / Categories / User được trống bất kỳ
 - Hybrid: tín hiệu câu/ảnh > Alias > `"Chưa phân loại"`
 
-## Chưa làm trong bản này
-- Nút check từng giao dịch
+## Đã có thêm
+- Config UI **mask API key** (••••); Save giữ key cũ nếu ô còn mask
+- Prompt tách 2 lớp: UI = cá nhân; `Code.gs` = Alias hybrid + JSON
+- Telegram: **mỗi GD một message + nút**; thiếu field → chỉ nút Sửa + auto CHECK; map đủ → Đúng/Sửa; Đúng xóa status trên Sheet
+
+## Chưa làm
 - Webhook `secret_token`
+- Xóa tay Script Property `key_counter` nếu còn trên project live
