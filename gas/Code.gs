@@ -218,26 +218,36 @@ function doPost(e) {
     const chatId = callbackQuery.message.chat.id.toString();
     const messageId = callbackQuery.message.message_id;
     const data = callbackQuery.data;
+    // Giữ nội dung GD gốc trên tin nhắn (Telegram trả plain text)
+    const originalText = (callbackQuery.message && callbackQuery.message.text) ? callbackQuery.message.text : '';
 
     if (data.startsWith("CONFIRM_")) {
       const uniqueKey = data.replace("CONFIRM_", "");
       const isFound = clearStatusInSheet(uniqueKey);
-      if (isFound) {
-        editMessage(chatId, messageId, `✅ <b>Đã xác nhận GD</b>\nMã: <code>${uniqueKey}</code>`);
-      } else {
-        editMessage(chatId, messageId, `❌ <b>Không tìm thấy giao dịch!</b>\nMã <code>${uniqueKey}</code>`);
-      }
+      const footer = isFound
+        ? `✅ <b>Đã xác nhận</b>`
+        : `❌ <b>Không tìm thấy GD</b> <code>${uniqueKey}</code>`;
+      editMessage(
+        chatId,
+        messageId,
+        buildCallbackResultText(originalText, uniqueKey, footer),
+        { inline_keyboard: [] }
+      );
       return;
     }
 
     if (data.startsWith("EDIT_")) {
       const uniqueKey = data.replace("EDIT_", "");
       const isFound = updateStatusInSheet(uniqueKey);
-      if (isFound) {
-        editMessage(chatId, messageId, `🟡 <b>Bắt buộc sửa trên Sheet</b>\nMã: <code>${uniqueKey}</code>\nMở Sheet → tìm dòng status CHECK (vàng).`);
-      } else {
-        editMessage(chatId, messageId, `❌ <b>Không tìm thấy giao dịch!</b>\nMã <code>${uniqueKey}</code>`);
-      }
+      const footer = isFound
+        ? `🟡 <b>Đã đánh dấu sửa trên Sheet</b>\nMở Sheet → tìm dòng status CHECK (vàng).`
+        : `❌ <b>Không tìm thấy GD</b> <code>${uniqueKey}</code>`;
+      editMessage(
+        chatId,
+        messageId,
+        buildCallbackResultText(originalText, uniqueKey, footer),
+        { inline_keyboard: [] }
+      );
       return;
     }
 
@@ -794,6 +804,59 @@ function deleteMessage(chatId, messageId) {
     method: "post", contentType: "application/json",
     payload: JSON.stringify({ chat_id: chatId, message_id: messageId }), muteHttpExceptions: true
   });
+}
+
+function escapeHtml(text) {
+  return String(text || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Giữ nội dung GD gốc, bỏ footer trạng thái cũ (nếu có), gắn footer mới.
+ * Ưu tiên text trên tin Telegram; nếu đã bị ghi đè mất chi tiết thì lấy lại từ Sheet.
+ */
+function buildCallbackResultText(originalText, uniqueKey, footerHtml) {
+  let base = String(originalText || '').trim();
+  // Gỡ footer lần bấm trước: ✅ / 🟡 / ❌ ...
+  base = base.replace(/\n\n(?:✅|🟡|❌)[\s\S]*$/, '').trim();
+
+  // Nếu tin đã mất block chi tiết (chỉ còn trạng thái ngắn) → dựng lại từ Sheet
+  const looksEmpty = !base || !/Nguồn:|Danh mục:|👤:/.test(base);
+  if (looksEmpty) {
+    const fromSheet = buildGdTextFromSheet(uniqueKey);
+    if (fromSheet) base = fromSheet;
+  }
+
+  if (!base) base = 'Mã: ' + uniqueKey;
+  return escapeHtml(base) + '\n\n' + footerHtml;
+}
+
+/** Đọc lại 1 GD từ Sheet theo uniqueKey để hiển thị khi tin Telegram đã bị ghi đè */
+function buildGdTextFromSheet(uniqueKey) {
+  try {
+    const found = findLogRowsByUniqueKey(uniqueKey);
+    if (!found || found.rows.length === 0) return '';
+    const row = found.rows[0];
+    const vals = found.sheet.getRange(row, found.startCol, 1, 10).getValues()[0];
+    const phanLoai = vals[LOG_COL.PHAN_LOAI] || '';
+    const soTien = vals[LOG_COL.SO_TIEN];
+    const vi = vals[LOG_COL.VI] || 'Chưa phân loại';
+    const doiTuong = vals[LOG_COL.DOI_TUONG] || 'Chưa phân loại';
+    const dm = vals[LOG_COL.DANH_MUC_CON] || 'Chưa phân loại';
+    const amountNum = Math.abs(parseFloat(soTien) || 0);
+    const dau = String(phanLoai).toLowerCase() === 'chi' || (parseFloat(soTien) || 0) < 0 ? '-' : '+';
+    return (
+      'GD — ' + phanLoai + ' ' + dau + formatMoney(amountNum) + '\n' +
+      '├ Nguồn: ' + vi + '\n' +
+      '├ Danh mục: ' + dm + '\n' +
+      '├ 👤: ' + doiTuong + '\n' +
+      '└ Mã: ' + uniqueKey
+    );
+  } catch (e) {
+    return '';
+  }
 }
 
 function editMessage(chatId, messageId, text, replyMarkup = null) {
