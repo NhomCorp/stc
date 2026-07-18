@@ -24,6 +24,11 @@
 - Prompt tách 2 lớp: UI = cá nhân; `Code.gs` = Alias hybrid + JSON
 - Telegram: **mỗi GD một message + nút**; thiếu field → chỉ nút Sửa + auto CHECK; map đủ → Đúng/Sửa; Đúng xóa status trên Sheet
 
+## Webhook secret
+1. Script Properties có `webhook_secret`
+2. Copy `Code.gs` mới → Deploy **New version**
+3. Chạy hàm `setWebhook` (editor → chọn `setWebhook` → Run)
+4. GAS không đọc được header Telegram → secret gắn vào URL `?wh=...` và `doPost` verify `e.parameter.wh`
+
 ## Chưa làm
-- Webhook `secret_token`
 - Xóa tay Script Property `key_counter` nếu còn trên project live

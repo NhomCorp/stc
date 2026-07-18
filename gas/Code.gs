@@ -87,10 +87,41 @@ function showConfigDialog() {
   SpreadsheetApp.getUi().showModalDialog(html, '⚙️ Cấu hình Sổ Thu Chi AI v2');
 }
 
+/**
+ * Đăng ký webhook Telegram kèm secret.
+ * GAS không đọc được header X-Telegram-Bot-Api-Secret-Token,
+ * nên gắn secret vào query URL (?wh=...) để doPost verify.
+ * Vẫn gửi secret_token cho Telegram (chuẩn API).
+ */
 function setWebhook() {
   const token = PROP.getProperty('bot_token');
-  const url = ScriptApp.getService().getUrl();
-  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${url}`);
+  const secret = PROP.getProperty('webhook_secret');
+  if (!token) throw new Error('Thiếu bot_token trong Script Properties');
+  if (!secret) throw new Error('Thiếu webhook_secret trong Script Properties');
+
+  const baseUrl = ScriptApp.getService().getUrl();
+  const url = baseUrl + (baseUrl.indexOf('?') >= 0 ? '&' : '?') + 'wh=' + encodeURIComponent(secret);
+
+  const res = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify({
+      url: url,
+      secret_token: secret,
+      drop_pending_updates: false
+    }),
+    muteHttpExceptions: true
+  });
+  Logger.log(res.getContentText());
+  return res.getContentText();
+}
+
+/** Verify webhook: so e.parameter.wh với webhook_secret */
+function isValidWebhookRequest(e) {
+  const secret = PROP.getProperty('webhook_secret');
+  if (!secret) return false;
+  const incoming = (e && e.parameter && e.parameter.wh) ? String(e.parameter.wh) : '';
+  return incoming !== '' && incoming === secret;
 }
 
 function onOpen() {
