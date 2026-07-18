@@ -237,12 +237,9 @@ function doPost(e) {
   if (aiResult && !aiResult.error && aiResult.giao_dich && aiResult.giao_dich.length > 0) {
     const txId = "TX_" + new Date().getTime().toString().slice(-6);
     let batchData = [];
-    let needReviewCount = 0;
 
     aiResult.giao_dich.forEach((gd, index) => {
-      const uniqueKey = `${txId}_${index}`;
-      batchData.push({ data: gd, uniqueKey: uniqueKey });
-      if (isUncategorizedGd(gd)) needReviewCount++;
+      batchData.push({ data: gd, uniqueKey: `${txId}_${index}` });
     });
 
     const saveRes = saveBatchToSheet(batchData);
