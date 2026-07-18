@@ -88,10 +88,28 @@ function showConfigDialog() {
 }
 
 /**
+ * URL Web App cho Telegram phải là /exec (Anyone), KHÔNG phải /dev.
+ * /dev chỉ dùng khi đang login Google → Telegram bị 401 Unauthorized.
+ *
+ * Ưu tiên Script Property `webapp_url` (paste từ Deploy → Manage deployments).
+ * Nếu không có: lấy getService().getUrl() và ép /dev → /exec.
+ */
+function getWebAppExecUrl() {
+  let base = PROP.getProperty('webapp_url') || ScriptApp.getService().getUrl() || '';
+  base = String(base).trim().replace(/\/dev\/?($|\?)/, '/exec$1');
+  // Bỏ query cũ nếu user paste cả ?wh=
+  base = base.split('?')[0];
+  if (base.indexOf('/exec') === -1) {
+    throw new Error('URL web app phải kết thúc bằng /exec. Vào Deploy → Manage deployments copy URL, lưu vào Property webapp_url');
+  }
+  return base;
+}
+
+/**
  * Đăng ký webhook Telegram kèm secret.
  * GAS không đọc được header X-Telegram-Bot-Api-Secret-Token,
  * nên gắn secret vào query URL (?wh=...) để doPost verify.
- * Luôn deleteWebhook trước để tránh kẹt URL cũ (không có ?wh=).
+ * Luôn deleteWebhook trước để tránh kẹt URL cũ.
  */
 function setWebhook() {
   const token = PROP.getProperty('bot_token');
@@ -99,13 +117,12 @@ function setWebhook() {
   if (!token) throw new Error('Thiếu bot_token trong Script Properties');
   if (!secret) throw new Error('Thiếu webhook_secret trong Script Properties');
 
-  // Bỏ webhook cũ (URL không có ?wh= sẽ làm bot im sau khi bật verify)
   UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`, {
     muteHttpExceptions: true
   });
 
-  const baseUrl = ScriptApp.getService().getUrl();
-  const url = baseUrl + (baseUrl.indexOf('?') >= 0 ? '&' : '?') + 'wh=' + encodeURIComponent(secret);
+  const baseUrl = getWebAppExecUrl();
+  const url = baseUrl + '?wh=' + encodeURIComponent(secret);
 
   const res = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook`, {
     method: 'post',
@@ -113,7 +130,7 @@ function setWebhook() {
     payload: JSON.stringify({
       url: url,
       secret_token: secret,
-      drop_pending_updates: false
+      drop_pending_updates: true
     }),
     muteHttpExceptions: true
   });
