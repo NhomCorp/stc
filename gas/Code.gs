@@ -91,13 +91,18 @@ function showConfigDialog() {
  * Đăng ký webhook Telegram kèm secret.
  * GAS không đọc được header X-Telegram-Bot-Api-Secret-Token,
  * nên gắn secret vào query URL (?wh=...) để doPost verify.
- * Vẫn gửi secret_token cho Telegram (chuẩn API).
+ * Luôn deleteWebhook trước để tránh kẹt URL cũ (không có ?wh=).
  */
 function setWebhook() {
   const token = PROP.getProperty('bot_token');
   const secret = PROP.getProperty('webhook_secret');
   if (!token) throw new Error('Thiếu bot_token trong Script Properties');
   if (!secret) throw new Error('Thiếu webhook_secret trong Script Properties');
+
+  // Bỏ webhook cũ (URL không có ?wh= sẽ làm bot im sau khi bật verify)
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteWebhook?drop_pending_updates=false`, {
+    muteHttpExceptions: true
+  });
 
   const baseUrl = ScriptApp.getService().getUrl();
   const url = baseUrl + (baseUrl.indexOf('?') >= 0 ? '&' : '?') + 'wh=' + encodeURIComponent(secret);
@@ -110,6 +115,17 @@ function setWebhook() {
       secret_token: secret,
       drop_pending_updates: false
     }),
+    muteHttpExceptions: true
+  });
+  Logger.log('setWebhook URL: ' + url);
+  Logger.log(res.getContentText());
+  return res.getContentText();
+}
+
+/** Xem URL webhook Telegram đang trỏ tới (phải có ?wh=...) */
+function getWebhookInfo() {
+  const token = PROP.getProperty('bot_token');
+  const res = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/getWebhookInfo`, {
     muteHttpExceptions: true
   });
   Logger.log(res.getContentText());
