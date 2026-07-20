@@ -1,163 +1,109 @@
-# Cho vay / Đi vay — nhìn bằng ví dụ
+# Cho vay / Đi vay — kỳ hạn linh hoạt
 
-Quên lý thuyết một lúc. Chỉ cần nhớ:
+## Trả lời ngắn
 
-> **Một khoản vay = một “hợp đồng” trên Sheet.**  
-> Mỗi lần đưa/nhận/trả tiền = một dòng trong sổ thu chi (Log), gắn với hợp đồng đó.
+**Có — kỳ hạn linh hoạt.**  
+“Ngày / tuần / tháng” chỉ là **chu kỳ trả**, không khóa cứng một kiểu vay.
+
+Hai thứ tách nhau:
+
+| Trục | Giá trị | Ý nghĩa |
+|------|---------|---------|
+| **Chu kỳ** | ngày / tuần / tháng /(tùy chọn) | Bao lâu trả một lần |
+| **Cách trả mỗi kỳ** | chỉ lãi · gốc+lãi · chỉ gốc | Kỳ đó trả cái gì |
+
+Ghép lại ra đúng 3 kiểu bạn nói (và còn mở thêm được).
 
 ---
 
-## Hình dung 2 tờ giấy
+## 3 kiểu bạn nêu
+
+### 1) Góp ngày — gốc + lãi
+
+Mỗi **ngày** trả một phần **gốc + lãi**.
 
 ```text
-┌─────────────────────────┐     ┌──────────────────────────┐
-│  KHOẢN VAY (hợp đồng)   │     │  LOG (tiền vào/ra ví)    │
-│  “Còn nợ bao nhiêu?”    │ ←── │  “Hôm nay ví thay đổi?”  │
-└─────────────────────────┘     └──────────────────────────┘
+KV-01 | Cho vay A | chu kỳ: ngày | cách trả: gốc+lãi
+Gốc 3.000.000 | 30 ngày | ~100k gốc + lãi/ngày (minh họa)
+Còn lại lúc đầu = tổng các ngày chưa trả
+Ngày 1 trả xong → còn lại giảm 1 ngày
 ```
 
-- Muốn biết **còn bao nhiêu** → nhìn **Khoản vay**  
-- Muốn biết **ví hôm nay +/− bao nhiêu** → nhìn **Log**
+### 2) Tuần trả lãi — gốc còn nguyên
 
----
-
-## Ví dụ 1 — Cho bạn A vay, không lãi (kiểu A)
-
-### Ngày 1 — Đưa 5.000.000 cho A
-
-Bạn gõ Tele: `cho A vay 5tr không lãi`
-
-**Khoản vay** có 1 dòng:
-
-| ID | Ai | Kiểu | Gốc | Lãi | Đã trả | Còn lại |
-|----|----|------|-----|-----|--------|---------|
-| KV-01 | A | Không lãi | 5.000.000 | 0 | 0 | **5.000.000** |
-
-**Log** có 1 dòng (tiền ra ví):
-
-| Ngày | Thu/Chi | Tiền | Ví | Đối tượng | Danh mục | Ghi chú |
-|------|---------|------|----|-----------|----------|---------|
-| 01/07 | Chi | 5.000.000 | Momo | A | Cho vay | KV-01 |
-
-### Ngày 15 — A trả 2.000.000
-
-Bạn gõ: `A trả 2tr KV-01`
-
-**Log** thêm:
-
-| Ngày | Thu/Chi | Tiền | … | Danh mục | Ghi chú |
-|------|---------|------|---|----------|---------|
-| 15/07 | Thu | 2.000.000 | … | Thu nợ | KV-01 gốc |
-
-**Khoản vay** cập nhật:
-
-| ID | Đã trả | Còn lại |
-|----|--------|---------|
-| KV-01 | 2.000.000 | **3.000.000** |
-
-Hết. Không lãi → còn lại = gốc chưa trả.
-
----
-
-## Ví dụ 2 — Bạn đi vay ngân hàng, lãi theo tháng (kiểu B)
-
-Vay **10.000.000**, lãi **100.000/tháng**, 3 tháng, gốc trả cuối.
-
-### Ngày giải ngân — nhận 10tr vào Bank
-
-**Khoản vay:**
-
-| ID | Chiều | Kiểu | Gốc | Lãi/tháng | Số tháng | Tổng lãi dự kiến | Còn lại lúc đầu |
-|----|-------|------|-----|-----------|----------|------------------|-----------------|
-| KV-02 | Đi vay | Lãi theo kỳ | 10.000.000 | 100.000 | 3 | 300.000 | **10.300.000** |
-
-*(Còn lại = gốc 10tr + 3 tháng lãi chưa trả)*
-
-**Log:** Thu 10.000.000 / Đi vay / KV-02
-
-### Cuối tháng 1 — trả lãi 100k
-
-**Log:** Chi 100.000 / Trả lãi / KV-02  
-
-**Khoản vay sau đó:**
-
-| Đã trả lãi | Còn lại |
-|------------|---------|
-| 100.000 | **10.200.000** (= 10tr gốc + 2 tháng lãi còn lại) |
-
-### Cuối tháng 2 — trả lãi 100k nữa
-
-Còn lại → **10.100.000**
-
-### Cuối tháng 3 — trả lãi 100k + gốc 10tr
-
-Hai dòng Log (hoặc một lần trả rồi tách): Chi lãi 100k + Chi gốc 10tr  
-
-Còn lại → **0** (tất toán)
-
----
-
-## Ví dụ 3 — Vay trả góp gốc + lãi từng đợt (kiểu C)
-
-Vay **6.000.000**, **3 kỳ**, mỗi kỳ trả **2.200.000** (trong đó ~2tr gốc + 200k lãi — số liệu minh họa).
-
-**Lịch sẵn trên Khoản vay:**
-
-| Kỳ | Đến hạn | Phải trả | Gồm gốc | Gồm lãi | Đã trả? |
-|----|---------|----------|---------|---------|---------|
-| 1 | 01/08 | 2.200.000 | 2.000.000 | 200.000 | |
-| 2 | 01/09 | 2.200.000 | 2.000.000 | 200.000 | |
-| 3 | 01/10 | 2.200.000 | 2.000.000 | 200.000 | |
-
-**Còn lại lúc đầu** = 2.2tr × 3 = **6.600.000**
-
-Bạn gõ: `trả kỳ 1 KV-03 2.2tr`  
-
-→ 1 dòng Log Chi 2.2tr  
-→ Đánh dấu kỳ 1 đã trả  
-→ **Còn lại = 4.400.000**
-
----
-
-## Bạn xem gì trên Tele?
+Mỗi **tuần** chỉ trả **lãi**; **gốc giữ nguyên** đến lúc tất toán (trả gốc cuối hoặc khi hết hạn).
 
 ```text
-/no
+KV-02 | Đi vay | chu kỳ: tuần | cách trả: chỉ lãi
+Gốc 10.000.000 | lãi 50.000/tuần
+Còn lại = gốc 10tr + (số tuần lãi chưa trả × 50k)
+Tuần 1 trả 50k lãi → gốc vẫn 10tr, lãi còn lại giảm 1 tuần
 ```
 
-Bot trả lời kiểu:
+### 3) Tháng — gốc + lãi
+
+Mỗi **tháng** trả **gốc + lãi** (trả góp tháng).
 
 ```text
-Phải thu
-• A (KV-01, không lãi): còn 3.000.000
-
-Phải trả
-• Bank (KV-02, lãi tháng): còn 10.200.000
-  (gốc 10.000.000 + lãi còn 200.000)
-• KV-03 trả góp: còn 4.400.000
+KV-03 | Đi vay | chu kỳ: tháng | cách trả: gốc+lãi
+Gốc 12.000.000 | 12 tháng | mỗi tháng ~1.1tr (gốc+lãi)
+Trả 3 tháng → còn lại ≈ 9 tháng chưa trả
 ```
 
-Đó chính là chỗ **“hiện số nợ còn lại (gốc + lãi dự kiến)”**.
+---
+
+## Bảng ghép (để khỏi nhầm)
+
+| | Chỉ lãi (gốc nguyên) | Gốc + lãi mỗi kỳ | Chỉ gốc (không lãi) |
+|--|----------------------|------------------|---------------------|
+| **Ngày** | ít gặp | **góp ngày gốc lãi** ← bạn | ứng ngày không lãi |
+| **Tuần** | **tuần trả lãi** ← bạn | góp tuần gốc+lãi | |
+| **Tháng** | tháng chỉ trả lãi | **tháng gốc lãi** ← bạn | |
+
+Cột Sheet trên khoản vay chỉ cần 2 field:
+
+- `chu_ky` = `ngày` | `tuần` | `tháng`
+- `cach_tra` = `chi_lai` | `goc_lai` | `chi_goc`
+
+Không cần “hard-code” 3 sản phẩm riêng — cùng một khuôn, đổi 2 field.
 
 ---
 
-## Một câu để nhớ
+## Còn lại vẫn cùng một công thức
 
-| Câu hỏi | Trả lời ở đâu |
-|---------|----------------|
-| Ví hôm nay mất/được bao nhiêu? | **Log** |
-| Người này / khoản này còn nợ bao nhiêu (kể cả lãi sắp tới)? | **Khoản vay** |
+```text
+Còn lại = gốc chưa trả  +  lãi các kỳ chưa trả (theo lịch)
+```
 
-Log không thay được Khoản vay khi có lãi — vì lãi “còn lại” nằm ở **lịch chưa trả**, chưa phải tiền đã chạy.
+- **Chỉ lãi:** gốc thường = đủ đến khi trả gốc; còn lại giảm chủ yếu ở phần lãi từng kỳ  
+- **Gốc+lãi:** mỗi kỳ trả xong là giảm cả gốc lẫn lãi của kỳ đó  
+- **Chỉ gốc:** còn lại = gốc chưa trả
 
 ---
 
-## Nếu vẫn rối — chỉ cần trả lời
+## Log vẫn đơn giản
 
-Trong 3 ví dụ trên, bạn hay dùng kiểu nào nhất?
+Mỗi lần trả thật → 1 (hoặc 2) dòng Log gắn `KV-xx`.  
+Số **còn lại** chỉ đổi trên tab Khoản vay / lịch kỳ.
 
-- **1** = không lãi (bạn bè)  
-- **2** = lãi từng tháng, gốc cuối  
-- **3** = trả góp cố định  
+---
 
-Chốt kiểu hay dùng → mình vẽ đúng 1 flow Tele + cột Sheet cho kiểu đó trước, các kiểu kia làm sau.
+## Ví dụ Tele (cùng khuôn)
+
+```text
+cho A vay 3tr góp ngày 30 ngày
+vay B 10tr lãi 50k/tuần gốc cuối
+vay bank 12tr góp tháng 12 kỳ
+```
+
+Bot tạo khoản với `chu_ky` + `cach_tra` tương ứng; `/no` hiện còn lại.
+
+---
+
+## Chốt lại
+
+1. Kỳ hạn **linh hoạt**: ngày / tuần / tháng (sau này thêm tùy chọn cũng được).  
+2. Ba kiểu bạn nêu = 3 tổ hợp của `chu_ky` × `cach_tra`, không phải 3 hệ thống riêng.  
+3. Muốn thêm “tháng chỉ lãi” hoặc “tuần gốc+lãi” → chỉ thêm tổ hợp, không đổi kiến trúc.
+
+Bạn có cần **số kỳ cố định sẵn** (30 ngày / 12 tháng), hay cũng có khoản **không biết trước bao nhiêu kỳ** (trả lãi đến khi trả gốc)?
