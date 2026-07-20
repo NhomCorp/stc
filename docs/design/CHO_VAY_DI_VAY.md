@@ -1,87 +1,166 @@
-# Cho vay / Đi vay — kỳ hạn thủ công, linh hoạt
+# Mô hình Cho vay / Đi vay (STC)
 
-## Chốt từ bạn
-
-- Kỳ hạn **set tay**, không bắt buộc khuôn cứng.
-- Có khoản **không kỳ hạn**: chỉ trả lãi đến khi trả gốc.
-- Chu kỳ vẫn linh hoạt: ngày / tuần / tháng (khi có trả theo kỳ).
+Phiên bản đã chốt qua bàn luận: kỳ hạn thủ công linh hoạt; có khoản không kỳ hạn (chỉ lãi đến khi trả gốc).
 
 ---
 
-## Mỗi khoản vay — field tối thiểu
+## 1. Tổng quan
 
-| Field | Bắt buộc? | Ví dụ |
-|-------|-----------|--------|
-| Chiều | Có | Cho vay / Đi vay |
-| Đối tượng | Có | A, Bank… |
-| Gốc | Có | 10.000.000 |
-| Cách trả | Có | `chi_lai` / `goc_lai` / `chi_goc` |
-| Chu kỳ | Không* | ngày / tuần / tháng — *bỏ trống nếu không theo kỳ |
-| Kỳ hạn | **Không** | set tay: `30 ngày`, `12 tháng`, hoặc **trống = không kỳ hạn** |
-| Lãi / kỳ (hoặc %) | Nếu có lãi | 50k/tuần, 1%/tháng… |
-| Ngày bắt đầu | Có | |
-| Ngày đáo hạn | Không | chỉ điền khi có hạn chót |
-
-**Kỳ hạn trống** = hợp lệ. Nghĩa là: chưa hẹn hết hạn; trả lãi (nếu có) đến khi trả gốc / tất toán tay.
-
----
-
-## Hai nhánh chính
-
-### A) Có kỳ hạn (set tay)
-
-Bạn điền: `12 tháng` / `30 ngày` / `8 tuần`…
-
-- Có thể dựng lịch kỳ để ước tính **lãi dự kiến** và **còn lại**.
-- Đáo hạn / số kỳ do bạn gõ, bot không ép.
-
-### B) Không kỳ hạn (để trống)
-
-Ví dụ: **chỉ trả lãi đến khi trả gốc**.
+Hai lớp dữ liệu:
 
 ```text
-Gốc        = 10.000.000 (còn nguyên đến lúc trả gốc)
-Lãi        = 50.000 / tuần (mỗi lần trả lãi ghi Log)
-Kỳ hạn     = (trống)
-Còn lại    = gốc chưa trả  +  lãi đã đến hạn chưa trả
-             (không cộng “lãi cả đời tương lai” vì không biết bao nhiêu kỳ)
+┌──────────────────────────────────────┐
+│  KHOẢN VAY                           │
+│  Hợp đồng: gốc, lãi, chu kỳ, kỳ hạn  │
+│  → trả lời: còn nợ bao nhiêu?        │
+└──────────────────▲───────────────────┘
+                   │ gắn bằng ID (KV-xx)
+┌──────────────────┴───────────────────┐
+│  LOG THU CHI                         │
+│  Mỗi lần tiền thật vào/ra ví         │
+│  → trả lời: ví hôm nay đổi gì?       │
+└──────────────────────────────────────┘
 ```
 
-Khác khoản có kỳ hạn cố định: **không đoán lãi tương lai vô hạn**.  
-“Còn lại” lúc xem = **gốc dư + lãi quá hạn / đến kỳ chưa trả** (nếu có theo dõi kỳ lãi).
+- **Cho vay** và **đi vay** dùng cùng mô hình; khác ở field `chieu`.
+- Không thêm loại mới vào cột Thu/Chi của Log (vẫn `Thu` / `Chi`).
 
 ---
 
-## “Còn lại” — quy ước rõ
+## 2. Thực thể: Khoản vay
 
-| Tình huống | Hiện “còn lại” thế nào |
-|------------|-------------------------|
-| Có kỳ hạn + lịch sẵn | Gốc chưa trả + lãi các kỳ **còn trong lịch** (dự kiến) |
-| Không kỳ hạn, chỉ lãi | Gốc chưa trả + lãi **đã đến hạn mà chưa trả** (không dự kiến vô hạn) |
-| Không lãi | Chỉ gốc chưa trả |
+Một dòng = một hợp đồng.
 
-Như vậy `/no` không bị phình số vì “lãi mãi mãi”.
+| Field | Bắt buộc | Mô tả |
+|-------|----------|--------|
+| `id` | Có | `KV-001`… |
+| `chieu` | Có | `cho_vay` (phải thu) / `di_vay` (phải trả) |
+| `doi_tuong` | Có | Người / tổ chức |
+| `goc` | Có | Số gốc ban đầu |
+| `lai_suat` hoặc `lai_moi_ky` | Nếu có lãi | % hoặc số tiền cố định mỗi kỳ |
+| `cach_tra` | Có | `chi_goc` · `chi_lai` · `goc_lai` |
+| `chu_ky` | Không | `ngay` · `tuan` · `thang` (trống nếu không theo kỳ) |
+| `ky_han` | Không | Set **thủ công**: `30 ngày`, `12 tháng`… — **trống = không kỳ hạn** |
+| `ngay_bat_dau` | Có | |
+| `ngay_dao_han` | Không | Chỉ khi có hạn chót |
+| `status` | Có | `dang_mo` / `tat_toan` |
+
+### Cách trả (`cach_tra`)
+
+| Giá trị | Ý nghĩa |
+|---------|---------|
+| `chi_goc` | Không lãi; trả gốc (1 lần hoặc nhiều lần) |
+| `chi_lai` | Mỗi kỳ (nếu có) chỉ trả lãi; gốc nguyên đến khi trả gốc / tất toán |
+| `goc_lai` | Mỗi kỳ trả gốc + lãi |
+
+### Kỳ hạn
+
+- **Có điền** → có thể dựng lịch kỳ → ước tính lãi dự kiến.  
+- **Để trống** → không kỳ hạn (vd. trả lãi đến khi trả gốc); không dự kiến lãi vô hạn.
 
 ---
 
-## Ví dụ Tele
+## 3. Thực thể: Lịch kỳ (optional)
+
+Dùng khi có `chu_ky` và (thường) có `ky_han`.
+
+| Field | Mô tả |
+|-------|--------|
+| `khoan_vay_id` | KV-xx |
+| `ky_so` | 1, 2, 3… |
+| `den_han` | Ngày đến hạn kỳ đó |
+| `goc_ky` | Phần gốc của kỳ (0 nếu `chi_lai`) |
+| `lai_ky` | Phần lãi của kỳ (0 nếu `chi_goc`) |
+| `da_tra` | true/false hoặc số đã trả |
+| `ngay_tra` | |
+
+Khoản **không kỳ hạn**: có thể không tạo lịch sẵn; mỗi lần trả lãi/gốc ghi Log (+ optional dòng phát sinh lãi đến hạn nếu cần nhắc).
+
+---
+
+## 4. Log thu chi (giữ schema hiện tại)
+
+Cột Log như cũ: Ngày · Thu/Chi · Số tiền · Ví · Đối tượng · DM cha · DM con · Ghi chú · Unique key · Status.
+
+Gợi ý danh mục con:
+
+| Việc | Thu/Chi | Danh mục gợi ý | Ghi chú |
+|------|---------|----------------|---------|
+| Giải ngân cho vay | Chi | Cho vay | `KV-001 giải ngân` |
+| Nhận đi vay | Thu | Đi vay | `KV-002 giải ngân` |
+| Thu/trả gốc | Thu hoặc Chi | Thu nợ gốc / Trả nợ gốc | `KV-001 gốc` |
+| Thu/trả lãi | Thu hoặc Chi | Thu lãi / Trả lãi | `KV-001 lãi` |
+| Trả góp (gốc+lãi một lần) | Thu hoặc Chi | Thu nợ / Trả nợ | `KV-003 kỳ 2` — tách gốc/lãi trên khoản vay nếu cần |
+
+`doi_tuong` trên Log nên khớp đối tượng khoản vay.
+
+---
+
+## 5. Công thức “còn lại”
 
 ```text
-# Có kỳ hạn (set tay)
-cho A vay 3tr góp ngày 30 ngày
-vay bank 12tr góp tháng 12 kỳ
+goc_con = goc − tổng đã trả gốc (từ Log gắn KV)
 
-# Không kỳ hạn — chỉ lãi đến khi trả gốc
-vay B 10tr lãi 50k/tuần không kỳ hạn
-# hoặc
-vay B 10tr lãi 50k/tuần
+lai_con =
+  • Có kỳ hạn + lịch:  Σ lãi các kỳ chưa trả trong lịch   (dự kiến)
+  • Không kỳ hạn:      Σ lãi đã đến hạn mà chưa trả         (không dự kiến vô hạn)
+  • Không lãi:         0
+
+con_lai = goc_con + lai_con
 ```
 
-Tất toán gốc bất kỳ lúc nào: `trả gốc KV-02 10tr` → còn lại lãi Pending (nếu còn) rồi đóng khoản.
+`/no` hoặc tab Khoản vay hiện `con_lai` (và có thể tách gốc / lãi cho dễ đọc).
 
 ---
 
-## Tóm một câu
+## 6. Luồng nghiệp vụ
 
-**Kỳ hạn = field thủ công, để trống được.**  
-Có điền thì tính được lãi dự kiến theo lịch; để trống thì chỉ theo dõi gốc + lãi đến hạn, trả lãi đến khi trả gốc.
+### Mở khoản
+
+1. User mô tả trên Tele (hoặc nhập Sheet).  
+2. Tạo 1 dòng **Khoản vay**.  
+3. Nếu có tiền giải ngân ngay → 1 dòng **Log** (Chi nếu cho vay, Thu nếu đi vay).  
+4. Nếu có kỳ hạn → (optional) sinh **lịch kỳ**.
+
+### Trả lãi / gốc / góp
+
+1. User ghi nhận lần trả trên Tele.  
+2. Ghi **Log** (tiền ví).  
+3. Cập nhật đã trả trên khoản vay / lịch kỳ.  
+4. `con_lai` giảm; nếu gốc+lãi hết và không còn lãi đến hạn → có thể `tat_toan`.
+
+### Xem nợ
+
+- `/no` → danh sách khoản đang mở + còn lại.  
+- `/no A` → lọc theo đối tượng.
+
+---
+
+## 7. Ví dụ tổ hợp thực tế
+
+| Mô tả | chieu | cach_tra | chu_ky | ky_han |
+|-------|-------|----------|--------|--------|
+| Cho bạn vay không lãi, trả dần | cho_vay | chi_goc | (trống hoặc tùy) | trống hoặc set tay |
+| Góp ngày gốc + lãi, 30 ngày | cho_vay / di_vay | goc_lai | ngay | 30 ngày |
+| Tuần trả lãi, gốc nguyên, không biết khi nào trả gốc | di_vay | chi_lai | tuan | **trống** |
+| Tháng gốc + lãi, 12 kỳ | di_vay | goc_lai | thang | 12 tháng |
+
+---
+
+## 8. Ranh giới với thu chi thường
+
+| Tình huống | Xử lý |
+|------------|--------|
+| CK cho người thân, không đòi lại | Chi thường — **không** mở khoản vay |
+| Chuyển ví nội bộ (Momo↔Bank) | Ngoài mô hình này (chuyển nội bộ — làm sau) |
+| Có ý định hoàn lại / trả lãi | Mở **Khoản vay** |
+
+---
+
+## 9. Phase triển khai gợi ý
+
+1. **Sheet:** tab `Khoan Vay` (+ optional `Lich Ky`) + 4–6 danh mục Log.  
+2. **GAS/Tele:** tạo khoản, ghi Log gắn ID, lệnh `/no`.  
+3. **Sau:** nhắc đến hạn, sửa kỳ hạn tay, tất toán.
+
+Chưa yêu cầu đổi cột `PHAN_LOAI` của Log hiện tại.
