@@ -1,109 +1,87 @@
-# Cho vay / Đi vay — kỳ hạn linh hoạt
+# Cho vay / Đi vay — kỳ hạn thủ công, linh hoạt
 
-## Trả lời ngắn
+## Chốt từ bạn
 
-**Có — kỳ hạn linh hoạt.**  
-“Ngày / tuần / tháng” chỉ là **chu kỳ trả**, không khóa cứng một kiểu vay.
-
-Hai thứ tách nhau:
-
-| Trục | Giá trị | Ý nghĩa |
-|------|---------|---------|
-| **Chu kỳ** | ngày / tuần / tháng /(tùy chọn) | Bao lâu trả một lần |
-| **Cách trả mỗi kỳ** | chỉ lãi · gốc+lãi · chỉ gốc | Kỳ đó trả cái gì |
-
-Ghép lại ra đúng 3 kiểu bạn nói (và còn mở thêm được).
+- Kỳ hạn **set tay**, không bắt buộc khuôn cứng.
+- Có khoản **không kỳ hạn**: chỉ trả lãi đến khi trả gốc.
+- Chu kỳ vẫn linh hoạt: ngày / tuần / tháng (khi có trả theo kỳ).
 
 ---
 
-## 3 kiểu bạn nêu
+## Mỗi khoản vay — field tối thiểu
 
-### 1) Góp ngày — gốc + lãi
+| Field | Bắt buộc? | Ví dụ |
+|-------|-----------|--------|
+| Chiều | Có | Cho vay / Đi vay |
+| Đối tượng | Có | A, Bank… |
+| Gốc | Có | 10.000.000 |
+| Cách trả | Có | `chi_lai` / `goc_lai` / `chi_goc` |
+| Chu kỳ | Không* | ngày / tuần / tháng — *bỏ trống nếu không theo kỳ |
+| Kỳ hạn | **Không** | set tay: `30 ngày`, `12 tháng`, hoặc **trống = không kỳ hạn** |
+| Lãi / kỳ (hoặc %) | Nếu có lãi | 50k/tuần, 1%/tháng… |
+| Ngày bắt đầu | Có | |
+| Ngày đáo hạn | Không | chỉ điền khi có hạn chót |
 
-Mỗi **ngày** trả một phần **gốc + lãi**.
+**Kỳ hạn trống** = hợp lệ. Nghĩa là: chưa hẹn hết hạn; trả lãi (nếu có) đến khi trả gốc / tất toán tay.
+
+---
+
+## Hai nhánh chính
+
+### A) Có kỳ hạn (set tay)
+
+Bạn điền: `12 tháng` / `30 ngày` / `8 tuần`…
+
+- Có thể dựng lịch kỳ để ước tính **lãi dự kiến** và **còn lại**.
+- Đáo hạn / số kỳ do bạn gõ, bot không ép.
+
+### B) Không kỳ hạn (để trống)
+
+Ví dụ: **chỉ trả lãi đến khi trả gốc**.
 
 ```text
-KV-01 | Cho vay A | chu kỳ: ngày | cách trả: gốc+lãi
-Gốc 3.000.000 | 30 ngày | ~100k gốc + lãi/ngày (minh họa)
-Còn lại lúc đầu = tổng các ngày chưa trả
-Ngày 1 trả xong → còn lại giảm 1 ngày
+Gốc        = 10.000.000 (còn nguyên đến lúc trả gốc)
+Lãi        = 50.000 / tuần (mỗi lần trả lãi ghi Log)
+Kỳ hạn     = (trống)
+Còn lại    = gốc chưa trả  +  lãi đã đến hạn chưa trả
+             (không cộng “lãi cả đời tương lai” vì không biết bao nhiêu kỳ)
 ```
 
-### 2) Tuần trả lãi — gốc còn nguyên
-
-Mỗi **tuần** chỉ trả **lãi**; **gốc giữ nguyên** đến lúc tất toán (trả gốc cuối hoặc khi hết hạn).
-
-```text
-KV-02 | Đi vay | chu kỳ: tuần | cách trả: chỉ lãi
-Gốc 10.000.000 | lãi 50.000/tuần
-Còn lại = gốc 10tr + (số tuần lãi chưa trả × 50k)
-Tuần 1 trả 50k lãi → gốc vẫn 10tr, lãi còn lại giảm 1 tuần
-```
-
-### 3) Tháng — gốc + lãi
-
-Mỗi **tháng** trả **gốc + lãi** (trả góp tháng).
-
-```text
-KV-03 | Đi vay | chu kỳ: tháng | cách trả: gốc+lãi
-Gốc 12.000.000 | 12 tháng | mỗi tháng ~1.1tr (gốc+lãi)
-Trả 3 tháng → còn lại ≈ 9 tháng chưa trả
-```
+Khác khoản có kỳ hạn cố định: **không đoán lãi tương lai vô hạn**.  
+“Còn lại” lúc xem = **gốc dư + lãi quá hạn / đến kỳ chưa trả** (nếu có theo dõi kỳ lãi).
 
 ---
 
-## Bảng ghép (để khỏi nhầm)
+## “Còn lại” — quy ước rõ
 
-| | Chỉ lãi (gốc nguyên) | Gốc + lãi mỗi kỳ | Chỉ gốc (không lãi) |
-|--|----------------------|------------------|---------------------|
-| **Ngày** | ít gặp | **góp ngày gốc lãi** ← bạn | ứng ngày không lãi |
-| **Tuần** | **tuần trả lãi** ← bạn | góp tuần gốc+lãi | |
-| **Tháng** | tháng chỉ trả lãi | **tháng gốc lãi** ← bạn | |
+| Tình huống | Hiện “còn lại” thế nào |
+|------------|-------------------------|
+| Có kỳ hạn + lịch sẵn | Gốc chưa trả + lãi các kỳ **còn trong lịch** (dự kiến) |
+| Không kỳ hạn, chỉ lãi | Gốc chưa trả + lãi **đã đến hạn mà chưa trả** (không dự kiến vô hạn) |
+| Không lãi | Chỉ gốc chưa trả |
 
-Cột Sheet trên khoản vay chỉ cần 2 field:
-
-- `chu_ky` = `ngày` | `tuần` | `tháng`
-- `cach_tra` = `chi_lai` | `goc_lai` | `chi_goc`
-
-Không cần “hard-code” 3 sản phẩm riêng — cùng một khuôn, đổi 2 field.
+Như vậy `/no` không bị phình số vì “lãi mãi mãi”.
 
 ---
 
-## Còn lại vẫn cùng một công thức
+## Ví dụ Tele
 
 ```text
-Còn lại = gốc chưa trả  +  lãi các kỳ chưa trả (theo lịch)
-```
-
-- **Chỉ lãi:** gốc thường = đủ đến khi trả gốc; còn lại giảm chủ yếu ở phần lãi từng kỳ  
-- **Gốc+lãi:** mỗi kỳ trả xong là giảm cả gốc lẫn lãi của kỳ đó  
-- **Chỉ gốc:** còn lại = gốc chưa trả
-
----
-
-## Log vẫn đơn giản
-
-Mỗi lần trả thật → 1 (hoặc 2) dòng Log gắn `KV-xx`.  
-Số **còn lại** chỉ đổi trên tab Khoản vay / lịch kỳ.
-
----
-
-## Ví dụ Tele (cùng khuôn)
-
-```text
+# Có kỳ hạn (set tay)
 cho A vay 3tr góp ngày 30 ngày
-vay B 10tr lãi 50k/tuần gốc cuối
 vay bank 12tr góp tháng 12 kỳ
+
+# Không kỳ hạn — chỉ lãi đến khi trả gốc
+vay B 10tr lãi 50k/tuần không kỳ hạn
+# hoặc
+vay B 10tr lãi 50k/tuần
 ```
 
-Bot tạo khoản với `chu_ky` + `cach_tra` tương ứng; `/no` hiện còn lại.
+Tất toán gốc bất kỳ lúc nào: `trả gốc KV-02 10tr` → còn lại lãi Pending (nếu còn) rồi đóng khoản.
 
 ---
 
-## Chốt lại
+## Tóm một câu
 
-1. Kỳ hạn **linh hoạt**: ngày / tuần / tháng (sau này thêm tùy chọn cũng được).  
-2. Ba kiểu bạn nêu = 3 tổ hợp của `chu_ky` × `cach_tra`, không phải 3 hệ thống riêng.  
-3. Muốn thêm “tháng chỉ lãi” hoặc “tuần gốc+lãi” → chỉ thêm tổ hợp, không đổi kiến trúc.
-
-Bạn có cần **số kỳ cố định sẵn** (30 ngày / 12 tháng), hay cũng có khoản **không biết trước bao nhiêu kỳ** (trả lãi đến khi trả gốc)?
+**Kỳ hạn = field thủ công, để trống được.**  
+Có điền thì tính được lãi dự kiến theo lịch; để trống thì chỉ theo dõi gốc + lãi đến hạn, trả lãi đến khi trả gốc.
