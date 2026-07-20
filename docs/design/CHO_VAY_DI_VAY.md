@@ -1,103 +1,163 @@
-# Cho vay / Đi vay — logic ngắn
+# Cho vay / Đi vay — nhìn bằng ví dụ
 
-## Ý chính (2 lớp)
+Quên lý thuyết một lúc. Chỉ cần nhớ:
 
-| Lớp | Làm gì | Không làm gì |
-|-----|--------|--------------|
-| **1. Khoản vay** (tab riêng) | Hợp đồng: gốc, lãi, lịch, **còn lại** | Không thay Log |
-| **2. Log thu chi** | Mỗi lần tiền thật vào/ra ví | Không tự tính dư nợ có lãi |
-
-Muốn thấy **nợ còn lại (gốc + lãi dự kiến)** → bắt buộc có lớp 1. Chỉ ghi Log thì chỉ biết đã trả bao nhiêu tiền, **không biết lãi còn bao nhiêu**.
+> **Một khoản vay = một “hợp đồng” trên Sheet.**  
+> Mỗi lần đưa/nhận/trả tiền = một dòng trong sổ thu chi (Log), gắn với hợp đồng đó.
 
 ---
 
-## 3 kiểu khoản vay
-
-| Kiểu | Trả thế nào | Ví dụ |
-|------|-------------|--------|
-| **A. Không lãi** | Chỉ trả gốc (1 lần hoặc nhiều lần) | Cho bạn vay 5tr, trả dần |
-| **B. Lãi theo kỳ** | Mỗi kỳ trả **lãi**; gốc trả cuối (hoặc cuối kỳ) | Vay 10tr, lãi 1%/tháng, cuối tháng trả lãi |
-| **C. Gốc + lãi từng đợt** | Mỗi kỳ trả 1 phần gốc + lãi | Vay trả góp cố định hàng tháng |
-
-Cùng áp dụng cho **cho vay** (phải thu) và **đi vay** (phải trả) — chỉ đảo phía.
-
----
-
-## Tab `Khoan Vay` (1 dòng = 1 khoản)
-
-| Cột | Ý nghĩa |
-|-----|---------|
-| ID | `KV-001` — gắn Log khi trả |
-| Chiều | `Cho vay` / `Đi vay` |
-| Đối tượng | Ai |
-| Kiểu | `A` / `B` / `C` |
-| Gốc | Số vay ban đầu |
-| Lãi suất | % / kỳ (A = 0) |
-| Kỳ | tháng / tuần… |
-| Số kỳ | Tổng kỳ (A có thể 1) |
-| Ngày bắt đầu | |
-| Tổng phải trả dự kiến | Gốc + tổng lãi cả đời khoản |
-| Đã trả gốc | Cộng từ các lần thanh toán |
-| Đã trả lãi | Cộng từ các lần thanh toán |
-| **Còn lại** | `(Gốc − đã trả gốc) + lãi còn dự kiến` |
-| Status | Đang mở / Tất toán |
-
-### Cách hiểu “còn lại”
+## Hình dung 2 tờ giấy
 
 ```text
-Còn lại = gốc chưa trả  +  lãi dự kiến chưa thu/trả
+┌─────────────────────────┐     ┌──────────────────────────┐
+│  KHOẢN VAY (hợp đồng)   │     │  LOG (tiền vào/ra ví)    │
+│  “Còn nợ bao nhiêu?”    │ ←── │  “Hôm nay ví thay đổi?”  │
+└─────────────────────────┘     └──────────────────────────┘
 ```
 
-- **A:** còn lại = gốc chưa trả  
-- **B:** còn lại = gốc chưa trả + (số kỳ lãi còn lại × lãi mỗi kỳ)  
-- **C:** còn lại = tổng các kỳ chưa trả (mỗi kỳ đã gồm gốc+lãi), hoặc gốc dư + lãi còn lại theo lịch
+- Muốn biết **còn bao nhiêu** → nhìn **Khoản vay**  
+- Muốn biết **ví hôm nay +/− bao nhiêu** → nhìn **Log**
 
 ---
 
-## Log ghi gì khi có tiền chạy?
+## Ví dụ 1 — Cho bạn A vay, không lãi (kiểu A)
 
-| Việc | Log `phan_loai` | Danh mục gợi ý | Ghi chú Log |
-|------|-----------------|----------------|-------------|
-| Giải ngân cho vay | Chi | Cho vay | `KV-001 giải ngân` |
-| Nhận đi vay | Thu | Đi vay | `KV-002 giải ngân` |
-| Thu/trả **gốc** | Thu hoặc Chi | Thu nợ gốc / Trả nợ gốc | `KV-001 gốc` |
-| Thu/trả **lãi** | Thu hoặc Chi | Thu lãi / Trả lãi | `KV-001 lãi` |
-| Trả góp (gốc+lãi 1 lần) | 1 hoặc 2 dòng | — | Có thể 1 dòng rồi tách trên tab khoản vay |
+### Ngày 1 — Đưa 5.000.000 cho A
 
-Tiền ví luôn đúng. Tab khoản vay đọc các lần trả (theo ID) để cập nhật **đã trả / còn lại**.
+Bạn gõ Tele: `cho A vay 5tr không lãi`
 
----
+**Khoản vay** có 1 dòng:
 
-## Ví dụ nhanh
+| ID | Ai | Kiểu | Gốc | Lãi | Đã trả | Còn lại |
+|----|----|------|-----|-----|--------|---------|
+| KV-01 | A | Không lãi | 5.000.000 | 0 | 0 | **5.000.000** |
 
-**A — Không lãi:** Cho A vay 5tr → còn lại 5tr. A trả 2tr gốc → còn lại 3tr.
+**Log** có 1 dòng (tiền ra ví):
 
-**B — Lãi theo kỳ:** Đi vay 10tr, lãi 100k/tháng × 12. Tháng 1 trả lãi 100k → còn lại = 10tr + 1.1tr lãi chưa trả. Trả hết gốc cuối năm + lãi từng tháng.
+| Ngày | Thu/Chi | Tiền | Ví | Đối tượng | Danh mục | Ghi chú |
+|------|---------|------|----|-----------|----------|---------|
+| 01/07 | Chi | 5.000.000 | Momo | A | Cho vay | KV-01 |
 
-**C — Gốc+lãi từng đợt:** Vay 12tr, 12 kỳ × 1.1tr (gồm gốc+lãi). Đã trả 3 kỳ → còn lại ≈ 9 kỳ × 1.1tr (hoặc đúng lịch từng kỳ).
+### Ngày 15 — A trả 2.000.000
 
----
+Bạn gõ: `A trả 2tr KV-01`
 
-## Telegram (gọn)
+**Log** thêm:
 
-1. Mở khoản: `cho A vay 5tr không lãi` / `vay bank 10tr lãi 1%/tháng 12 kỳ`  
-   → tạo dòng `Khoan Vay` + 1 dòng Log giải ngân  
-2. Trả: `A trả 2tr gốc KV-001` / `trả lãi KV-002 100k`  
-   → Log + cập nhật còn lại  
-3. Xem: `/no` hoặc `/no A` → liệt kê khoản + **còn lại**
+| Ngày | Thu/Chi | Tiền | … | Danh mục | Ghi chú |
+|------|---------|------|---|----------|---------|
+| 15/07 | Thu | 2.000.000 | … | Thu nợ | KV-01 gốc |
 
----
+**Khoản vay** cập nhật:
 
-## Không làm (tránh rối)
+| ID | Đã trả | Còn lại |
+|----|--------|---------|
+| KV-01 | 2.000.000 | **3.000.000** |
 
-- Không nhét lãi dự kiến vào riêng cột Log  
-- Không chỉ cộng/trừ 4 danh mục rồi gọi là “còn lại có lãi” — thiếu lịch thì sai  
-- Phase đầu: Sheet tính còn lại bằng công thức/lịch; bot chỉ tạo khoản + ghi lần trả
+Hết. Không lãi → còn lại = gốc chưa trả.
 
 ---
 
-## Cần chốt
+## Ví dụ 2 — Bạn đi vay ngân hàng, lãi theo tháng (kiểu B)
 
-1. Tab `Khoan Vay` (hợp đồng + còn lại) có đúng hướng bạn muốn không?  
-2. Trả góp (kiểu C): mỗi lần trả trên Tele ghi **1 số tổng** hay tách sẵn **gốc / lãi**?  
-3. Lãi kiểu B: cố định số tiền/kỳ hay % trên gốc còn lại?
+Vay **10.000.000**, lãi **100.000/tháng**, 3 tháng, gốc trả cuối.
+
+### Ngày giải ngân — nhận 10tr vào Bank
+
+**Khoản vay:**
+
+| ID | Chiều | Kiểu | Gốc | Lãi/tháng | Số tháng | Tổng lãi dự kiến | Còn lại lúc đầu |
+|----|-------|------|-----|-----------|----------|------------------|-----------------|
+| KV-02 | Đi vay | Lãi theo kỳ | 10.000.000 | 100.000 | 3 | 300.000 | **10.300.000** |
+
+*(Còn lại = gốc 10tr + 3 tháng lãi chưa trả)*
+
+**Log:** Thu 10.000.000 / Đi vay / KV-02
+
+### Cuối tháng 1 — trả lãi 100k
+
+**Log:** Chi 100.000 / Trả lãi / KV-02  
+
+**Khoản vay sau đó:**
+
+| Đã trả lãi | Còn lại |
+|------------|---------|
+| 100.000 | **10.200.000** (= 10tr gốc + 2 tháng lãi còn lại) |
+
+### Cuối tháng 2 — trả lãi 100k nữa
+
+Còn lại → **10.100.000**
+
+### Cuối tháng 3 — trả lãi 100k + gốc 10tr
+
+Hai dòng Log (hoặc một lần trả rồi tách): Chi lãi 100k + Chi gốc 10tr  
+
+Còn lại → **0** (tất toán)
+
+---
+
+## Ví dụ 3 — Vay trả góp gốc + lãi từng đợt (kiểu C)
+
+Vay **6.000.000**, **3 kỳ**, mỗi kỳ trả **2.200.000** (trong đó ~2tr gốc + 200k lãi — số liệu minh họa).
+
+**Lịch sẵn trên Khoản vay:**
+
+| Kỳ | Đến hạn | Phải trả | Gồm gốc | Gồm lãi | Đã trả? |
+|----|---------|----------|---------|---------|---------|
+| 1 | 01/08 | 2.200.000 | 2.000.000 | 200.000 | |
+| 2 | 01/09 | 2.200.000 | 2.000.000 | 200.000 | |
+| 3 | 01/10 | 2.200.000 | 2.000.000 | 200.000 | |
+
+**Còn lại lúc đầu** = 2.2tr × 3 = **6.600.000**
+
+Bạn gõ: `trả kỳ 1 KV-03 2.2tr`  
+
+→ 1 dòng Log Chi 2.2tr  
+→ Đánh dấu kỳ 1 đã trả  
+→ **Còn lại = 4.400.000**
+
+---
+
+## Bạn xem gì trên Tele?
+
+```text
+/no
+```
+
+Bot trả lời kiểu:
+
+```text
+Phải thu
+• A (KV-01, không lãi): còn 3.000.000
+
+Phải trả
+• Bank (KV-02, lãi tháng): còn 10.200.000
+  (gốc 10.000.000 + lãi còn 200.000)
+• KV-03 trả góp: còn 4.400.000
+```
+
+Đó chính là chỗ **“hiện số nợ còn lại (gốc + lãi dự kiến)”**.
+
+---
+
+## Một câu để nhớ
+
+| Câu hỏi | Trả lời ở đâu |
+|---------|----------------|
+| Ví hôm nay mất/được bao nhiêu? | **Log** |
+| Người này / khoản này còn nợ bao nhiêu (kể cả lãi sắp tới)? | **Khoản vay** |
+
+Log không thay được Khoản vay khi có lãi — vì lãi “còn lại” nằm ở **lịch chưa trả**, chưa phải tiền đã chạy.
+
+---
+
+## Nếu vẫn rối — chỉ cần trả lời
+
+Trong 3 ví dụ trên, bạn hay dùng kiểu nào nhất?
+
+- **1** = không lãi (bạn bè)  
+- **2** = lãi từng tháng, gốc cuối  
+- **3** = trả góp cố định  
+
+Chốt kiểu hay dùng → mình vẽ đúng 1 flow Tele + cột Sheet cho kiểu đó trước, các kiểu kia làm sau.
