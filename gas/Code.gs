@@ -261,8 +261,15 @@ function doPost(e) {
 
   let text = contents.message.text || contents.message.caption || "";
 
+  // Reply keyboard cũ ("Tháng này" / "3 tháng gần nhất") — map + gỡ bàn phím
+  if (text === 'Tháng này') { sendMonthReport(chatId); return; }
+  if (text === '3 tháng gần nhất') { send3MonthReport(chatId); return; }
+
   if (text.startsWith('/')) {
-    if (text === '/start') sendMessage(chatId, "🤖 Bot Sổ Thu Chi AI v2 sẵn sàng!");
+    if (text === '/start') {
+      sendMessage(chatId, "🤖 Bot Sổ Thu Chi AI v2 sẵn sàng!");
+      return;
+    }
     if (text === '/report') { sendTodayReport(chatId); return; }
     if (text === '/scan') {
       const loadId = sendMessage(chatId, "⏳ Đang dò quét hóa đơn từ Email...");
@@ -808,12 +815,36 @@ function returnMsg(chatId, text) {
 
 function sendMessage(chatId, text) {
   const token = PROP.getProperty('bot_token');
+  // Bot chỉ dùng inline keyboard — luôn gỡ reply keyboard cũ nếu còn dính trên client
   const res = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "post", contentType: "application/json",
-    payload: JSON.stringify({ chat_id: chatId, text: text, parse_mode: "HTML" }), muteHttpExceptions: true
+    payload: JSON.stringify({
+      chat_id: chatId,
+      text: text,
+      parse_mode: "HTML",
+      reply_markup: { remove_keyboard: true }
+    }), muteHttpExceptions: true
   });
   const json = JSON.parse(res.getContentText());
   return json.result ? json.result.message_id : null;
+}
+
+/** Gỡ reply keyboard mà không để lại tin nhắn (dùng trước khi gửi inline keyboard). */
+function removeReplyKeyboard(chatId) {
+  const token = PROP.getProperty('bot_token');
+  const res = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "post", contentType: "application/json",
+    payload: JSON.stringify({
+      chat_id: chatId,
+      text: '\u2060',
+      reply_markup: { remove_keyboard: true }
+    }),
+    muteHttpExceptions: true
+  });
+  try {
+    const json = JSON.parse(res.getContentText());
+    if (json.result && json.result.message_id) deleteMessage(chatId, json.result.message_id);
+  } catch (e) { /* ignore */ }
 }
 
 function deleteMessage(chatId, messageId) {
@@ -918,6 +949,7 @@ function sendTodayReport(chatId) {
 
   const keyboard = { inline_keyboard: [[ { text: "📆 Tháng này", callback_data: "REPORT_MONTH" }, { text: "📅 3 tháng", callback_data: "REPORT_3MONTH" } ]] };
 
+  removeReplyKeyboard(chatId);
   const token = PROP.getProperty('bot_token');
   UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "post", contentType: "application/json",
