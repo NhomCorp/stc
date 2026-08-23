@@ -6,8 +6,12 @@
     .group { background: #fff; padding: 15px; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     h3 { margin-top: 0; font-size: 14px; color: #1a73e8; border-bottom: 1px solid #eee; padding-bottom: 8px; }
     .hint { font-size: 12px; color: #5f6368; margin: -4px 0 10px; line-height: 1.4; }
-    input[type="text"], input[type="password"], textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; margin-bottom: 8px; font-family: monospace;}
+    input[type="text"], input[type="password"], input[type="number"], input[type="date"], textarea { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; margin-bottom: 8px; font-family: monospace;}
     textarea { height: 180px; resize: vertical; }
+    .row-2 { display: flex; gap: 10px; }
+    .row-2 > label { flex: 1; font-size: 12px; color: #5f6368; }
+    .row-2 input { margin-top: 4px; margin-bottom: 0; }
+    .warn { font-size: 12px; color: #b06000; margin: 6px 0 0; display: none; }
     .key-row { display: flex; gap: 5px; margin-bottom: 8px; }
     .btn { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
     .btn-add { background: #e8f0fe; color: #1a73e8; width: 100%; margin-bottom: 5px;}
@@ -32,9 +36,32 @@
   </div>
 
   <div class="group">
-    <h3>3. PROMPT CÁ NHÂN</h3>
-    <p class="hint">Chỉ ghi thói quen nhà bạn (k/m/tr, ai chuyển = thu/chi, biệt danh…). Luật Alias + JSON do code xử lý — không cần paste vào đây.</p>
-    <textarea id="ai-prompt" placeholder="Ví dụ:&#10;- k = nghìn, m/tr = triệu, t/tỷ = tỷ&#10;- Trung Hiếu chuyển = Chi; người khác chuyển cho mình = Thu&#10;- MN = Minh Nghĩa"></textarea>
+    <h3>3. CHỦ TÀI KHOẢN</h3>
+    <p class="hint">Nhiều biến thể tên (mỗi dòng hoặc cách bằng dấu phẩy). Script dùng để suy Thu/Chi trên bill.</p>
+    <textarea id="owner-names" style="height:100px;" placeholder="Ví dụ:&#10;Hieu&#10;Trung Hieu&#10;Nguyễn Trung Hiếu&#10;Hiếu Trung&#10;NGUYEN TRUNG HIEU"></textarea>
+  </div>
+
+  <div class="group">
+    <h3>4. PROMPT CÁ NHÂN</h3>
+    <p class="hint">Chỉ thói quen nhà: nguồn mặc định, biệt danh, rule lẻ. Tên chủ TK và Thu/Chi do cấu hình + code xử lý.</p>
+    <textarea id="ai-prompt" placeholder="Ví dụ:&#10;- Không rõ nguồn → Bank&#10;- MN = Minh Nghĩa&#10;- Rule nhà lẻ khác…"></textarea>
+  </div>
+
+  <div class="group">
+    <h3>5. QUÉT MAIL</h3>
+    <p class="hint">Số ngày dùng cho `/scan` và menu Quét Mail. Nếu điền cả Từ–Đến thì ưu tiên khoảng ngày (Gmail after/before). Keyword / ví / danh mục vẫn ở tab sheet <b>Quet Mail</b>.</p>
+    <label style="font-size:12px;color:#5f6368;">Số ngày quét (mặc định)</label>
+    <input type="number" id="so-ngay-quet" min="1" step="1" placeholder="1" oninput="checkMailWarn()">
+    <div class="row-2" style="margin-top:8px;">
+      <label>Từ ngày (tuỳ chọn)
+        <input type="date" id="quet-tu-ngay" onchange="checkMailWarn()">
+      </label>
+      <label>Đến ngày (tuỳ chọn)
+        <input type="date" id="quet-den-ngay" onchange="checkMailWarn()">
+      </label>
+    </div>
+    <p class="hint" style="margin-top:10px;">Chỉ một trong hai chế độ: để trống Từ–Đến → dùng số ngày; điền đủ cả hai → dùng khoảng ngày. Xóa một trong hai ô rồi Lưu để về chế độ số ngày.</p>
+    <p id="mail-warn" class="warn">⚠️ Khoảng quét lớn (>7 ngày hoặc >30 ngày theo khoảng) — chậm hơn, dễ vượt quota Gmail/Apps Script.</p>
   </div>
 
   <button class="btn btn-save" id="btn-save" onclick="saveData()">💾 LƯU CẤU HÌNH</button>
@@ -55,6 +82,11 @@
     function populateData(data) {
       if (data && data.model) document.getElementById('ai-model').value = data.model;
       if (data && data.prompt) document.getElementById('ai-prompt').value = data.prompt;
+      if (data && data.owner_names) document.getElementById('owner-names').value = data.owner_names;
+      document.getElementById('so-ngay-quet').value = (data && data.so_ngay_quet) ? data.so_ngay_quet : 1;
+      if (data && data.quet_tu_ngay) document.getElementById('quet-tu-ngay').value = data.quet_tu_ngay;
+      if (data && data.quet_den_ngay) document.getElementById('quet-den-ngay').value = data.quet_den_ngay;
+      checkMailWarn();
 
       var keysContainer = document.getElementById('keys-container');
       keysContainer.innerHTML = '';
@@ -78,7 +110,8 @@
       var div = document.createElement('div');
       div.className = 'key-row';
       var input = document.createElement('input');
-      input.type = isMasked ? 'password' : 'text';
+      // Mask đã lưu: type=text để thấy AIza••••xxxx; key mới: password khi gõ
+      input.type = isMasked ? 'text' : 'password';
       input.className = 'api-key-input';
       input.value = value || '';
       input.placeholder = 'Nhập API Key mới...';
@@ -87,13 +120,12 @@
       input.addEventListener('focus', function() {
         if (input.getAttribute('data-masked') === '1') {
           input.type = 'text';
-          // Giữ chuỗi mask; muốn đổi thì xóa hết rồi gõ key mới đầy đủ
         }
       });
       input.addEventListener('input', function() {
-        // User bắt đầu sửa → không còn coi là mask giữ nguyên
         if (input.getAttribute('data-masked') === '1' && input.value.indexOf('••••') === -1) {
           input.setAttribute('data-masked', '0');
+          input.type = 'password';
         }
       });
       var btn = document.createElement('button');
@@ -104,6 +136,21 @@
       div.appendChild(input);
       div.appendChild(btn);
       container.appendChild(div);
+    }
+
+    function checkMailWarn() {
+      var warn = document.getElementById('mail-warn');
+      var n = parseInt(document.getElementById('so-ngay-quet').value, 10) || 0;
+      var tu = document.getElementById('quet-tu-ngay').value;
+      var den = document.getElementById('quet-den-ngay').value;
+      var show = n > 7;
+      if (tu && den) {
+        var a = new Date(tu);
+        var b = new Date(den);
+        var span = Math.round((b - a) / 86400000) + 1;
+        if (span > 30) show = true;
+      }
+      warn.style.display = show ? 'block' : 'none';
     }
 
     function saveData() {
@@ -119,10 +166,23 @@
         }
       });
 
+      var tu = document.getElementById('quet-tu-ngay').value;
+      var den = document.getElementById('quet-den-ngay').value;
+      if ((tu && !den) || (!tu && den)) {
+        btnSave.innerText = "💾 LƯU CẤU HÌNH";
+        btnSave.disabled = false;
+        alert("Khoảng ngày: phải điền đủ cả Từ và Đến, hoặc để trống cả hai.");
+        return;
+      }
+
       var aiData = {
         model: document.getElementById('ai-model').value,
         keys: keysArr,
-        prompt: document.getElementById('ai-prompt').value
+        prompt: document.getElementById('ai-prompt').value,
+        owner_names: document.getElementById('owner-names').value,
+        so_ngay_quet: document.getElementById('so-ngay-quet').value,
+        quet_tu_ngay: tu,
+        quet_den_ngay: den
       };
 
       google.script.run
