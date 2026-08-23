@@ -1,0 +1,26 @@
+Dựa vào script v1, để soạn v2, nhặt những tính năng cần thiết
+Cấu trúc cũ:
+
+Giao dịch:
+Bảng chi phí từ B3-H (hàng 3 là tiêu đề, ghi từ hàng 4)
+Ngày|số tiền|Nguồn tiền|Đối tượng|Danh mục|Ghi chú|Tracking (mail)
+Hàng cuối cùng của bảng là Tổng
+Bảng thu nhập từ I3-N (hàng 3 là tiêu đề, ghi từ hàng 4)
+Ngày|số tiền|Nguồn tiền|Đối tượng|Danh mục|Ghi chú
+Hàng cuối cùng của bảng là Tổng
+
+Cấu trúc mới
+Giao dịch_v2
+Dữ liệu làm việc ở Dải ô tên Log
+Ngày|Phân loại|Số tiền|Nguồn tiền|Đối tượng|Danh mục cha (ẩn)|Danh mục|Ghi chú|Tracking (mail)
+Hàng cuối cùng của bảng là Tổng
+
+Tab Quet Mail vẫn cấu hình như cũ, quét từ A2
+Chủ đề mail|Ghi chú|Nguồn tiền|Đối tượng|Danh mục con
+trong đó: chủ đề mail là keyword
+nguồn tiền: điền Log; ; 4
+Đối tượng điền Log; ; 5
+Danh mục con điền Log; ; 7
+danh mục cha để trống để chạy hàm
+Ghi chú điền Log; ;8
+Log; ;2 mặc định là "Chi"
