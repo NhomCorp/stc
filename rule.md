@@ -1,6 +1,6 @@
 # Sổ Thu Chi AI v2 — Rule dự án
 
-Nguồn sự thật khi sửa code. File chính: `stc script 2308.json` (Apps Script), `configui.html` (UI cấu hình).
+Nguồn sự thật khi sửa code. File chính: `Code.gs` (Apps Script), đồng bộ `stc script 2308.json`. UI: `configui.html`.
 
 ---
 
@@ -8,10 +8,13 @@ Nguồn sự thật khi sửa code. File chính: `stc script 2308.json` (Apps Sc
 
 | File | Vai trò |
 |------|---------|
-| `stc script 2308.json` | Logic: Telegram, Gemini, quét mail, ghi Sheet, báo cáo, Properties |
-| `configui.html` | Dialog/WebApp cấu hình: model, API keys, prompt cá nhân |
+| `Code.gs` | **Nguồn chính** — Telegram, Gemini, quét mail, ghi Sheet, báo cáo, Properties |
+| `stc script 2308.json` | Bản đồng bộ với `Code.gs` (tiện diff/backup); deploy lấy từ `Code.gs` |
+| `stc script 2308.txt` | Bản cũ — không sửa tiếp |
+| `configui.html` | Dialog/WebApp cấu hình: model, API keys, prompt cá nhân, chủ TK, quét mail |
 | `feedback v2.txt` | Ghi chú migrate v1 → v2 (cấu trúc Sheet) |
 | `rule.md` | Rule nghiệp vụ + kỹ thuật (file này) |
+| `note.md` | Gom việc / backlog |
 
 Trong Apps Script: HTML file name phải là `configui` (khớp `createHtmlOutputFromFile('configui')`).
 
@@ -68,6 +71,9 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
 | `ai_model` | Model Gemini (mặc định `gemini-2.5-flash`) |
 | `ai_prompt` | Prompt cá nhân (thói quen nhà) |
 | `ai_keys` | JSON array API keys |
+| `owner_names` | JSON array tên chủ TK (suy Thu/Chi) |
+| `so_ngay_quet` | Số ngày quét mail (mặc định 1) |
+| `quet_tu_ngay` / `quet_den_ngay` | Tuỳ chọn khoảng ngày Gmail |
 
 ---
 
@@ -91,11 +97,23 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
 ## 5. Telegram
 
 - Chống lặp: cache `LOCK_{update_id}` 300s
-- Ảnh / text → Gemini → `saveBatchToSheet` (auto-commit)
-- Nút `CONFIRM_{txId}`: xóa inline keyboard
-- Nút `EDIT_{txId}`: set Status `CHECK` các dòng chứa txId
+- Ảnh / text → Gemini → `normalizeTransaction` + rule pass/fail
+- **Pass hết** (số > 0, Thu/Chi hợp lệ, ví/ĐT/DM khớp sổ tay, ngày OK, không Khác/Chưa phân loại) → ghi Sheet ngay + tin `✅ ĐÃ GHI SỔ` + `[✏️ Sửa]` `[↩️ Hoàn tác]`
+- **Trượt 1 điều kiện** → Preview + `[✅ Ghi]` `[✏️ Sửa]` `[❌ Hủy]` (draft cache `DRAFT_{txId}`, TTL 10 phút)
+- `✏️` **Phiên sửa (nháp):**
+  - Mở `EDITSESS_{txId}_{idx}` = `{ base, draft, openedAt, sheetFingerprint }` — TTL **30 phút**; chưa đụng Sheet đến khi Điền
+  - Nút 1 field / ⚡ sửa nhanh → gom vào nháp; `✍️ Điền` → lưu ngay (Sheet / nháp Preview)
+  - List ví/DM/ĐT: phân trang + `✍️ Nhập khác`; khớp sổ tay / alias `AI_Learning` → dùng mục chuẩn; mới → `➕ Thêm vào sổ tay` hoặc `Chỉ dùng lần này` (có thể `CHECK`)
+  - GD đã ghi: so fingerprint dòng lúc mở vs lúc Điền; khác → báo đã đổi, `🔄 Tải lại`, không `setValues` đè
+  - Cập nhật **đúng dòng** (`uniqueKey`); ghi `AI_Learning`
+- `↩️ Hoàn tác`: xóa dòng theo `txId` trong TTL 10 phút
 - Lệnh: `/start`, `/report`, `/scan`
-- Báo cáo đọc tab `Bao Cao` (hôm nay / tháng / 3 tháng)
+- Báo cáo đọc tab `Bao Cao` (hôm nay / tháng / 3 tháng); callback `REPORT_*`
+- Tin cũ `CONFIRM_`/`EDIT_`: gỡ nút / cố mở sửa nếu còn dữ liệu
+
+### Tab ẩn `AI_Learning`
+
+Cột: Thời gian | Nội dung gốc | Field | AI đoán | User sửa | Ngữ cảnh | Số lần. Prompt ưu tiên bài học trước lịch sử Log.
 
 ---
 
@@ -106,7 +124,7 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
 3. Nhảy cột danh mục cha khi `setValues` (part1: 5 cột từ startCol; part2: 4 cột từ startCol+6)
 4. Dummy row + copy format
 5. Chi → số âm; Thu → số dương
-6. `onEdit`: đổi Phân loại / Số tiền vẫn giữ quy ước dấu
+6. `onEdit`: đổi Phân loại / Số tiền vẫn giữ quy ước dấu — xử lý **batch** theo `e.range` ∩ Log (paste nhiều dòng); chỉ `setValues` khi có ô đổi; không quét cả Log
 
 ---
 
@@ -130,7 +148,8 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
 
 1. [x] Sửa mask + merge key: `getConfigToUI` / `saveConfigFromUI` + `configui.html`
 2. [x] Rà soát prompt động vs hint UI (cảnh báo Telegram nhận cả `Khác` và `Chưa phân loại`)
-3. [ ] (Tuỳ chọn) Đổi tên bản làm việc thành `.js` / `.gs` cho dễ edit; giữ bản backup nếu cần
+3. [x] `Code.gs` nguồn chính; luồng Preview/Auto + sửa Option 3 + `AI_Learning`
+4. [ ] (Tuỳ chọn) Dọn / archive `stc script 2308.txt`
 
 ---
 
