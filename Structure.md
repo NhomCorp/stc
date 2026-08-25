@@ -45,6 +45,7 @@ flowchart TB
   end
 
   subgraph RPT["Báo cáo"]
+    RB[rebuildBaoCao]
     R1[sendTodayReport]
     R2[sendMonthReport]
     R3[send3MonthReport]
@@ -52,19 +53,21 @@ flowchart TB
 
   doPost -->|callback| CB
   doPost -->|text chờ sửa| AWAIT
-  doPost -->|/report| R1
+  doPost -->|/report| RB
+  RB --> R1
   doPost -->|/scan| SCAN
   doPost -->|ảnh/text| GEM
   GEM --> KEYS
   GEM --> PROC
   PROC --> NZ
-  PROC -->|auto clear| SAVE
+  PROC -->|pass| SAVE
   PROC -->|mơ hồ| Preview
   CB --> EDIT
   CB --> SAVE
   CB --> UPD
   CB --> DEL
   SCAN --> SAVE
+  SCAN -->|regex hụt| GEM
   EDIT --> LEARN
   LIVE --> GEM
   LIVE --> NZ
@@ -76,15 +79,15 @@ flowchart TB
 
 | Phần | Dòng (ước lượng) | Vai trò |
 |------|------------------|---------|
-| **1. Thiết lập & tọa độ** | 1–209 | Hằng số, config UI, webhook, menu |
-| **2. Camera sửa tay Sheet** | 210–268 | `onEdit`: tự chỉnh dấu ± số tiền theo Thu/Chi |
-| **3. Telegram preview/auto/sửa** | 269–1027 | Webhook, draft, callback, edit flow |
-| **Chuẩn hóa GD + helpers TG** | 1028–1303 | Normalize, format message, cache JSON |
-| **4. Gemini & xoay API key** | 1304–1440 | Gọi AI, retry key |
-| **5. Quét mail batch** | 1442–1533 | Gmail + rule sheet → ghi Log |
-| **6. Ghi Sheet & data** | 1534–1822 | CRUD Log, AI_Learning, live dict |
-| **7. Tiện ích** | 1824–1879 | Telegram send/edit/delete, money, ảnh |
-| **Báo cáo** | 1881–1949 | Đọc sheet `Bao Cao` → Telegram |
+| **1. Thiết lập & tọa độ** | đầu file | Hằng số, config UI, webhook, menu |
+| **2. Camera sửa tay Sheet** | `onEdit` | Tự chỉnh dấu ± số tiền theo Thu/Chi |
+| **3. Telegram preview/ghi/sửa** | `doPost`… | Webhook, draft, callback, edit flow |
+| **Chuẩn hóa GD + helpers TG** | normalize / format / cache | Normalize, format message, cache JSON |
+| **4. Gemini & xoay API key** | `callGeminiAPI` | Gọi AI, retry key |
+| **5. Quét mail batch** | `scanMail` + hybrid AI | Gmail + regex + Gemini fallback |
+| **6. Ghi Sheet & data** | `saveBatchToSheet`… | CRUD Log, AI_Learning, live dict |
+| **7. Tiện ích** | Telegram utils | send/edit/delete, money, ảnh, voice |
+| **Báo cáo** | `rebuildBaoCao` / `send*Report` | Tính `Bao Cao v2` → Telegram |
 
 ---
 
@@ -101,12 +104,13 @@ flowchart TB
 | `normalizeDateInput` / `parseOwnerNamesInput` | Parse input form |
 | `showConfigDialog` | Dialog trong Spreadsheet |
 | `setWebhook` | Gắn webhook Telegram = URL Web App |
-| `onOpen` | Menu: Cấu hình / Quét mail |
+| `onOpen` | Menu: Cấu hình / Quét mail / Báo cáo |
 
 **Hằng số quan trọng**
 
 - `LOG_COL` — index cột vùng tên `Log` (0-based)
-- `DRAFT_TTL` / `UNDO_TTL` / `EDIT_SESS_TTL` / `OPTS_PAGE_SIZE`
+- `DRAFT_TTL` / `UNDO_TTL` (24h) / `EDIT_SESS_TTL` / `OPTS_PAGE_SIZE` / `AI_MAIL_MAX_CALLS`
+- `BAO_CAO_SHEET` = `'Bao Cao v2'`
 - `AI_LEARNING_SHEET` = `'AI_Learning'`
 
 ---
@@ -125,9 +129,12 @@ flowchart TB
 
 | Hàm | Việc làm |
 |-----|----------|
-| `doPost` | Webhook: lock `update_id` → callback / await / lệnh / AI |
-| `processAiTransactions` | Normalize từng GD → auto-commit hoặc preview + draft cache |
-| `handleCallbackQuery` | Router nút: confirm / undo / edit / pick / page / custom |
+| `doPost` | Webhook: lock `update_id` → callback / voice→text / await / lệnh / reply tắt / AI |
+| `processAiTransactions` | Normalize từng GD → pass: `commitDraft` ngay; fail: preview + draft |
+| `handleCallbackQuery` | Router nút: confirm / undo / edit / pick / page / custom / Điền |
+| `handleReplyShortcut` | Reply tin `TX_*`: lệnh tắt `ví MB` / `380k` / `hủy`… |
+| `scheduleClearCommittedKeyboard` / `runClearCommittedKeyboard` | Sau 24h gỡ nút Sửa/Hoàn tác trên Telegram |
+| `transcribeVoiceGemini` | Voice → chữ (Gemini) |
 
 **Draft & commit**
 
@@ -145,7 +152,7 @@ flowchart TB
 | `beginFieldEdit` → `showPickList` / `beginCustomInput` | Chọn từ sổ hoặc nhập tay |
 | `applyPickValue` / `handleAwaitText` | Áp giá trị / nhận text |
 | `resolveCustomDictValue` / `handleCustomChoice` | Custom + hỏi thêm sổ tay |
-| `confirmEditSessionSave` | Diff → update sheet + `saveAiLearning` |
+| `confirmEditSessionSave` | Diff → update sheet + `saveAiLearning`; dirty=0 → báo đã lưu (chống double-tap) |
 | `openEditSession` / `getEditSession` / `applyToEditSession` | Cache phiên sửa |
 | `editSessKey` / `deepCopyTx` | Key cache + copy |
 | `getSheetFingerprint` / `readLogRowByUniqueKey` | Đọc lại Log theo UNIQUE_KEY |
@@ -160,14 +167,15 @@ flowchart TB
 | `normalizeTransaction` | Ngày, Thu/Chi, tiền, match dict → `partial` + `reasons` |
 | `matchDict` / `parseMoneyToken` | Khớp sổ tay / parse số tiền |
 | `snapshotTx` / `diffSnapshots` | So sánh trước–sau khi sửa |
-| `formatOneTx` / `buildTxMessage` | HTML message Telegram |
-| `parseQuickEdit` | Sửa nhanh kiểu `v:Momo dm:Ăn uống` |
+| `formatOneTx` / `buildTxMessage` | Tin Telegram emoji gọn (Đã ghi sổ / Xem trước) |
+| `parseQuickEdit` | Sửa nhanh / lệnh tắt: `ví MB`, `380k`, `dm …` |
+| `extractTxIdFromText` / `escapeHtml` | Lấy `TX_*` từ tin reply |
 | `suggestTopOptions` | Gợi ý theo AI_Learning |
 | `fieldMapName` | Map field → nhãn |
 | `putJsonCache` / `getJsonCache` | CacheService JSON |
 | `answerCallback` / `clearInlineKeyboard` | Telegram UX |
 
-**Rule tự ghi (ý tưởng):** nếu `normalizeTransaction` không còn `reasons` / không `partial` → `processAiTransactions` ghi thẳng; ngược lại gửi preview chờ confirm.
+**Rule tự ghi:** `normalizeTransaction.pass` → `processAiTransactions` gọi `commitDraft` ngay; giữ Sửa/Hoàn tác 24h.
 
 ---
 
@@ -185,7 +193,8 @@ flowchart TB
 | Hàm | Việc làm |
 |-----|----------|
 | `triggerScanMailUI` | Chạy từ menu Sheet + alert |
-| `scanMail` | Rule tab `Quet Mail` + Gmail search → batch → `saveBatchToSheet` |
+| `scanMail` | Rule tab `Quet Mail` + Gmail → regex; hụt → `extractMailWithGemini` → batch |
+| `extractMailWithGemini` | AI fallback bóc `so_tien` / mã GD / PTTT (max `AI_MAIL_MAX_CALLS`) |
 
 ---
 
@@ -208,8 +217,10 @@ flowchart TB
 |-----|----------|
 | `returnMsg` / `sendMessage` / `editMessage` / `deleteMessage` | Telegram API |
 | `formatMoney` | Format VND |
-| `getTelegramImageBase64` | Tải ảnh → base64 cho Gemini |
-| `sendTodayReport` / `sendMonthReport` / `send3MonthReport` | Đọc `Bao Cao` |
+| `getTelegramFileBase64` / `getTelegramImageBase64` | Tải file/ảnh Telegram → base64 |
+| `transcribeVoiceGemini` | Voice → transcript |
+| `rebuildBaoCao` / `readBaoCaoV2Block` | Tính & đọc sheet `Bao Cao v2` |
+| `sendTodayReport` / `sendMonthReport` / `send3MonthReport` | Đọc `Bao Cao v2` → Telegram |
 
 ---
 
@@ -219,22 +230,26 @@ flowchart TB
 
 ```
 doPost
+  → (voice) getTelegramFileBase64 + transcribeVoiceGemini
   → (ảnh) getTelegramImageBase64
   → getLiveData + callGeminiAPI
   → processAiTransactions
        → normalizeTransaction (từng item)
-       → CLEAR  → saveBatchToSheet + committedKeyboard
-       → PARTIAL → Cache DRAFT_* + previewKeyboard
+       → PASS  → commitDraft ngay (+ scheduleClearCommittedKeyboard 24h)
+       → FAIL  → Cache DRAFT_* + previewKeyboard
 ```
 
-### B. Bấm nút Telegram
+### B. Bấm nút / reply Telegram
 
 ```
 doPost → handleCallbackQuery
-  → confirm_*  → commitDraft
-  → undo_*     → deleteRowsByUniqueKeys
-  → edit_*     → startEditFlow → … → confirmEditSessionSave
+  → C:  → commitDraft (preview)
+  → X:  → xóa draft (chỉ khi chưa ghi)
+  → E:  → startEditFlow → … → confirmEditSessionSave (Điền lưu ngay)
                  → updateRowByUniqueKey + saveAiLearning
+  → S:  → confirmEditSessionSave (dirty=0 → báo đã lưu)
+
+doPost → reply tin TX_* → handleReplyShortcut → parseQuickEdit → lưu ngay
 ```
 
 ### C. Quét mail
@@ -243,6 +258,7 @@ doPost → handleCallbackQuery
 /scan | menu → scanMail
   → buildGmailDateFilter + rules "Quet Mail"
   → blacklist UNIQUE_KEY hiện có
+  → regex amount/ref/payment → nếu hụt amount: extractMailWithGemini
   → batchData → saveBatchToSheet
 ```
 
@@ -253,6 +269,13 @@ Menu / Web App → configui
   → getConfigToUI / saveConfigFromUI (Script Properties)
 ```
 
+### E. Báo cáo
+
+```
+Menu 📊 | /report → rebuildBaoCao (Log → Bao Cao v2!A2:E5)
+  → sendTodayReport / sendMonthReport / send3MonthReport (1 lần getValues)
+```
+
 ---
 
 ## 5. Cache / Properties / Sheet phụ thuộc
@@ -260,13 +283,15 @@ Menu / Web App → configui
 | Key / tài nguyên | Dùng cho |
 |------------------|----------|
 | Script Properties (`PROP`) | `bot_token`, `admin_id`, `spreadsheet_id`, `ai_keys`, `ai_model`, `ai_prompt`, `owner_names`, `so_ngay_quet`, `quet_tu_ngay`, `quet_den_ngay` |
+| Prop `CLR_KB_<triggerUid>` | Gỡ nút Telegram sau 24h |
 | Cache `LOCK_<update_id>` | Chống xử lý trùng webhook |
-| Cache `DRAFT_<txId>` | Draft chờ confirm |
+| Cache `DRAFT_<txId>` | Draft chờ confirm / sau ghi (TTL 24h) |
+| Cache `UNDO_<txId>` | Keys hoàn tác (24h) |
 | Cache `AWAIT_<chatId>` | Chờ user nhập text |
-| Cache `EDIT_<txId>_<idx>` | Phiên sửa |
+| Cache `EDITSESS_<txId>_<idx>` | Phiên sửa nháp |
 | Named range `Log` | Sổ giao dịch chính |
 | Sheet `Quet Mail` | Rule keyword mail |
-| Sheet `Bao Cao` | Số liệu báo cáo |
+| Sheet `Bao Cao v2` | Số liệu báo cáo (Script) |
 | Sheet `AI_Learning` | Lesson từ lần sửa |
 
 **Cột `Log` (`LOG_COL`):**  

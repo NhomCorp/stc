@@ -92,10 +92,10 @@
       keysContainer.innerHTML = '';
 
       if (data && data.keys && Array.isArray(data.keys) && data.keys.length > 0) {
-        data.keys.forEach(function(key) {
+        data.keys.forEach(function(key, i) {
           if (key && String(key).trim() !== '') {
             // Key từ server đã mask (AIza••••xxxx) — giữ nguyên để Lưu = giữ key cũ
-            addKeyRow(String(key).trim(), true);
+            addKeyRow(String(key).trim(), true, data.key_labels && data.key_labels[i] ? data.key_labels[i] : '');
           }
         });
       } else {
@@ -105,10 +105,18 @@
       document.body.classList.remove('loading');
     }
 
-    function addKeyRow(value, isMasked) {
+    function addKeyRow(value, isMasked, label) {
       var container = document.getElementById('keys-container');
       var div = document.createElement('div');
       div.className = 'key-row';
+      var labelInput = document.createElement('input');
+      labelInput.type = 'text';
+      labelInput.className = 'api-key-label';
+      labelInput.value = label || '';
+      labelInput.placeholder = 'Label (vd: Key 1, Key cá nhân)';
+      labelInput.style.flex = '0 0 32%';
+      labelInput.style.fontFamily = 'Arial, sans-serif';
+      labelInput.setAttribute('autocomplete', 'off');
       var input = document.createElement('input');
       // Mask đã lưu: type=text để thấy AIza••••xxxx; key mới: password khi gõ
       input.type = isMasked ? 'text' : 'password';
@@ -133,6 +141,7 @@
       btn.type = 'button';
       btn.textContent = 'X';
       btn.onclick = function() { div.remove(); };
+      div.appendChild(labelInput);
       div.appendChild(input);
       div.appendChild(btn);
       container.appendChild(div);
@@ -158,12 +167,15 @@
       btnSave.innerText = "⏳ Đang lưu...";
       btnSave.disabled = true;
 
-      var keysInputs = document.querySelectorAll('.api-key-input');
+      var keyRows = document.querySelectorAll('.key-row');
       var keysArr = [];
-      keysInputs.forEach(function(input) {
-        if (input.value.trim() !== '') {
-          keysArr.push(input.value.trim());
-        }
+      var labelsArr = [];
+      keyRows.forEach(function(row) {
+        var kInput = row.querySelector('.api-key-input');
+        var lInput = row.querySelector('.api-key-label');
+        if (!kInput || kInput.value.trim() === '') return;
+        keysArr.push(kInput.value.trim());
+        labelsArr.push(lInput ? lInput.value.trim() : '');
       });
 
       var tu = document.getElementById('quet-tu-ngay').value;
@@ -178,6 +190,7 @@
       var aiData = {
         model: document.getElementById('ai-model').value,
         keys: keysArr,
+        key_labels: labelsArr,
         prompt: document.getElementById('ai-prompt').value,
         owner_names: document.getElementById('owner-names').value,
         so_ngay_quet: document.getElementById('so-ngay-quet').value,

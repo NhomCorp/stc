@@ -45,7 +45,7 @@ Hàng cuối bảng = Tổng (dòng dummy giữ format). Ghi lô: chèn **trên*
 - `userr` — đối tượng
 - `Category` — danh mục (script lấy cột index 1)
 - Tab `Quet Mail` — rule quét mail
-- Tab `Bao Cao` — số liệu báo cáo Telegram
+- Tab `Bao Cao v2` — số liệu báo cáo Telegram (Script ghi, không công thức); sheet `Bao Cao` cũ có thể xóa sau khi ổn
 
 ### Quet Mail (từ hàng 2, cột A–E)
 
@@ -97,18 +97,22 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
 ## 5. Telegram
 
 - Chống lặp: cache `LOCK_{update_id}` 300s
-- Ảnh / text → Gemini → `normalizeTransaction` + rule pass/fail
-- **Pass hết** (số > 0, Thu/Chi hợp lệ, ví/ĐT/DM khớp sổ tay, ngày OK, không Khác/Chưa phân loại) → ghi Sheet ngay + tin `✅ ĐÃ GHI SỔ` + `[✏️ Sửa]` `[↩️ Hoàn tác]`
-- **Trượt 1 điều kiện** → Preview + `[✅ Ghi]` `[✏️ Sửa]` `[❌ Hủy]` (draft cache `DRAFT_{txId}`, TTL 10 phút)
+- Ảnh / text / **voice** → Gemini → `normalizeTransaction` + rule pass/fail
+  - Voice: tải file Telegram → `transcribeVoiceGemini` → dùng như text (GD mới, await sửa, hoặc reply lệnh tắt)
+- **Pass hết** (số > 0, Thu/Chi hợp lệ, ví/ĐT/DM khớp sổ tay, ngày OK, không Khác/Chưa phân loại) → `commitDraft` ngay; tin `✅ Đã ghi sổ` + `[✏️ Sửa]` `[↩️ Hoàn tác]`; sau 24h trigger gỡ nút (`runClearCommittedKeyboard`)
+- **Trượt 1 điều kiện** → Preview `📋 Xem trước` + `[✅ Ghi]` `[✏️ Sửa]` `[❌ Hủy]` (draft `DRAFT_{txId}`, TTL 10 phút)
+- Format tin (`formatOneTx` / `buildTxMessage`): emoji gọn — `📅` / `🔵 Thu +…` hoặc `🔴 Chi −…` / `💳 · 📁` / `👤` / `📝` / `ID: TX_…`
+- **Reply lệnh tắt** vào tin có `TX_…`: `ví MB`, `380k`, `dm Ăn uống`, `hủy` (hoặc `#2 ví MB`) → parse + lưu ngay như Điền
 - `✏️` **Phiên sửa (nháp):**
   - Mở `EDITSESS_{txId}_{idx}` = `{ base, draft, openedAt, sheetFingerprint }` — TTL **30 phút**; chưa đụng Sheet đến khi Điền
-  - Nút 1 field / ⚡ sửa nhanh → gom vào nháp; `✍️ Điền` → lưu ngay (Sheet / nháp Preview)
+  - Nút 1 field / ⚡ sửa nhanh → gom vào nháp; `✍️ Điền` → lưu ngay (Sheet / nháp Preview); double-tap khi không còn diff → báo đã lưu
   - List ví/DM/ĐT: phân trang + `✍️ Nhập khác`; khớp sổ tay / alias `AI_Learning` → dùng mục chuẩn; mới → `➕ Thêm vào sổ tay` hoặc `Chỉ dùng lần này` (có thể `CHECK`)
   - GD đã ghi: so fingerprint dòng lúc mở vs lúc Điền; khác → báo đã đổi, `🔄 Tải lại`, không `setValues` đè
   - Cập nhật **đúng dòng** (`uniqueKey`); ghi `AI_Learning`
-- `↩️ Hoàn tác`: xóa dòng theo `txId` trong TTL 10 phút
-- Lệnh: `/start`, `/report`, `/scan`
-- Báo cáo đọc tab `Bao Cao` (hôm nay / tháng / 3 tháng); callback `REPORT_*`
+- `↩️ Hoàn tác`: xóa dòng theo `txId` trong TTL **24h**
+- Lệnh: `/start`, `/report` (rebuild rồi gửi hôm nay), `/scan`
+- Báo cáo: `rebuildBaoCao()` ghi `Bao Cao v2`; `send*Report` đọc `A2:E5` 1 lần; callback `REPORT_*`
+- Quét mail: regex trước; regex hụt → `extractMailWithGemini` (tối đa `AI_MAIL_MAX_CALLS`); tin báo `(AI xử lý X mail)`
 - Tin cũ `CONFIRM_`/`EDIT_`: gỡ nút / cố mở sửa nếu còn dữ liệu
 
 ### Tab ẩn `AI_Learning`
@@ -148,8 +152,9 @@ Cột: Thời gian | Nội dung gốc | Field | AI đoán | User sửa | Ngữ c
 
 1. [x] Sửa mask + merge key: `getConfigToUI` / `saveConfigFromUI` + `configui.html`
 2. [x] Rà soát prompt động vs hint UI (cảnh báo Telegram nhận cả `Khác` và `Chưa phân loại`)
-3. [x] `Code.gs` nguồn chính; luồng Preview/Auto + sửa Option 3 + `AI_Learning`
+3. [x] `Code.gs` nguồn chính; pass → ghi ngay + sửa/hoàn tác 24h; `Bao Cao v2`; scanMail hybrid AI
 4. [ ] (Tuỳ chọn) Dọn / archive `stc script 2308.txt`
+5. [ ] (Tuỳ chọn) Xóa sheet `Bao Cao` cũ sau khi `Bao Cao v2` ổn
 
 ---
 

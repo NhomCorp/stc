@@ -20,10 +20,12 @@ const LOG_COL = {
 };
 
 const AI_LEARNING_SHEET = 'AI_Learning';
-const DRAFT_TTL = 600;      // 10 phút — draft / await text
-const UNDO_TTL = 600;       // 10 phút — hoàn tác sau khi ghi
+const BAO_CAO_SHEET = 'Bao Cao v2';
+const DRAFT_TTL = 600;      // 10 phút — draft / await text (chưa ghi)
+const UNDO_TTL = 86400;     // 24h — hoàn tác / sửa sau khi ghi (+ gỡ nút Telegram)
 const EDIT_SESS_TTL = 1800; // 30 phút — phiên sửa Telegram
 const OPTS_PAGE_SIZE = 6;   // phân trang gợi ý ví/DM/ĐT
+const AI_MAIL_MAX_CALLS = 15; // quét mail: tối đa N lần gọi Gemini fallback / lần quét
 
 function doGet(e) {
   return HtmlService.createHtmlOutputFromFile('configui').setTitle('Cấu hình Sổ Thu Chi AI v2').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
@@ -52,6 +54,17 @@ function getConfigToUI() {
   const maskedKeys = keysArr
     .filter(function (k) { return k && String(k).trim() !== ''; })
     .map(function (k) { return maskApiKey(k); });
+  // Labels: lưu riêng, trả về song song với keys (theo index)
+  let keyLabels = [];
+  const labelsRaw = props.getProperty('ai_key_labels');
+  if (labelsRaw) {
+    try {
+      const parsed = JSON.parse(labelsRaw);
+      if (Array.isArray(parsed)) keyLabels = parsed.map(function (v) { return String(v || '').trim(); });
+    } catch (e) {
+      keyLabels = [];
+    }
+  }
   let ownerNames = [];
   const ownerRaw = props.getProperty('owner_names');
   if (ownerRaw) {
@@ -67,6 +80,7 @@ function getConfigToUI() {
     prompt: props.getProperty('ai_prompt') || '',
     owner_names: ownerNames.join('\n'),
     keys: maskedKeys,
+    key_labels: keyLabels,
     so_ngay_quet: getSoNgayQuetFromProps(props),
     quet_tu_ngay: props.getProperty('quet_tu_ngay') || '',
     quet_den_ngay: props.getProperty('quet_den_ngay') || ''
@@ -159,25 +173,34 @@ function saveConfigFromUI(data) {
   }
 
   const incoming = Array.isArray(data.keys) ? data.keys : [];
+  const incomingLabels = Array.isArray(data.key_labels) ? data.key_labels : [];
   const merged = [];
+  const mergedLabels = [];
   for (let i = 0; i < incoming.length; i++) {
     const v = (incoming[i] || '').toString().trim();
     if (!v) continue;
+    const label = (incomingLabels[i] || '').toString().trim();
     if (v.indexOf('••••') !== -1) {
       // Giữ key cũ cùng vị trí nếu còn; nếu không khớp mask thì bỏ qua ô này
       if (i < oldKeys.length && oldKeys[i] && maskApiKey(oldKeys[i]) === v) {
         merged.push(String(oldKeys[i]).trim());
+        mergedLabels.push(label);
       } else {
         // Fallback: tìm old key có cùng mask (khi user xóa/đổi thứ tự hàng)
         const found = oldKeys.find(function (ok) { return ok && maskApiKey(ok) === v; });
-        if (found) merged.push(String(found).trim());
+        if (found) {
+          merged.push(String(found).trim());
+          mergedLabels.push(label);
+        }
       }
     } else {
       merged.push(v);
+      mergedLabels.push(label);
     }
   }
 
   props.setProperty('ai_keys', JSON.stringify(merged));
+  props.setProperty('ai_key_labels', JSON.stringify(mergedLabels));
   let msg = "Đã lưu cấu hình thành công!";
   if (soNgay > 7) msg += " (Cảnh báo: số ngày quét > 7 — có thể chậm / hết quota.)";
   if (tu && den) {
@@ -204,6 +227,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('💎 Sổ Thu Chi v2')
     .addItem('⚙️ Cấu hình AI & Bot', 'showConfigDialog')
     .addItem('📧 Quét Mail thủ công', 'triggerScanMailUI')
+    .addItem('📊 Báo cáo', 'rebuildBaoCao')
     .addToUi();
 }
 
@@ -290,6 +314,27 @@ function doPost(e) {
   if (chatId !== PROP.getProperty('admin_id')) return;
 
   let text = contents.message.text || contents.message.caption || "";
+  const voiceFileId = (contents.message.voice && contents.message.voice.file_id)
+    || (contents.message.audio && contents.message.audio.file_id)
+    || null;
+
+  // Voice → chữ (dùng chung cho await / reply / GD mới)
+  if (voiceFileId && !text) {
+    const listenId = sendMessage(chatId, "🎙️ Đang nghe...");
+    const file = getTelegramFileBase64(voiceFileId);
+    if (file.error) {
+      editMessage(chatId, listenId, "❌ Lỗi tải voice: " + file.error);
+      return;
+    }
+    const tr = transcribeVoiceGemini(file.base64, file.mimeType);
+    deleteMessage(chatId, listenId);
+    if (tr.error || !tr.text) {
+      sendMessage(chatId, "❌ Không nghe được: " + (tr.error || "trống"));
+      return;
+    }
+    text = tr.text;
+    sendMessage(chatId, "🎙️ <i>" + escapeHtml(text) + "</i>");
+  }
 
   // Đang chờ nhập sửa nhanh / số tiền / ghi chú / ngày
   const awaitState = getJsonCache("AWAIT_" + chatId);
@@ -300,9 +345,12 @@ function doPost(e) {
 
   if (text.startsWith('/')) {
     if (text === '/start' || text.indexOf('/start') === 0) {
-      sendMessage(chatId, "🤖 Bot Sổ Thu Chi AI v2 sẵn sàng!\nGửi ảnh/text giao dịch. Case rõ → tự ghi; mơ hồ → chờ xác nhận.");
+      // remove_keyboard: gỡ Reply Keyboard cũ (Tháng này / 3 tháng…) còn dính trên mobile
+      sendMessage(chatId, "🤖 Bot Sổ Thu Chi AI v2 sẵn sàng!\nGửi ảnh/text/voice. Case rõ → ghi ngay (Sửa/Hoàn tác trong 24h); mơ hồ → chờ xác nhận.\nReply tin GD: <code>ví MB</code>, <code>380k</code>, <code>hủy</code>…", { remove_keyboard: true });
+      return;
     }
     if (text === '/report' || text.indexOf('/report') === 0) {
+      rebuildBaoCao();
       sendTodayReport(chatId);
       return;
     }
@@ -312,6 +360,21 @@ function doPost(e) {
       deleteMessage(chatId, loadId);
     }
     return;
+  }
+
+  // Reply Keyboard cũ (nút dưới khung chat) — vẫn nhận text khi user bấm; gỡ luôn
+  if (text === "Tháng này" || text === "📆 Tháng này") {
+    sendMonthReport(chatId, { remove_keyboard: true });
+    return;
+  }
+  if (text === "3 tháng gần nhất" || text === "📅 3 tháng gần nhất") {
+    send3MonthReport(chatId, { remove_keyboard: true });
+    return;
+  }
+
+  // Reply tin GD → lệnh tắt (ví MB, 380k, hủy…)
+  if (text && contents.message.reply_to_message) {
+    if (handleReplyShortcut(chatId, text, contents.message.reply_to_message)) return;
   }
 
   let base64Image = null;
@@ -362,16 +425,10 @@ function processAiTransactions(chatId, sourceText, giaoDichList, liveData) {
 
   const allPass = items.every(function (it) { return it.data.pass; });
   if (allPass) {
+    // Case rõ: ghi Sheet ngay — giữ Sửa / Hoàn tác 24h
     commitDraft(chatId, draft, null);
   } else {
-    const kb = {
-      inline_keyboard: [[
-        { text: "✅ Ghi", callback_data: "C:" + txId },
-        { text: "✏️ Sửa", callback_data: "E:" + txId },
-        { text: "❌ Hủy", callback_data: "X:" + txId }
-      ]]
-    };
-    sendMessage(chatId, buildTxMessage(draft, "preview"), kb);
+    sendMessage(chatId, buildTxMessage(draft, "preview"), previewKeyboard(txId));
   }
 }
 
@@ -404,10 +461,15 @@ function handleCallbackQuery(cq) {
   if (op === "C") {
     const draft = getJsonCache("DRAFT_" + txId);
     if (!draft) return editMessage(chatId, messageId, "⌛ Hết hạn xác nhận. Gửi lại giao dịch.");
+    if (draft.committed) return editMessage(chatId, messageId, "ℹ️ Lô <code>" + txId + "</code> đã ghi sổ.");
     commitDraft(chatId, draft, messageId);
     return;
   }
   if (op === "X") {
+    const draftX = getJsonCache("DRAFT_" + txId);
+    if (draftX && draftX.committed) {
+      return editMessage(chatId, messageId, "⌛ Đã ghi sổ — không hủy được. Dùng ↩️ Hoàn tác (trong 24h) hoặc sửa trên Sheet.");
+    }
     CacheService.getScriptCache().remove("DRAFT_" + txId);
     editMessage(chatId, messageId, "🗑 Đã hủy lô <code>" + txId + "</code>.", { inline_keyboard: [] });
     return;
@@ -533,14 +595,16 @@ function commitDraft(chatId, draft, messageId) {
 
   const text = buildTxMessage(draft, "committed");
   const kb = committedKeyboard(draft.txId);
+  let msgId = messageId;
   if (messageId) editMessage(chatId, messageId, text, kb);
-  else sendMessage(chatId, text, kb);
+  else msgId = sendMessage(chatId, text, kb);
+  if (msgId) scheduleClearCommittedKeyboard(chatId, msgId);
 }
 
 function undoCommitted(chatId, messageId, txId) {
   const undo = getJsonCache("UNDO_" + txId);
   if (!undo || !undo.keys) {
-    editMessage(chatId, messageId, "⌛ Hết hạn hoàn tác (5–10 phút) hoặc không tìm thấy lô.");
+    editMessage(chatId, messageId, "⌛ Hết hạn hoàn tác (24h) hoặc không tìm thấy lô.");
     return;
   }
   const removed = deleteRowsByUniqueKeys(undo.keys);
@@ -555,10 +619,10 @@ function startEditFlow(chatId, messageId, txId) {
   let draft = getJsonCache("DRAFT_" + txId);
   if (!draft) {
     draft = loadDraftFromSheet(txId);
-    if (draft) putJsonCache("DRAFT_" + txId, draft, DRAFT_TTL);
+    if (draft) putJsonCache("DRAFT_" + txId, draft, draft.committed ? UNDO_TTL : DRAFT_TTL);
   }
   if (!draft || !draft.items || !draft.items.length) {
-    editMessage(chatId, messageId, "⌛ Không còn phiên sửa cho <code>" + txId + "</code>. Gửi lại GD hoặc sửa trên Sheet.");
+    editMessage(chatId, messageId, "⌛ Không còn phiên sửa cho <code>" + txId + "</code> (hết hạn 24h hoặc đã xóa). Gửi lại GD hoặc sửa trên Sheet.");
     return;
   }
   if (draft.items.length === 1) {
@@ -832,27 +896,35 @@ function handleCustomChoice(chatId, messageId, txId, idx, addToBook) {
 }
 
 function confirmEditSessionSave(chatId, messageId, txId, idx) {
+  const reply = function (text, kb) {
+    if (messageId) editMessage(chatId, messageId, text, kb || null);
+    else sendMessage(chatId, text, kb || null);
+  };
+
   const sess = getEditSession(txId, idx);
   if (!sess) {
-    editMessage(chatId, messageId, "⌛ Phiên sửa hết hạn — không áp dụng mù. Bấm ✏️ Sửa lại.");
+    reply("⌛ Phiên sửa hết hạn — không áp dụng mù. Bấm ✏️ Sửa lại.");
     return;
   }
   const before = snapshotTx(sess.base);
   const after = sess.draft;
   const diffs = diffSnapshots(before, snapshotTx(after));
   if (!diffs.length) {
-    showEditMenu(chatId, messageId, txId, idx);
+    // Chống double-tap ✍️ Điền khi dirty==0
+    reply(
+      "✅ Đã lưu — không còn thay đổi mới.\n\n" + formatOneTx(after),
+      { inline_keyboard: [[{ text: "↩️ Quay lại", callback_data: "B:" + txId }]] });
     return;
   }
 
   if (sess.committed) {
     const fpNow = getSheetFingerprint(sess.uniqueKey);
     if (fpNow === null) {
-      editMessage(chatId, messageId, "❌ Không tìm thấy dòng <code>" + sess.uniqueKey + "</code> trên Sheet.");
+      reply("❌ Không tìm thấy dòng <code>" + sess.uniqueKey + "</code> trên Sheet.");
       return;
     }
     if (String(fpNow) !== String(sess.sheetFingerprint)) {
-      editMessage(chatId, messageId,
+      reply(
         "⚠️ Dòng đã đổi trên Sheet kể từ khi mở phiên. Không ghi đè.\nBấm tải lại để sửa trên bản mới.",
         { inline_keyboard: [
           [{ text: "🔄 Tải lại phiên", callback_data: "R:" + txId + ":" + idx }],
@@ -862,7 +934,7 @@ function confirmEditSessionSave(chatId, messageId, txId, idx) {
     }
     const upd = updateRowByUniqueKey(sess.uniqueKey, after);
     if (upd !== true) {
-      editMessage(chatId, messageId, "❌ Không cập nhật được Sheet: " + upd);
+      reply("❌ Không cập nhật được Sheet: " + upd);
       return;
     }
   }
@@ -881,7 +953,7 @@ function confirmEditSessionSave(chatId, messageId, txId, idx) {
 
   const finalDraft = draft || { txId: txId, committed: sess.committed, items: [{ data: after, uniqueKey: sess.uniqueKey }] };
   const kb = finalDraft.committed ? committedKeyboard(txId) : previewKeyboard(txId);
-  editMessage(chatId, messageId, "✅ Đã lưu sửa.\n\n" + buildTxMessage(finalDraft, finalDraft.committed ? "committed" : "preview"), kb);
+  reply("✅ Đã lưu sửa.\n\n" + buildTxMessage(finalDraft, finalDraft.committed ? "committed" : "preview"), kb);
 }
 
 // ——— Phiên sửa: cache / fingerprint / sổ tay ———
@@ -1182,38 +1254,41 @@ function diffSnapshots(before, after) {
   return out;
 }
 
-function formatOneTx(d) {
-  const dau = d.phan_loai === "Chi" ? "−" : "+";
-  let flag = d.pass ? "" : " ⚠️";
-  return d.phan_loai + " " + dau + formatMoney(d.so_tien_abs) + flag +
-    "\nVí: " + d.vi +
-    "\nDanh mục: " + d.danh_muc_con +
-    "\nĐối tượng: " + d.doi_tuong +
-    "\nNgày: " + d.ngay_gd +
-    (d.ghi_chu ? ("\nGhi chú: " + d.ghi_chu) : "");
+function formatOneTx(d, opts) {
+  opts = opts || {};
+  const isChi = d.phan_loai === "Chi";
+  const emoji = isChi ? "🔴" : "🔵";
+  const dau = isChi ? "−" : "+";
+  let flag = "";
+  if (!d.pass) {
+    flag = opts.showReasons && d.reasons && d.reasons.length
+      ? " ⚠️(" + d.reasons.join(", ") + ")"
+      : " ⚠️";
+  }
+  const lines = [
+    "📅 " + d.ngay_gd,
+    emoji + " " + d.phan_loai + " " + dau + formatMoney(d.so_tien_abs) + flag,
+    "💳 " + d.vi + "  ·  📁 " + d.danh_muc_con,
+    "👤 " + d.doi_tuong
+  ];
+  if (d.ghi_chu) lines.push("📝 " + d.ghi_chu);
+  return lines.join("\n");
 }
 
 function buildTxMessage(draft, mode) {
   const n = draft.items.length;
-  let head = mode === "committed"
-    ? "✅ <b>ĐÃ GHI SỔ (" + n + " GD)</b>"
-    : "📋 <b>XEM TRƯỚC (" + n + " GD)</b> — chưa ghi sổ";
+  let head;
+  if (mode === "committed") head = "✅ Đã ghi sổ";
+  else head = "📋 Xem trước";
+
   let body = "";
   draft.items.forEach(function (it, index) {
-    const d = it.data;
-    const dau = d.phan_loai === "Chi" ? "−" : "+";
-    let flag = "";
-    if (!d.pass) flag = " ⚠️(" + (d.reasons || []).join(", ") + ")";
-    body += "\n\n🔹 <b>#" + (index + 1) + ":</b> " + d.phan_loai + " " + dau + formatMoney(d.so_tien_abs) + flag +
-      "\nVí: " + d.vi +
-      "\nDanh mục: " + d.danh_muc_con +
-      "\nĐối tượng: " + d.doi_tuong +
-      "\nNgày: " + d.ngay_gd +
-      (d.ghi_chu ? ("\nGhi chú: " + d.ghi_chu) : "");
+    body += "\n\n";
+    if (n > 1) body += "<b>#" + (index + 1) + "</b>\n";
+    body += formatOneTx(it.data, { showReasons: mode !== "committed" });
   });
-  body += "\n\n🆔 <code>" + draft.txId + "</code>";
-  if (mode === "preview") head = "⚠️ <b>CẦN XÁC NHẬN</b>\n" + head;
-  return head + body;
+  body += "\n\nID: <code>" + draft.txId + "</code>";
+  return "<b>" + head + "</b>" + body;
 }
 
 function parseQuickEdit(text) {
@@ -1221,14 +1296,17 @@ function parseQuickEdit(text) {
   const t = (text || "").toString().trim();
   if (!t) return patch;
 
-  const viM = t.match(/(?:ví|vi|nguồn|nguon)\s*[:=]?\s*([^,;]+)/i);
+  const viM = t.match(/(?:ví|vi|nguồn|nguon)\s*[:=]?\s*([^,;#]+)/i);
   if (viM) patch.vi = viM[1].trim();
 
-  const dmM = t.match(/(?:danh\s*mục|danh\s*muc|dm)\s*[:=]?\s*([^,;]+)/i);
+  const dmM = t.match(/(?:danh\s*mục|danh\s*muc|dm)\s*[:=]?\s*([^,;#]+)/i);
   if (dmM) patch.danh_muc_con = dmM[1].trim();
 
-  const dtM = t.match(/(?:đối\s*tượng|doi\s*tuong|người|nguoi)\s*[:=]?\s*([^,;]+)/i);
+  const dtM = t.match(/(?:đối\s*tượng|doi\s*tuong|người|nguoi)\s*[:=]?\s*([^,;#]+)/i);
   if (dtM) patch.doi_tuong = dtM[1].trim();
+
+  const gcM = t.match(/(?:ghi\s*chú|ghi\s*chu|note)\s*[:=]?\s*([^,;#]+)/i);
+  if (gcM) patch.ghi_chu = gcM[1].trim();
 
   if (/\bthu\b/i.test(t) && !/\bchi\b/i.test(t)) patch.phan_loai = "Thu";
   if (/\bchi\b/i.test(t) && !/\bthu\b/i.test(t)) patch.phan_loai = "Chi";
@@ -1246,10 +1324,125 @@ function parseQuickEdit(text) {
     const sang = t.match(/(?:đổi\s*sang|doi\s*sang|sang)\s+([A-Za-zÀ-ỹ0-9 ]{1,30})/i);
     if (sang) {
       const cand = sang[1].trim().split(/[,\s]+/)[0];
-      if (cand && !/^\d/.test(cand)) patch.vi = cand;
+      if (cand && !/^\d/.test(cand) && !/^(thu|chi)$/i.test(cand)) patch.vi = cand;
     }
   }
   return patch;
+}
+
+/** Reply tin GD: lệnh tắt — ví MB / 380k / dm ăn uống / hủy */
+function handleReplyShortcut(chatId, text, replyMsg) {
+  const replyText = (replyMsg && (replyMsg.text || replyMsg.caption)) || "";
+  const txId = extractTxIdFromText(replyText);
+  if (!txId) return false;
+
+  const raw = (text || "").toString().trim();
+  if (!raw) return false;
+
+  // #2 ví MB — chọn GD trong lô
+  let idx = 0;
+  let cmd = raw;
+  const idxM = raw.match(/^#(\d+)\s+(.+)$/i);
+  if (idxM) {
+    idx = Math.max(0, parseInt(idxM[1], 10) - 1);
+    cmd = idxM[2].trim();
+  }
+
+  if (/^(hủy|huy|cancel)$/i.test(cmd)) {
+    const draft = getJsonCache("DRAFT_" + txId);
+    if (draft && !draft.committed) {
+      CacheService.getScriptCache().remove("DRAFT_" + txId);
+      sendMessage(chatId, "🗑 Đã hủy lô <code>" + txId + "</code>.");
+      return true;
+    }
+    if (draft && draft.committed) {
+      const undo = getJsonCache("UNDO_" + txId);
+      if (undo && undo.keys) {
+        const removed = deleteRowsByUniqueKeys(undo.keys);
+        CacheService.getScriptCache().remove("UNDO_" + txId);
+        CacheService.getScriptCache().remove("DRAFT_" + txId);
+        sendMessage(chatId, "↩️ Đã hoàn tác lô <code>" + txId + "</code> (" + removed + " dòng).");
+        return true;
+      }
+      sendMessage(chatId, "⌛ Hết hạn hoàn tác cho <code>" + txId + "</code>.");
+      return true;
+    }
+    sendMessage(chatId, "⌛ Không còn phiên <code>" + txId + "</code>.");
+    return true;
+  }
+
+  const patch = parseQuickEdit(cmd);
+  if (!Object.keys(patch).length) {
+    sendMessage(chatId, "❌ Không hiểu lệnh tắt. Thử: <code>ví MB</code>, <code>380k</code>, <code>dm Ăn uống</code>, <code>hủy</code>");
+    return true;
+  }
+
+  let draft = getJsonCache("DRAFT_" + txId);
+  if (!draft) draft = loadDraftFromSheet(txId);
+  if (!draft || !draft.items || !draft.items[idx]) {
+    sendMessage(chatId, "⌛ Không còn GD #" + (idx + 1) + " của <code>" + txId + "</code>.");
+    return true;
+  }
+  putJsonCache("DRAFT_" + txId, draft, draft.committed ? UNDO_TTL : DRAFT_TTL);
+
+  const sess = openEditSession(txId, idx);
+  if (!sess) {
+    sendMessage(chatId, "⌛ Không mở được phiên sửa.");
+    return true;
+  }
+  applyToEditSession(sess, patch);
+  // Lưu ngay (giống ✍️ Điền)
+  confirmEditSessionSave(chatId, null, txId, idx);
+  return true;
+}
+
+function extractTxIdFromText(text) {
+  const m = (text || "").toString().match(/TX_\d+/i);
+  if (!m) return null;
+  return "TX_" + m[0].replace(/^TX_/i, "");
+}
+
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function scheduleClearCommittedKeyboard(chatId, messageId) {
+  if (!chatId || !messageId) return;
+  try {
+    const trigger = ScriptApp.newTrigger("runClearCommittedKeyboard")
+      .timeBased()
+      .after(UNDO_TTL * 1000)
+      .create();
+    PROP.setProperty("CLR_KB_" + trigger.getUniqueId(), JSON.stringify({
+      chatId: String(chatId),
+      messageId: messageId
+    }));
+  } catch (e) {}
+}
+
+/** Trigger một lần: hết 24h → gỡ nút Sửa/Hoàn tác trên Telegram */
+function runClearCommittedKeyboard(e) {
+  try {
+    if (!e || !e.triggerUid) return;
+    const propKey = "CLR_KB_" + e.triggerUid;
+    const raw = PROP.getProperty(propKey);
+    PROP.deleteProperty(propKey);
+    const triggers = ScriptApp.getProjectTriggers();
+    for (let i = 0; i < triggers.length; i++) {
+      if (triggers[i].getUniqueId() === e.triggerUid) {
+        ScriptApp.deleteTrigger(triggers[i]);
+        break;
+      }
+    }
+    if (!raw) return;
+    const info = JSON.parse(raw);
+    if (info && info.chatId && info.messageId) {
+      clearInlineKeyboard(info.chatId, info.messageId);
+    }
+  } catch (err) {}
 }
 
 function suggestTopOptions(field, list, lessons) {
@@ -1448,6 +1641,70 @@ function triggerScanMailUI() {
   ui.alert("KẾT QUẢ QUÉT MAIL", result, ui.ButtonSet.OK);
 }
 
+/** AI fallback khi regex không bắt được số tiền. Trả null nếu thất bại. */
+function extractMailWithGemini(body, wallet) {
+  const keys = getShuffledKeys();
+  if (!keys.length) return null;
+  const model = PROP.getProperty('ai_model') || 'gemini-2.5-flash';
+  const clipped = String(body || '').slice(0, 3000);
+  const prompt = `Bạn bóc tách 1 giao dịch từ nội dung email ngân hàng/ví điện tử.
+Ví liên quan (gợi ý ngữ cảnh): "${wallet || ''}"
+
+BẮT BUỘC trả về ĐÚNG JSON (không markdown, không text thừa):
+{"so_tien": 100000, "ma_giao_dich": "", "phuong_thuc": "", "ngay_gd": ""}
+
+- so_tien: số tiền nguyên dương (VND), không dấu phẩy
+- ma_giao_dich: mã GD / số tham chiếu nếu có, "" nếu không
+- phuong_thuc: phương thức thanh toán (vd thẻ) nếu có, "" nếu không
+- ngay_gd: dd/MM/yyyy nếu có trong mail, "" nếu không
+
+Nội dung mail:
+${clipped}`;
+
+  const payload = {
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: "application/json" },
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+    ]
+  };
+
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const response = UrlFetchApp.fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keys[i]}`,
+        { method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true }
+      );
+      const data = JSON.parse(response.getContentText());
+      if (data.error || !data.candidates || !data.candidates.length) continue;
+      const rawText = ((data.candidates[0].content && data.candidates[0].content.parts) || [])
+        .map(function (p) { return p.text || ""; }).join("");
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) continue;
+      const parsed = JSON.parse(jsonMatch[0]);
+      const soTien = parseInt(String(parsed.so_tien || "").replace(/[.,\s]/g, ""), 10);
+      if (!soTien || soTien <= 0) continue;
+
+      let ma = String(parsed.ma_giao_dich || "").trim();
+      const phuongThuc = String(parsed.phuong_thuc || "").trim();
+      let ngayGd = String(parsed.ngay_gd || "").trim();
+      if (!ma) {
+        const dayTag = ngayGd && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(ngayGd)
+          ? ngayGd.replace(/\//g, "")
+          : Utilities.formatDate(new Date(), "GMT+7", "yyyyMMdd");
+        ma = "AI_" + dayTag + "_" + soTien;
+      }
+      return { so_tien: soTien, ma_giao_dich: ma, phuong_thuc: phuongThuc, ngay_gd: ngayGd };
+    } catch (e) {
+      continue;
+    }
+  }
+  return null;
+}
+
 function scanMail(chatId) {
   const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
   const logRange = ss.getRangeByName("Log");
@@ -1464,6 +1721,7 @@ function scanMail(chatId) {
 
   const dateFilter = buildGmailDateFilter();
   let count = 0;
+  let aiUsed = 0;
   let logMsgs = [];
   let batchData = [];
 
@@ -1478,43 +1736,51 @@ function scanMail(chatId) {
       const messages = thread.getMessages();
       for (let msg of messages) {
         const body = msg.getPlainBody();
-        const dateObj = msg.getDate();
+        let dateObj = msg.getDate();
 
-        // Bóc tách Số tiền
+        // Tầng 2: regex số tiền
         const amountMatch = body.match(/(\d{1,3}(?:[.,]\d{3})*)\s*(VND|VNĐ|đ|₫)/i);
-        if (!amountMatch) continue; 
-        const amount = parseInt(amountMatch[1].replace(/[.,]/g, ''));
+        let amount = null;
+        let uniqueKey = null;
+        let finalNote = note;
+        let fromAi = false;
 
-        // Bóc tách Mã giao dịch
-        const refMatch = body.match(/(?:ID giao dịch|Mã giao dịch|Mã số tham chiếu|Số tham chiếu|Tham chiếu|Reference|ID|FT)[\s:.\n]*([A-Za-z0-9-]+)/i);
-        const uniqueKey = refMatch ? refMatch[1] : `${Utilities.formatDate(dateObj, "GMT+7", "yyyyMMdd")}_${wallet}_${amount}`;
-        
-        // Kiểm tra trùng lặp
-        if (existingIds.includes(uniqueKey)) continue;
+        if (amountMatch) {
+          amount = parseInt(amountMatch[1].replace(/[.,]/g, ''), 10);
+          const refMatch = body.match(/(?:ID giao dịch|Mã giao dịch|Mã số tham chiếu|Số tham chiếu|Tham chiếu|Reference|ID|FT)[\s:.\n]*([A-Za-z0-9-]+)/i);
+          uniqueKey = refMatch ? refMatch[1] : `${Utilities.formatDate(dateObj, "GMT+7", "yyyyMMdd")}_${wallet}_${amount}`;
 
-        // --- 🤖 LOGIC MỚI: CHỈ LẤY PHƯƠNG THỨC THANH TOÁN (XÓA MÃ THAM CHIẾU) ---
-        let finalNote = note; // Mặc định lấy ghi chú cài sẵn trong Sheet
-        
-        // Tìm cụm "Phương thức thanh toán"
-        const paymentMatch = body.match(/Phương thức thanh toán[\s\n:]*([^\n\r]+)/i);
-        if (paymentMatch) {
+          const paymentMatch = body.match(/Phương thức thanh toán[\s\n:]*([^\n\r]+)/i);
+          if (paymentMatch) {
             let rawPayment = paymentMatch[1].trim();
-            
-            // Dùng Regex "chặt đuôi" phần Số tham chiếu bị dính trên cùng 1 dòng do getPlainBody()
             rawPayment = rawPayment.replace(/\s*(Số tham chiếu|Mã tham chiếu|Tham chiếu|ID giao dịch|Mã giao dịch|Reference).*$/i, '').trim();
-            
-            // NẾU TÌM THẤY THẺ: Xóa bỏ hoàn toàn Ghi chú gốc, GHI ĐÈ bằng tên thẻ
-            // Kết quả chỉ còn trơ trọi: "MasterCard ···· 6993"
-            finalNote = rawPayment; 
+            finalNote = rawPayment;
+          }
+        } else {
+          // Tầng 3: Gemini fallback
+          if (aiUsed >= AI_MAIL_MAX_CALLS) continue;
+          const extracted = extractMailWithGemini(body, wallet);
+          aiUsed++;
+          if (!extracted) continue;
+          amount = extracted.so_tien;
+          uniqueKey = extracted.ma_giao_dich;
+          if (extracted.phuong_thuc) finalNote = extracted.phuong_thuc;
+          if (extracted.ngay_gd && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(extracted.ngay_gd)) {
+            const p = extracted.ngay_gd.split("/");
+            dateObj = new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
+          }
+          fromAi = true;
         }
-        // ----------------------------------------------
+
+        if (!amount || amount <= 0 || !uniqueKey) continue;
+        if (existingIds.includes(uniqueKey)) continue;
 
         const gd = { phan_loai: "Chi", so_tien: amount, vi: wallet, doi_tuong: user, danh_muc_con: subCat, ghi_chu: finalNote };
         batchData.push({ data: gd, uniqueKey: uniqueKey, dateObj: dateObj });
         
         existingIds.push(uniqueKey); 
         count++;
-        logMsgs.push(`▪️ ${formatMoney(amount)} (${wallet}) - ${finalNote}`);
+        logMsgs.push(`▪️ ${formatMoney(amount)} (${wallet}) - ${finalNote}${fromAi ? " [AI]" : ""}`);
       }
     }
   }
@@ -1524,9 +1790,10 @@ function scanMail(chatId) {
     if (saveRes !== true) return returnMsg(chatId, `❌ <b>Lỗi khi ghi dữ liệu lô:</b> ${saveRes}`);
   }
 
+  const aiNote = aiUsed > 0 ? ` (AI xử lý ${aiUsed} mail)` : "";
   const finalStr = (count > 0 || logMsgs.length > 0) 
-    ? `✅ <b>QUÉT XONG! Thêm ${count} GD từ Mail</b> (${dateFilter.label}):\n${logMsgs.join("\n")}`
-    : `✅ <b>QUÉT XONG!</b> Không có hóa đơn mới nào khớp Keyword trong ${dateFilter.label}.`;
+    ? `✅ <b>QUÉT XONG! Thêm ${count} GD từ Mail</b> (${dateFilter.label})${aiNote}:\n${logMsgs.join("\n")}`
+    : `✅ <b>QUÉT XONG!</b> Không có hóa đơn mới nào khớp Keyword trong ${dateFilter.label}.${aiNote}`;
   return returnMsg(chatId, finalStr);
 }
 
@@ -1861,35 +2128,204 @@ function editMessage(chatId, messageId, text, replyMarkup = null) {
 }
 
 function formatMoney(amount) {
-  if (!amount) return "0 đ";
-  return amount.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " đ";
+  if (!amount) return "0 ₫";
+  return Math.abs(Number(amount) || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " ₫";
+}
+
+function guessMimeFromPath(filePath) {
+  const p = String(filePath || "").toLowerCase();
+  if (/\.og[ga]$/.test(p)) return "audio/ogg";
+  if (/\.mp3$/.test(p)) return "audio/mpeg";
+  if (/\.wav$/.test(p)) return "audio/wav";
+  if (/\.m4a$/.test(p)) return "audio/mp4";
+  if (/\.jpe?g$/.test(p)) return "image/jpeg";
+  if (/\.png$/.test(p)) return "image/png";
+  if (/\.webp$/.test(p)) return "image/webp";
+  return "application/octet-stream";
+}
+
+/** Tải file Telegram → { base64, mimeType } hoặc { error } */
+function getTelegramFileBase64(fileId) {
+  try {
+    const token = PROP.getProperty('bot_token');
+    const fileRes = UrlFetchApp.fetch("https://api.telegram.org/bot" + token + "/getFile?file_id=" + fileId, { muteHttpExceptions: true });
+    const fileData = JSON.parse(fileRes.getContentText());
+    if (!fileData.ok) return { error: fileData.description || "Lỗi getFile từ Telegram." };
+    const filePath = fileData.result.file_path;
+    const bin = UrlFetchApp.fetch("https://api.telegram.org/file/bot" + token + "/" + filePath, { muteHttpExceptions: true });
+    return {
+      base64: Utilities.base64Encode(bin.getBlob().getBytes()),
+      mimeType: guessMimeFromPath(filePath)
+    };
+  } catch (e) {
+    return { error: e.message };
+  }
 }
 
 function getTelegramImageBase64(fileId) {
-  try {
-    const token = PROP.getProperty('bot_token');
-    const fileRes = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`, {muteHttpExceptions: true});
-    const fileData = JSON.parse(fileRes.getContentText());
-    if (!fileData.ok) return { error: fileData.description || "Lỗi getFile từ Telegram." };
+  const res = getTelegramFileBase64(fileId);
+  if (res.error) return { error: res.error };
+  return res.base64;
+}
 
-    const filePath = fileData.result.file_path;
-    const imageRes = UrlFetchApp.fetch(`https://api.telegram.org/file/bot${token}/${filePath}`, {muteHttpExceptions: true});
-    return Utilities.base64Encode(imageRes.getBlob().getBytes());
-  } catch (e) { return { error: e.message }; }
+/** Voice → chữ (Gemini multimodal) */
+function transcribeVoiceGemini(base64Audio, mimeType) {
+  const keys = getShuffledKeys();
+  if (!keys.length) return { error: "Chưa cấu hình API Key." };
+  const model = PROP.getProperty('ai_model') || 'gemini-2.5-flash';
+  const prompt = "Đây là tin nhắn thoại tiếng Việt. Hãy chép lại đúng nội dung lời nói. Chỉ trả về chữ đã nghe, không giải thích, không thêm dấu ngoặc.";
+  const payload = {
+    contents: [{
+      parts: [
+        { inlineData: { mimeType: mimeType || "audio/ogg", data: base64Audio } },
+        { text: prompt }
+      ]
+    }],
+    generationConfig: { temperature: 0.1 }
+  };
+  let lastError = "";
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const response = UrlFetchApp.fetch(
+        "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + keys[i],
+        { method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true }
+      );
+      const data = JSON.parse(response.getContentText());
+      if (data.error) { lastError = data.error.message; continue; }
+      if (!data.candidates || !data.candidates.length) {
+        lastError = "AI không trả lời được voice.";
+        continue;
+      }
+      const parts = (data.candidates[0].content && data.candidates[0].content.parts) || [];
+      const text = parts.map(function (p) { return p.text || ""; }).join("").trim();
+      if (!text) { lastError = "Transcript trống."; continue; }
+      return { text: text };
+    } catch (e) {
+      lastError = e.message;
+    }
+  }
+  return { error: lastError || "Transcribe thất bại." };
 }
 
 // ==========================================
-// 📊 PHẦN BÁO CÁO
+// 📊 PHẦN BÁO CÁO (Bao Cao v2 — Script tính, không công thức)
 // ==========================================
-function sendTodayReport(chatId) {
+function parseLogDate(val) {
+  if (val instanceof Date && !isNaN(val.getTime())) return val;
+  const s = String(val == null ? "" : val).trim();
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  return null;
+}
+
+function emptyBaoBucket() {
+  return { thu: 0, chi: 0, check: 0 };
+}
+
+function addToBaoBucket(bucket, soTien, isCheck) {
+  if (soTien > 0) bucket.thu += soTien;
+  else if (soTien < 0) bucket.chi += soTien;
+  if (isCheck) bucket.check += soTien;
+}
+
+/** Đọc Log 1 lần → ghi Bao Cao v2!A2:E5 (D=B+C). Menu + /report. */
+function rebuildBaoCao() {
+  const lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch (e) {
+    const busy = "Hệ thống bận, thử lại sau 15s.";
+    try { SpreadsheetApp.getUi().alert("BÁO CÁO", busy, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e2) {}
+    return busy;
+  }
+
+  try {
+    const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+    const logRange = ss.getRangeByName("Log");
+    if (!logRange) {
+      const err = "Không tìm thấy Named Range 'Log'";
+      try { SpreadsheetApp.getUi().alert("BÁO CÁO", err, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e2) {}
+      return err;
+    }
+
+    const values = logRange.getValues();
+    const tz = "GMT+7";
+    const now = new Date();
+    const todayStr = Utilities.formatDate(now, tz, "dd/MM/yyyy");
+
+    const months = [];
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push({
+        key: Utilities.formatDate(d, tz, "yyyy-MM"),
+        label: Utilities.formatDate(d, tz, "MM/yyyy")
+      });
+    }
+
+    const todayBucket = emptyBaoBucket();
+    const byMonth = {};
+    months.forEach(function (m) { byMonth[m.key] = emptyBaoBucket(); });
+
+    for (let r = 0; r < values.length; r++) {
+      const row = values[r];
+      const ngay = parseLogDate(row[LOG_COL.NGAY]);
+      if (!ngay) continue;
+      const soTien = Number(row[LOG_COL.SO_TIEN]);
+      if (!soTien || isNaN(soTien)) continue;
+      const status = String(row[LOG_COL.STATUS] == null ? "" : row[LOG_COL.STATUS]).trim().toUpperCase();
+      const isCheck = status.indexOf("CHECK") >= 0;
+      const ngayStr = Utilities.formatDate(ngay, tz, "dd/MM/yyyy");
+      const mKey = Utilities.formatDate(ngay, tz, "yyyy-MM");
+
+      if (ngayStr === todayStr) addToBaoBucket(todayBucket, soTien, isCheck);
+      if (byMonth[mKey]) addToBaoBucket(byMonth[mKey], soTien, isCheck);
+    }
+
+    function rowOf(label, b) {
+      return [label, b.thu, b.chi, b.thu + b.chi, b.check];
+    }
+
+    const out = [
+      rowOf(todayStr, todayBucket),
+      rowOf(months[0].label, byMonth[months[0].key]),
+      rowOf(months[1].label, byMonth[months[1].key]),
+      rowOf(months[2].label, byMonth[months[2].key])
+    ];
+
+    let sheet = ss.getSheetByName(BAO_CAO_SHEET);
+    if (!sheet) sheet = ss.insertSheet(BAO_CAO_SHEET);
+    sheet.getRange("A1:E1").setValues([["Kỳ", "Thu", "Chi", "Lợi nhuận", "CHECK chưa ghi nhận"]]);
+    sheet.getRange("A2:E5").setValues(out);
+    SpreadsheetApp.flush();
+
+    const ok = "Đã cập nhật " + BAO_CAO_SHEET + " (hôm nay + 3 tháng).";
+    try { SpreadsheetApp.getUi().alert("BÁO CÁO", ok, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e2) {}
+    return ok;
+  } catch (err) {
+    const msg = "Lỗi rebuildBaoCao: " + (err && err.message ? err.message : err);
+    try { SpreadsheetApp.getUi().alert("BÁO CÁO", msg, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e2) {}
+    return msg;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function readBaoCaoV2Block() {
   const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
-  const sheet = ss.getSheetByName("Bao Cao");
+  const sheet = ss.getSheetByName(BAO_CAO_SHEET);
+  if (!sheet) return null;
+  return sheet.getRange("A2:E5").getValues();
+}
 
-  const thu = sheet.getRange("B2").getValue() || 0;
-  const chi = sheet.getRange("C2").getValue() || 0;
-  const loiNhuan = sheet.getRange("D2").getValue() || 0;
-  const chuaGhiNhan = sheet.getRange("E2").getValue() || 0;
-
+function sendTodayReport(chatId) {
+  const block = readBaoCaoV2Block();
+  if (!block) {
+    sendMessage(chatId, "❌ Chưa có sheet <b>" + BAO_CAO_SHEET + "</b>. Chạy menu 📊 Báo cáo hoặc /report.");
+    return;
+  }
+  const row = block[0];
+  const thu = row[1] || 0;
+  const chi = row[2] || 0;
+  const loiNhuan = row[3] || 0;
+  const chuaGhiNhan = row[4] || 0;
   const now = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm");
 
   let text = `📅 <b>Báo cáo hôm nay - ${now}</b>\n\n` +
@@ -1904,15 +2340,18 @@ function sendTodayReport(chatId) {
   sendMessage(chatId, text);
 }
 
-function sendMonthReport(chatId) {
-  const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
-  const sheet = ss.getSheetByName("Bao Cao");
-
-  const thu = sheet.getRange("B3").getValue() || 0;
-  const chi = sheet.getRange("C3").getValue() || 0;
-  const loiNhuan = sheet.getRange("D3").getValue() || 0;
-  const chuaGhiNhan = sheet.getRange("E3").getValue() || 0;
-  const thang = sheet.getRange("A3").getValue();
+function sendMonthReport(chatId, replyMarkup) {
+  const block = readBaoCaoV2Block();
+  if (!block) {
+    sendMessage(chatId, "❌ Chưa có sheet <b>" + BAO_CAO_SHEET + "</b>. Chạy menu 📊 Báo cáo hoặc /report.", replyMarkup);
+    return;
+  }
+  const row = block[1];
+  const thang = row[0];
+  const thu = row[1] || 0;
+  const chi = row[2] || 0;
+  const loiNhuan = row[3] || 0;
+  const chuaGhiNhan = row[4] || 0;
 
   let text = `📆 <b>Báo cáo ${thang}</b>\n\n` +
              `💰 Tổng Thu: <b>${formatMoney(thu)}</b>\n` +
@@ -1923,27 +2362,31 @@ function sendMonthReport(chatId) {
     text += `\nLợi nhuận chưa được ghi nhận: <b>${formatMoney(chuaGhiNhan)}</b>`;
   }
 
-  sendMessage(chatId, text);
+  sendMessage(chatId, text, replyMarkup);
 }
 
-function send3MonthReport(chatId) {
-  const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
-  const sheet = ss.getSheetByName("Bao Cao");
+function send3MonthReport(chatId, replyMarkup) {
+  const block = readBaoCaoV2Block();
+  if (!block) {
+    sendMessage(chatId, "❌ Chưa có sheet <b>" + BAO_CAO_SHEET + "</b>. Chạy menu 📊 Báo cáo hoặc /report.", replyMarkup);
+    return;
+  }
 
   let text = `📅 <b>Lợi nhuận 3 tháng gần nhất</b>\n\n`;
   let tong = 0;
 
-  for (let row = 3; row <= 5; row++) {
-    const thang = sheet.getRange("A" + row).getValue();
-    const loiNhuan = sheet.getRange("D" + row).getValue() || 0;
-    const chua = sheet.getRange("E" + row).getValue() || 0;
+  for (let i = 1; i <= 3; i++) {
+    const row = block[i];
+    const thang = row[0];
+    const loiNhuan = row[3] || 0;
+    const chua = row[4] || 0;
 
     text += `${thang}: <b>${formatMoney(loiNhuan)}</b>`;
     if (chua !== 0) text += ` (${formatMoney(chua)} chưa ghi nhận)`;
     text += `\n`;
-    tong += loiNhuan;
+    tong += Number(loiNhuan) || 0;
   }
 
   text += `─────────────────\nTổng 3 tháng: <b>${formatMoney(tong)}</b>`;
-  sendMessage(chatId, text);
+  sendMessage(chatId, text, replyMarkup);
 }
