@@ -45,6 +45,7 @@ Hàng cuối bảng = Tổng (dòng dummy giữ format). Ghi lô: chèn **trên*
 - `userr` — đối tượng
 - `Category` — danh mục (script lấy cột index 1)
 - Tab `Quet Mail` — rule quét mail
+- Tab `Alias` — rule phân loại nội dung Telegram: `Keyword | Wallet | Categories | User | Ghi chú`; nhiều keyword trong một ô ngăn bằng `|`
 - Tab `Bao Cao v2` — số liệu báo cáo Telegram (Script ghi, không công thức); sheet `Bao Cao` cũ có thể xóa sau khi ổn
 
 ### Quet Mail (từ hàng 2, cột A–E)
@@ -82,7 +83,7 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
 **Trong code (bắt buộc, không đưa vào textarea UI):**
 
 - Map đúng sổ tay: Ví / Đối tượng / Danh mục con
-- Phân loại chỉ `Thu` | `Chi`
+- Phân loại rõ thì dùng `Thu` | `Chi`; nếu thiếu căn cứ Thu/Chi thì AI trả `Không rõ`, code tạm ghi `Chi` nhưng bắt buộc `CHECK` với lý do `thu/chi`
 - Không khớp → `"Chưa phân loại"` (không dùng tùy tiện `"Khác"` nếu có thể tránh)
 - Quy ước tiền: `k`=nghìn, `m`=triệu (prompt cá nhân có thể bổ sung `tr`/`t`)
 - Trả JSON đúng schema `giao_dich[]`
@@ -90,7 +91,9 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
 
 **Trong UI prompt (chỉ thói quen nhà):** biệt danh, ai chuyển = thu/chi, đơn vị tiền nhà dùng.
 
-**Cảnh báo / CHECK:** `vi` / `danh_muc_con` / `doi_tuong` là `"Khác"` hoặc `"Chưa phân loại"`, hoặc số tiền = 0 → `status = CHECK`.
+**Cảnh báo / CHECK:** `vi` / `danh_muc_con` / `doi_tuong` là `"Khác"` hoặc `"Chưa phân loại"`, hoặc số tiền = 0, hoặc thiếu căn cứ rõ xác định Thu/Chi (`thu/chi`) → `status = CHECK`.
+
+`scanMail` mặc định ghi là `Chi` và không áp rule CHECK này nếu các trường khác ổn định.
 
 ---
 
@@ -99,15 +102,15 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
 - Chống lặp: cache `LOCK_{update_id}` 300s
 - Ảnh / text / **voice** → Gemini → `normalizeTransaction` + rule pass/fail
   - Voice: tải file Telegram → `transcribeVoiceGemini` → dùng như text (GD mới, await sửa, hoặc reply lệnh tắt)
-- **Pass hết** (số > 0, Thu/Chi hợp lệ, ví/ĐT/DM khớp sổ tay, ngày OK, không Khác/Chưa phân loại) → `commitDraft` ngay; tin `✅ Đã ghi sổ` + `[✏️ Sửa]` `[↩️ Hoàn tác]`; sau 24h trigger gỡ nút (`runClearCommittedKeyboard`)
+- **Pass hết** (số > 0, Thu/Chi hợp lệ, ví/ĐT/DM khớp sổ tay, ngày OK, không Khác/Chưa phân loại) → `commitDraft` ngay; tin `✅ Đã ghi sổ` + `[✏️ Sửa]` `[↩️ Hoàn tác]`; sau 24h trigger hourly gỡ nút (`runClearCommittedKeyboardInterval`)
 - **Trượt 1 điều kiện** → Preview `📋 Xem trước` + `[✅ Ghi]` `[✏️ Sửa]` `[❌ Hủy]` (draft `DRAFT_{txId}`, TTL 10 phút)
 - Format tin (`formatOneTx` / `buildTxMessage`): emoji gọn — `📅` / `🔵 Thu +…` hoặc `🔴 Chi −…` / `💳 · 📁` / `👤` / `📝` / `ID: TX_…`
-- **Reply lệnh tắt** vào tin có `TX_…`: `ví MB`, `380k`, `dm Ăn uống`, `hủy` (hoặc `#2 ví MB`) → parse + lưu ngay như Điền
+- **Reply lệnh tắt** vào tin có `TX_…`: `ví MB`, `380k`, `dm Ăn uống`, `hủy` (hoặc `#2 ví MB`) → parse + lưu ngay như Lưu vào sổ
 - `✏️` **Phiên sửa (nháp):**
-  - Mở `EDITSESS_{txId}_{idx}` = `{ base, draft, openedAt, sheetFingerprint }` — TTL **30 phút**; chưa đụng Sheet đến khi Điền
-  - Nút 1 field / ⚡ sửa nhanh → gom vào nháp; `✍️ Điền` → lưu ngay (Sheet / nháp Preview); double-tap khi không còn diff → báo đã lưu
+  - Mở `EDITSESS_{txId}_{idx}` = `{ base, draft, openedAt, sheetFingerprint }` — TTL **30 phút**; chưa đụng Sheet đến khi Lưu vào sổ
+  - Nút 1 field / ⚡ sửa nhanh → gom vào nháp; `✍️ Lưu vào sổ` → lưu ngay (Sheet / nháp Preview); double-tap khi không còn diff → báo đã lưu
   - List ví/DM/ĐT: phân trang + `✍️ Nhập khác`; khớp sổ tay / alias `AI_Learning` → dùng mục chuẩn; mới → `➕ Thêm vào sổ tay` hoặc `Chỉ dùng lần này` (có thể `CHECK`)
-  - GD đã ghi: so fingerprint dòng lúc mở vs lúc Điền; khác → báo đã đổi, `🔄 Tải lại`, không `setValues` đè
+  - GD đã ghi: so fingerprint dòng lúc mở vs lúc Lưu vào sổ; khác → báo đã đổi, `🔄 Tải lại`, không `setValues` đè
   - Cập nhật **đúng dòng** (`uniqueKey`); ghi `AI_Learning`
 - `↩️ Hoàn tác`: xóa dòng theo `txId` trong TTL **24h**
 - Lệnh: `/start`, `/report` (rebuild rồi gửi hôm nay + nút `📆 Tháng này` / `📅 3 tháng gần nhất`), `/scan`

@@ -131,9 +131,9 @@ flowchart TB
 |-----|----------|
 | `doPost` | Webhook: lock `update_id` → callback / voice→text / await / lệnh / reply tắt / AI |
 | `processAiTransactions` | Normalize từng GD → pass: `commitDraft` ngay; fail: preview + draft |
-| `handleCallbackQuery` | Router nút: confirm / undo / edit / pick / page / custom / Điền |
+| `handleCallbackQuery` | Router nút: confirm / undo / edit / pick / page / custom / Lưu vào sổ |
 | `handleReplyShortcut` | Reply tin `TX_*`: lệnh tắt `ví MB` / `380k` / `hủy`… |
-| `scheduleClearCommittedKeyboard` / `runClearCommittedKeyboard` | Sau 24h gỡ nút Sửa/Hoàn tác trên Telegram |
+| `scheduleClearCommittedKeyboard` / `runClearCommittedKeyboardInterval` | Đẩy job vào `PENDING_CLEAR_KEYBOARDS`; 1 trigger hourly gỡ nút sau 24h |
 | `transcribeVoiceGemini` | Voice → chữ (Gemini) |
 
 **Draft & commit**
@@ -235,7 +235,7 @@ doPost
   → getLiveData + callGeminiAPI
   → processAiTransactions
        → normalizeTransaction (từng item)
-       → PASS  → commitDraft ngay (+ scheduleClearCommittedKeyboard 24h)
+       → PASS  → commitDraft ngay (+ queue PENDING_CLEAR_KEYBOARDS, gỡ nút sau 24h)
        → FAIL  → Cache DRAFT_* + previewKeyboard
 ```
 
@@ -245,7 +245,7 @@ doPost
 doPost → handleCallbackQuery
   → C:  → commitDraft (preview)
   → X:  → xóa draft (chỉ khi chưa ghi)
-  → E:  → startEditFlow → … → confirmEditSessionSave (Điền lưu ngay)
+  → E:  → startEditFlow → … → confirmEditSessionSave (Lưu vào sổ)
                  → updateRowByUniqueKey + saveAiLearning
   → S:  → confirmEditSessionSave (dirty=0 → báo đã lưu)
 
@@ -284,7 +284,7 @@ Menu 📊 | /report → rebuildBaoCao (Log → Bao Cao v2!A2:E5 + format UI/số
 | Key / tài nguyên | Dùng cho |
 |------------------|----------|
 | Script Properties (`PROP`) | `bot_token`, `admin_id`, `spreadsheet_id`, `ai_keys`, `ai_model`, `ai_prompt`, `owner_names`, `so_ngay_quet`, `quet_tu_ngay`, `quet_den_ngay` |
-| Prop `CLR_KB_<triggerUid>` | Gỡ nút Telegram sau 24h |
+| Prop `PENDING_CLEAR_KEYBOARDS` | Hàng đợi gỡ nút Telegram sau 24h (1 trigger hourly) |
 | Cache `LOCK_<update_id>` | Chống xử lý trùng webhook |
 | Cache `DRAFT_<txId>` | Draft chờ confirm / sau ghi (TTL 24h) |
 | Cache `UNDO_<txId>` | Keys hoàn tác (24h) |

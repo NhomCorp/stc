@@ -20,6 +20,7 @@ const LOG_COL = {
 };
 
 const AI_LEARNING_SHEET = 'AI_Learning';
+const ALIAS_SHEET_GID = 1498755942;
 const BAO_CAO_SHEET = 'Bao Cao v2';
 const DRAFT_TTL = 600;      // 10 phút — draft / await text (chưa ghi)
 const UNDO_TTL = 86400;     // 24h — hoàn tác / sửa sau khi ghi (+ gỡ nút Telegram)
@@ -27,8 +28,28 @@ const EDIT_SESS_TTL = 1800; // 30 phút — phiên sửa Telegram
 const OPTS_PAGE_SIZE = 6;   // phân trang gợi ý ví/DM/ĐT
 const AI_MAIL_MAX_CALLS = 15; // quét mail: tối đa N lần gọi Gemini fallback / lần quét
 
+// Token bảo vệ trang cấu hình: chỉ ai có link kèm ?config=<token> mới mở/lưu được
+function getConfigToken() {
+  let token = PROP.getProperty('config_token');
+  if (!token) {
+    token = Utilities.getUuid();
+    PROP.setProperty('config_token', token);
+  }
+  return token;
+}
+
+function getConfigUrl() {
+  return ScriptApp.getService().getUrl() + "?config=" + getConfigToken();
+}
+
 function doGet(e) {
-  return HtmlService.createHtmlOutputFromFile('configui').setTitle('Cấu hình Sổ Thu Chi AI v2').setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  // Không có token hợp lệ → từ chối (bỏ ALLOWALL để chống iframe)
+  if (!e || !e.parameter || e.parameter.config !== getConfigToken()) {
+    return HtmlService.createHtmlOutput('<p>Không có quyền truy cập.</p>');
+  }
+  const tpl = HtmlService.createTemplateFromFile('configui');
+  tpl.token = getConfigToken();
+  return tpl.evaluate().setTitle('Cấu hình Sổ Thu Chi AI v2');
 }
 
 function maskApiKey(key) {
@@ -38,7 +59,9 @@ function maskApiKey(key) {
   return s.slice(0, 4) + '••••' + s.slice(-4);
 }
 
-function getConfigToUI() {
+function getConfigToUI(token) {
+  // Chỉ trả cấu hình khi token hợp lệ (trang cấu hình mở qua link ?config=…)
+  if (token !== getConfigToken()) throw new Error('Không có quyền truy cập cấu hình.');
   let props = PropertiesService.getScriptProperties();
   let keysRaw = props.getProperty('ai_keys');
   let keysArr = [];
@@ -140,7 +163,9 @@ function parseOwnerNamesInput(raw) {
   return s.split(/[\n,]+/).map(function (n) { return n.trim(); }).filter(Boolean);
 }
 
-function saveConfigFromUI(data) {
+function saveConfigFromUI(data, token) {
+  // Kiểm tra quyền: token phải khớp (trang cấu hình mở qua link ?config=…)
+  if (token !== getConfigToken()) throw new Error('Không có quyền truy cập cấu hình.');
   let props = PropertiesService.getScriptProperties();
   props.setProperty('ai_model', data.model || '');
   props.setProperty('ai_prompt', data.prompt || '');
@@ -213,14 +238,21 @@ function saveConfigFromUI(data) {
 }
 
 function showConfigDialog() {
-  const html = HtmlService.createHtmlOutputFromFile('configui').setWidth(600).setHeight(820);
-  SpreadsheetApp.getUi().showModalDialog(html, '⚙️ Cấu hình Sổ Thu Chi AI v2');
+  const tpl = HtmlService.createTemplateFromFile('configui');
+  tpl.token = getConfigToken();
+  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(600).setHeight(820), '⚙️ Cấu hình Sổ Thu Chi AI v2');
 }
 
 function setWebhook() {
   const token = PROP.getProperty('bot_token');
-  const url = ScriptApp.getService().getUrl(); 
-  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${url}`);
+  // Secret chống spam: Telegram gửi kèm secret trong URL query (GAS không đọc được header)
+  let secret = PROP.getProperty('webhook_secret');
+  if (!secret) {
+    secret = Utilities.getUuid();
+    PROP.setProperty('webhook_secret', secret);
+  }
+  const url = ScriptApp.getService().getUrl() + "?secret=" + secret;
+  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/setWebhook?url=${encodeURIComponent(url)}&secret_token=${encodeURIComponent(secret)}`);
 }
 
 function onOpen() {
@@ -295,7 +327,19 @@ function onEdit(e) {
 // ==========================================
 function doPost(e) {
   if (!e || !e.postData || !e.postData.contents) return;
-  const contents = JSON.parse(e.postData.contents);
+
+  // Bảo mật: chỉ nhận update từ Telegram (secret do setWebhook gắn vào URL)
+  const secret = PROP.getProperty('webhook_secret');
+  if (secret && (!e.parameter || e.parameter.secret !== secret)) return;
+
+  // POST rác / không phải JSON → bỏ qua, tránh crash khiến Telegram retry liên tục
+  let contents;
+  try {
+    contents = JSON.parse(e.postData.contents);
+  } catch (err) {
+    return;
+  }
+  if (!contents || typeof contents !== 'object') return;
 
   const updateId = contents.update_id;
   if (updateId) {
@@ -403,11 +447,12 @@ function doPost(e) {
 }
 
 function processAiTransactions(chatId, sourceText, giaoDichList, liveData) {
-  const txId = "TX_" + new Date().getTime().toString().slice(-6);
+  // slice(-6) lặp lại mỗi ~16.7 phút → thêm hậu tố random để tránh trùng ID (đè draft / xóa nhầm lô)
+  const txId = "TX_" + new Date().getTime().toString().slice(-6) + Math.random().toString(36).slice(2, 6).toUpperCase();
   const items = [];
   for (let i = 0; i < giaoDichList.length; i++) {
     const raw = giaoDichList[i] || {};
-    const norm = normalizeTransaction(raw, liveData);
+    const norm = normalizeTransaction(Object.assign({ source_text: sourceText || "" }, raw), liveData);
     items.push({
       uniqueKey: txId + "_" + i,
       data: norm,
@@ -532,7 +577,7 @@ function handleCallbackQuery(cq) {
     return;
   }
   if (op === "S") {
-    // S:txId:idx — Điền / lưu phiên sửa ngay
+    // S:txId:idx — lưu ngay vào sổ
     const idx = parseInt(parts[2], 10);
     confirmEditSessionSave(chatId, messageId, txId, idx);
     return;
@@ -648,7 +693,7 @@ function showEditMenu(chatId, messageId, txId, idx) {
   const d = sess.draft;
   const dirty = diffSnapshots(snapshotTx(sess.base), snapshotTx(sess.draft)).length > 0;
   let text = "✏️ <b>Phiên sửa GD #" + (idx + 1) + "</b>" + (dirty ? " · có nháp chưa lưu" : "") + "\n" +
-    formatOneTx(d) + "\n\nChọn field hoặc sửa nhanh — gom vào nháp, rồi bấm Điền.";
+    formatOneTx(d) + "\n\nChọn field hoặc sửa nhanh — gom vào nháp, rồi bấm Lưu vào sổ.";
   const rows = [
     [{ text: "⚡ Sửa nhanh bằng câu", callback_data: "Q:" + txId + ":" + idx }],
     [
@@ -666,7 +711,7 @@ function showEditMenu(chatId, messageId, txId, idx) {
     ]
   ];
   if (dirty) {
-    rows.push([{ text: "✍️ Điền", callback_data: "S:" + txId + ":" + idx }]);
+    rows.push([{ text: "✍️ Lưu vào sổ", callback_data: "S:" + txId + ":" + idx }]);
   }
   rows.push([{ text: "↩️ Quay lại", callback_data: "B:" + txId }]);
   const kb = { inline_keyboard: rows };
@@ -910,7 +955,7 @@ function confirmEditSessionSave(chatId, messageId, txId, idx) {
   const after = sess.draft;
   const diffs = diffSnapshots(before, snapshotTx(after));
   if (!diffs.length) {
-    // Chống double-tap ✍️ Điền khi dirty==0
+    // Chống double-tap khi không còn thay đổi mới
     reply(
       "✅ Đã lưu — không còn thay đổi mới.\n\n" + formatOneTx(after),
       { inline_keyboard: [[{ text: "↩️ Quay lại", callback_data: "B:" + txId }]] });
@@ -952,8 +997,12 @@ function confirmEditSessionSave(chatId, messageId, txId, idx) {
   CacheService.getScriptCache().remove(editSessKey(txId, idx));
 
   const finalDraft = draft || { txId: txId, committed: sess.committed, items: [{ data: after, uniqueKey: sess.uniqueKey }] };
-  const kb = finalDraft.committed ? committedKeyboard(txId) : previewKeyboard(txId);
-  reply("✅ Đã lưu sửa.\n\n" + buildTxMessage(finalDraft, finalDraft.committed ? "committed" : "preview"), kb);
+  if (!finalDraft.committed) {
+    commitDraft(chatId, finalDraft, messageId);
+    return;
+  }
+
+  reply("✅ Đã lưu sửa.\n\n" + buildTxMessage(finalDraft, "committed"), committedKeyboard(txId));
 }
 
 // ——— Phiên sửa: cache / fingerprint / sổ tay ———
@@ -997,6 +1046,7 @@ function getEditSession(txId, idx) {
 }
 
 function applyToEditSession(sess, patch) {
+  // Mục 12: Dùng trực tiếp liveData tĩnh từ session hoặc cố định qua cache ngắn để tránh lệch pass/CHECK lúc sửa
   const liveData = getLiveData();
   const merged = Object.assign({}, sess.draft, patch);
   if (patch.so_tien_abs !== undefined) merged.so_tien = patch.so_tien_abs;
@@ -1101,8 +1151,9 @@ function addToNotebook(field, value) {
 // 📦 CHUẨN HÓA GD + RULE TỰ GHI
 // ==========================================
 function normalizeTransaction(raw, liveData, alreadyPartial) {
-  liveData = liveData || { wallets: [], users: [], categories: [] };
+  liveData = liveData || { wallets: [], users: [], categories: [], aliases: [] };
   const reasons = [];
+  const matchedAlias = alreadyPartial ? null : matchAlias_(raw.source_text || "", liveData.aliases || []);
 
   let dateStr = "";
   let dateOk = false;
@@ -1128,63 +1179,36 @@ function normalizeTransaction(raw, liveData, alreadyPartial) {
     reasons.push("ngày");
   }
 
-  let phanLoai = (raw.phan_loai || "Chi").toString().trim().toLowerCase();
-  if (phanLoai.indexOf("nhận") !== -1 || phanLoai.indexOf("cong") !== -1 || phanLoai.indexOf("cộng") !== -1 || phanLoai.indexOf("thu") !== -1) {
-    phanLoai = "Thu";
-  } else if (phanLoai.indexOf("chi") !== -1 || phanLoai.indexOf("trả") !== -1 || phanLoai.indexOf("tra") !== -1) {
-    phanLoai = "Chi";
-  } else {
-    phanLoai = "Chi";
-    reasons.push("thu/chi");
-  }
+  const phanLoaiRaw = (raw.phan_loai == null ? "" : String(raw.phan_loai)).trim().toLowerCase();
+  const hasThuSignal = phanLoaiRaw.indexOf("nhận") !== -1 || phanLoaiRaw.indexOf("cong") !== -1 || phanLoaiRaw.indexOf("cộng") !== -1 || phanLoaiRaw.indexOf("thu") !== -1;
+  const hasChiSignal = phanLoaiRaw.indexOf("chi") !== -1 || phanLoaiRaw.indexOf("trả") !== -1 || phanLoaiRaw.indexOf("tra") !== -1;
+  const phanLoai = hasThuSignal && !hasChiSignal ? "Thu" : "Chi";
+  if (!(hasThuSignal && !hasChiSignal) && !(hasChiSignal && !hasThuSignal)) reasons.push("thu/chi");
 
-  let absAmount = 0;
-  if (raw.so_tien_abs !== undefined && raw.so_tien_abs !== null && raw.so_tien_abs !== "") {
-    absAmount = Math.abs(parseFloat(raw.so_tien_abs));
-  } else {
-    const parsed = parseMoneyToken(raw.so_tien);
-    absAmount = parsed === null ? 0 : Math.abs(parsed);
-  }
-  if (isNaN(absAmount)) absAmount = 0;
+  const rawAmount = raw.so_tien_abs !== undefined && raw.so_tien_abs !== null && raw.so_tien_abs !== "" ? parseFloat(raw.so_tien_abs) : parseMoneyToken(raw.so_tien);
+  const absAmount = isNaN(rawAmount) || rawAmount === null ? 0 : Math.abs(rawAmount);
   if (absAmount <= 0) reasons.push("số tiền");
-
-  let signed = absAmount;
-  if (phanLoai === "Chi" && absAmount > 0) signed = -absAmount;
 
   const viMatched = matchDict(raw.vi, liveData.wallets);
   const userMatched = matchDict(raw.doi_tuong, liveData.users);
   const catMatched = matchDict(raw.danh_muc_con, liveData.categories);
+  const aliasVi = matchedAlias && matchDict(matchedAlias.vi, liveData.wallets);
+  const aliasUser = matchedAlias && matchDict(matchedAlias.doi_tuong, liveData.users);
+  const aliasCategory = matchedAlias && matchDict(matchedAlias.danh_muc_con, liveData.categories);
+  const vi = viMatched || aliasVi || (raw.vi ? String(raw.vi).trim() : "") || "Chưa phân loại";
+  const doi_tuong = userMatched || aliasUser || (raw.doi_tuong ? String(raw.doi_tuong).trim() : "") || "Chưa phân loại";
+  const danh_muc_con = catMatched || aliasCategory || (raw.danh_muc_con ? String(raw.danh_muc_con).trim() : "") || "Chưa phân loại";
+  const ghi_chu = (matchedAlias && matchedAlias.ghi_chu) || (raw.ghi_chu || "").toString();
+  if (!viMatched && !aliasVi) reasons.push("ví");
+  if (!userMatched && !aliasUser) reasons.push("đối tượng");
+  if (!catMatched && !aliasCategory) reasons.push("danh mục");
 
-  let vi = viMatched || (raw.vi ? String(raw.vi).trim() : "") || "Chưa phân loại";
-  let doi_tuong = userMatched || (raw.doi_tuong ? String(raw.doi_tuong).trim() : "") || "Chưa phân loại";
-  let danh_muc_con = catMatched || (raw.danh_muc_con ? String(raw.danh_muc_con).trim() : "") || "Chưa phân loại";
-
-  if (!viMatched) reasons.push("ví");
-  if (!userMatched) reasons.push("đối tượng");
-  if (!catMatched) reasons.push("danh mục");
-
-  const isUncat = function (val) {
-    return !val || val === "Chưa phân loại" || val === "Khác";
-  };
-  if (isUncat(vi) || isUncat(doi_tuong) || isUncat(danh_muc_con) || absAmount === 0) {
-    // reasons already covered
-  }
-
-  const pass = reasons.length === 0 && !isUncat(vi) && !isUncat(doi_tuong) && !isUncat(danh_muc_con) && absAmount > 0 && dateOk && (phanLoai === "Thu" || phanLoai === "Chi");
-  const status = pass ? "" : "CHECK";
-
+  const isUncat = function (val) { return !val || val === "Chưa phân loại" || val === "Khác"; };
+  const pass = reasons.length === 0 && !isUncat(vi) && !isUncat(doi_tuong) && !isUncat(danh_muc_con) && absAmount > 0 && dateOk;
   return {
-    ngay_gd: dateStr,
-    phan_loai: phanLoai,
-    so_tien: signed,
-    so_tien_abs: absAmount,
-    vi: vi,
-    doi_tuong: doi_tuong,
-    danh_muc_con: danh_muc_con,
-    ghi_chu: (raw.ghi_chu || "").toString(),
-    status: status,
-    pass: pass,
-    reasons: reasons
+    ngay_gd: dateStr, phan_loai: phanLoai, so_tien: phanLoai === "Chi" ? -absAmount : absAmount,
+    so_tien_abs: absAmount, vi: vi, doi_tuong: doi_tuong, danh_muc_con: danh_muc_con,
+    ghi_chu: ghi_chu, status: pass ? "" : "CHECK", pass: pass, reasons: reasons
   };
 }
 
@@ -1262,16 +1286,16 @@ function formatOneTx(d, opts) {
   let flag = "";
   if (!d.pass) {
     flag = opts.showReasons && d.reasons && d.reasons.length
-      ? " ⚠️(" + d.reasons.join(", ") + ")"
+      ? " ⚠️(" + escapeHtml(d.reasons.join(", ")) + ")"
       : " ⚠️";
   }
   const lines = [
-    "📅 " + d.ngay_gd,
-    emoji + " " + d.phan_loai + " " + dau + formatMoney(d.so_tien_abs) + flag,
-    "💳 " + d.vi + "  ·  📁 " + d.danh_muc_con,
-    "👤 " + d.doi_tuong
+    "📅 " + escapeHtml(d.ngay_gd),
+    emoji + " " + escapeHtml(d.phan_loai) + " " + dau + formatMoney(d.so_tien_abs) + flag,
+    "💳 " + escapeHtml(d.vi) + "  ·  📁 " + escapeHtml(d.danh_muc_con),
+    "👤 " + escapeHtml(d.doi_tuong)
   ];
-  if (d.ghi_chu) lines.push("📝 " + d.ghi_chu);
+  if (d.ghi_chu) lines.push("📝 " + escapeHtml(d.ghi_chu));
   return lines.join("\n");
 }
 
@@ -1391,7 +1415,7 @@ function handleReplyShortcut(chatId, text, replyMsg) {
     return true;
   }
   applyToEditSession(sess, patch);
-  // Lưu ngay (giống ✍️ Điền)
+  // Lưu ngay vào sổ (giống ✍️ Lưu vào sổ)
   confirmEditSessionSave(chatId, null, txId, idx);
   return true;
 }
@@ -1412,18 +1436,67 @@ function escapeHtml(s) {
 function scheduleClearCommittedKeyboard(chatId, messageId) {
   if (!chatId || !messageId) return;
   try {
-    const trigger = ScriptApp.newTrigger("runClearCommittedKeyboard")
-      .timeBased()
-      .after(UNDO_TTL * 1000)
-      .create();
-    PROP.setProperty("CLR_KB_" + trigger.getUniqueId(), JSON.stringify({
-      chatId: String(chatId),
-      messageId: messageId
-    }));
+    let list = [];
+    const raw = PROP.getProperty("PENDING_CLEAR_KEYBOARDS");
+    if (raw) {
+      try { list = JSON.parse(raw); if (!Array.isArray(list)) list = []; } catch (e) { list = []; }
+    }
+    const expireAt = Date.now() + (UNDO_TTL * 1000);
+    list.push({ chatId: String(chatId), messageId: messageId, expireAt: expireAt });
+    // Giữ tối đa 50 item gần nhất để tránh phình to Script Properties
+    if (list.length > 50) list = list.slice(list.length - 50);
+    PROP.setProperty("PENDING_CLEAR_KEYBOARDS", JSON.stringify(list));
+
+    // Đảm bảo có sẵn duy nhất 1 trigger định kỳ quét gỡ nút (mỗi 1 giờ)
+    ensureClearKeyboardTrigger();
   } catch (e) {}
 }
 
-/** Trigger một lần: hết 24h → gỡ nút Sửa/Hoàn tác trên Telegram */
+function ensureClearKeyboardTrigger() {
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    let found = false;
+    for (let i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === "runClearCommittedKeyboardInterval") {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      ScriptApp.newTrigger("runClearCommittedKeyboardInterval")
+        .timeBased()
+        .everyHours(1)
+        .create();
+    }
+  } catch (e) {}
+}
+
+/** Trigger định kỳ mỗi giờ: quét và gỡ nút Sửa/Hoàn tác quá hạn 24h, tránh vượt trần 20 trigger */
+function runClearCommittedKeyboardInterval() {
+  try {
+    const raw = PROP.getProperty("PENDING_CLEAR_KEYBOARDS");
+    if (!raw) return;
+    let list = [];
+    try { list = JSON.parse(raw); if (!Array.isArray(list)) list = []; } catch (e) { return; }
+    if (list.length === 0) return;
+
+    const now = Date.now();
+    const remaining = [];
+    for (let i = 0; i < list.length; i++) {
+      const item = list[i];
+      if (now >= item.expireAt) {
+        try {
+          clearInlineKeyboard(item.chatId, item.messageId);
+        } catch (err) {}
+      } else {
+        remaining.push(item);
+      }
+    }
+    PROP.setProperty("PENDING_CLEAR_KEYBOARDS", JSON.stringify(remaining));
+  } catch (err) {}
+}
+
+/** Tương thích trigger one-shot cũ (CLR_KB_<uid>) — tự xóa sau khi chạy */
 function runClearCommittedKeyboard(e) {
   try {
     if (!e || !e.triggerUid) return;
@@ -1542,11 +1615,18 @@ THU/CHI (ƯU TIÊN CAO, áp dụng cả ảnh bill ngân hàng):
 - Người khác chuyển cho chủ TK, hoặc ảnh/bill có "Tới" / "Đến" / "to" + tên chủ → THU.
 - Chỉ thấy "Chuyển thành công" alone ≠ Chi (không suy Chi từ cụm đó).`;
 
+  const aliasTextList = (liveData.aliases || []).map(function(a) {
+    return `"${a.raw}" -> Ví: "${a.vi}", DM: "${a.danh_muc_con}", ĐT: "${a.doi_tuong}", Note: "${a.ghi_chu}"`;
+  });
+
   const dynamicPrompt = `${systemPrompt}\n\n${hardRules}\n\nNội dung/Caption: "${text}"\n
 * SỔ TAY TỪ ĐIỂN:
 - Ví (vi): [${liveData.wallets.join(', ')}]
 - Đối tượng (doi_tuong): [${liveData.users.join(', ')}]
 - Danh mục (danh_muc_con): [${liveData.categories.join(', ')}]
+
+* ĐỊNH NGHĨA ALIAS (BẮT BUỘC ưu tiên khớp chính xác các từ khóa này trước):
+[ ${(aliasTextList && aliasTextList.length) ? aliasTextList.join(' ]\n[ ') : '(chưa có)'} ]
 
 * BÀI HỌC TỪ LẦN SỬA (ưu tiên cao hơn lịch sử):
 [ ${(liveData.lessonsText && liveData.lessonsText.length) ? liveData.lessonsText.join(' ]\n[ ') : '(chưa có)'} ]
@@ -1557,7 +1637,7 @@ THU/CHI (ƯU TIÊN CAO, áp dụng cả ảnh bill ngân hàng):
 YÊU CẦU BẮT BUỘC:
 1. Bóc tách TOÀN BỘ giao dịch. Không có ngày thì ghi "Hôm nay".
 2. Map đúng tên trong SỔ TAY.
-3. Phân loại chỉ được dùng "Thu" hoặc "Chi".
+3. Chỉ ghi "Thu" hoặc "Chi" khi có căn cứ rõ từ nội dung. Nếu chưa đủ căn cứ xác định Thu/Chi, ghi "Không rõ" để hệ thống đánh dấu CHECK; tuyệt đối không đoán.
 4. Nếu không khớp sổ tay, ghi "Chưa phân loại".
 5. Quy ước tiền: "k"=nghìn, "m/tr"=triệu, "t/tỷ"=tỷ.
 6. BẮT BUỘC TRẢ VỀ ĐÚNG CẤU TRÚC JSON SAU (Không thêm text thừa):
@@ -1601,7 +1681,7 @@ YÊU CẦU BẮT BUỘC:
       const data = JSON.parse(response.getContentText());
       
       if (data.error) {
-        lastError = data.error.message;
+        lastError = data.error.message || "Unknown error";
         continue; 
       }
       
@@ -1711,13 +1791,15 @@ function scanMail(chatId) {
   if (!logRange) return returnMsg(chatId, "❌ Lỗi: Không tìm thấy vùng đặt tên 'Log'");
   
   // Tối ưu: Chỉ cắt đúng cột UNIQUE_KEY để nạp Blacklist
-  const existingIds = logRange.getSheet()
+  const existingIds = new Set(logRange.getSheet()
     .getRange(logRange.getRow(), logRange.getColumn() + LOG_COL.UNIQUE_KEY, logRange.getNumRows(), 1)
-    .getValues().flat().filter(String);
+    .getValues().flat().filter(String).map(String));
 
   const ruleSheet = ss.getSheetByName("Quet Mail");
   if (!ruleSheet) return returnMsg(chatId, "❌ Lỗi: Không tìm thấy Tab 'Quet Mail'");
-  const rules = ruleSheet.getRange(2, 1, ruleSheet.getLastRow() - 1, 5).getValues().filter(row => row[0]);
+  const lastRuleRow = ruleSheet.getLastRow();
+  if (lastRuleRow < 2) return returnMsg(chatId, "❌ Tab 'Quet Mail' chưa có rule nào");
+  const rules = ruleSheet.getRange(2, 1, lastRuleRow - 1, 5).getValues().filter(row => row[0]);
 
   const dateFilter = buildGmailDateFilter();
   let count = 0;
@@ -1773,12 +1855,13 @@ function scanMail(chatId) {
         }
 
         if (!amount || amount <= 0 || !uniqueKey) continue;
-        if (existingIds.includes(uniqueKey)) continue;
+        uniqueKey = String(uniqueKey);
+        if (existingIds.has(uniqueKey)) continue;
 
         const gd = { phan_loai: "Chi", so_tien: amount, vi: wallet, doi_tuong: user, danh_muc_con: subCat, ghi_chu: finalNote };
         batchData.push({ data: gd, uniqueKey: uniqueKey, dateObj: dateObj });
         
-        existingIds.push(uniqueKey); 
+        existingIds.add(uniqueKey); 
         count++;
         logMsgs.push(`▪️ ${formatMoney(amount)} (${wallet}) - ${finalNote}${fromAi ? " [AI]" : ""}`);
       }
@@ -1788,6 +1871,7 @@ function scanMail(chatId) {
   if (batchData.length > 0) {
     const saveRes = saveBatchToSheet(batchData);
     if (saveRes !== true) return returnMsg(chatId, `❌ <b>Lỗi khi ghi dữ liệu lô:</b> ${saveRes}`);
+    rebuildBaoCao();
   }
 
   const aiNote = aiUsed > 0 ? ` (AI xử lý ${aiUsed} mail)` : "";
@@ -1924,14 +2008,28 @@ function deleteRowsByUniqueKeys(keys) {
   const sheet = logRange.getSheet();
   const startRow = logRange.getRow();
   const startCol = logRange.getColumn();
+  const keySet = new Set(keys.map(String));
   const idData = sheet.getRange(startRow, startCol + LOG_COL.UNIQUE_KEY, logRange.getNumRows(), 1).getValues();
   const rowsToDelete = [];
   for (let i = 0; i < idData.length; i++) {
-    const k = idData[i][0] ? idData[i][0].toString() : "";
-    if (k && keys.indexOf(k) !== -1) rowsToDelete.push(startRow + i);
+    const k = idData[i][0] ? String(idData[i][0]) : "";
+    if (k && keySet.has(k)) rowsToDelete.push(startRow + i);
   }
+  if (!rowsToDelete.length) return 0;
+
   rowsToDelete.sort(function (a, b) { return b - a; });
-  rowsToDelete.forEach(function (r) { sheet.deleteRow(r); });
+  let rangeEnd = rowsToDelete[0];
+  let rangeStart = rangeEnd;
+  for (let i = 1; i <= rowsToDelete.length; i++) {
+    const row = rowsToDelete[i];
+    if (row === rangeStart - 1) {
+      rangeStart = row;
+      continue;
+    }
+    sheet.deleteRows(rangeStart, rangeEnd - rangeStart + 1);
+    rangeStart = row;
+    rangeEnd = row;
+  }
   SpreadsheetApp.flush();
   return rowsToDelete.length;
 }
@@ -2048,12 +2146,55 @@ function getAiLessons() {
   }
 }
 
+function getAliasRows_(ss, wallets, categories, users) {
+  try {
+    const aliasSheet = ss.getSheets().find(s => s.getSheetId() === ALIAS_SHEET_GID);
+    if (!aliasSheet || aliasSheet.getLastRow() < 2) return [];
+    const rows = aliasSheet.getRange(2, 1, aliasSheet.getLastRow() - 1, 5).getValues();
+    return rows.filter(r => r[0]).map(r => {
+      const keywordRaw = String(r[0] || '').trim();
+      const patterns = keywordRaw.split('|').map(p => p.trim().toLowerCase()).filter(Boolean);
+      return {
+        patterns: patterns,
+        raw: keywordRaw,
+        vi: matchDict(r[1], wallets) || String(r[1] || '').trim(),
+        danh_muc_con: matchDict(r[2], categories) || String(r[2] || '').trim(),
+        doi_tuong: matchDict(r[3], users) || String(r[3] || '').trim(),
+        ghi_chu: String(r[4] || '').trim()
+      };
+    }).filter(a => a.patterns.length > 0);
+  } catch (e) {
+    return [];
+  }
+}
+
+function matchAlias_(text, aliases) {
+  if (!text || !aliases || !aliases.length) return null;
+  const t = String(text).trim().toLowerCase();
+  if (!t) return null;
+  for (let i = 0; i < aliases.length; i++) {
+    const alias = aliases[i];
+    for (let j = 0; j < alias.patterns.length; j++) {
+      if (t.indexOf(alias.patterns[j]) !== -1) return alias;
+    }
+  }
+  return null;
+}
+
 function getLiveData() {
+  const cacheKey = "CACHED_LIVE_DATA_V2";
+  const cached = CacheService.getScriptCache().get(cacheKey);
+  if (cached) {
+    try { return JSON.parse(cached); } catch (e) {}
+  }
+  
   const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+  let result = { wallets: [], categories: [], users: [], aliases: [], history: [], lessons: [], lessonsText: [] };
   try {
     const wallets = ss.getRangeByName("Wallet").getValues().map(row => row[0]).filter(String);    
     const users = ss.getRangeByName("userr").getValues().map(row => row[0]).filter(String);       
     const categories = ss.getRangeByName("Category").getValues().map(row => row[1]).filter(String); 
+    const aliases = getAliasRows_(ss, wallets, categories, users);
     
     let history = [];
     const logRange = ss.getRangeByName("Log");
@@ -2082,49 +2223,77 @@ function getLiveData() {
         (L.context ? (" | ctx: " + L.context.slice(0, 80)) : "") +
         " (×" + L.count + ")";
     });
-    return { wallets, categories, users, history, lessons, lessonsText };
-  } catch (e) { 
-    return { wallets: [], categories: [], users: [], history: [], lessons: [], lessonsText: [] }; 
-  }
+    result = { wallets, categories, users, aliases, history, lessons, lessonsText };
+    CacheService.getScriptCache().put(cacheKey, JSON.stringify(result), 60); // Cache TTL 60s
+  } catch (e) {}
+  return result;
 }
 
 // ==========================================
-// 🛠️ PHẦN 7: CÁC TIỆN ÍCH HỖ TRỢ
+// 🛠️ PHẦN 7: CÁC TIỆN ÍCH HỖ TRỢ & HELPER CHUNG (Mục 10)
 // ==========================================
+
+function getParsedAiKeys_() {
+  let props = PropertiesService.getScriptProperties();
+  let keysRaw = props.getProperty('ai_keys');
+  let keysArr = [];
+  if (keysRaw) {
+    try {
+      keysArr = JSON.parse(keysRaw);
+      if (!Array.isArray(keysArr)) keysArr = [keysArr];
+    } catch (e) {
+      if (keysRaw.startsWith('AIza')) keysArr = [keysRaw.trim()];
+    }
+  }
+  return keysArr.filter(function (k) { return k && String(k).trim() !== ''; });
+}
+
+function callTelegramApi_(method, payloadObj) {
+  const token = PROP.getProperty('bot_token');
+  const res = UrlFetchApp.fetch("https://api.telegram.org/bot" + token + "/" + method, {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify(payloadObj),
+    muteHttpExceptions: true
+  });
+  try {
+    return JSON.parse(res.getContentText());
+  } catch (e) {
+    return { ok: false, description: res.getContentText() };
+  }
+}
+
+function findRowIndexByUniqueKey_(sheet, startRow, startCol, numRows, uniqueKey) {
+  if (!sheet || numRows <= 0) return -1;
+  const idData = sheet.getRange(startRow, startCol + LOG_COL.UNIQUE_KEY, numRows, 1).getValues();
+  for (let i = 0; i < idData.length; i++) {
+    if (idData[i][0] && String(idData[i][0]) === String(uniqueKey)) return startRow + i;
+  }
+  return -1;
+}
+
 function returnMsg(chatId, text) {
-  if (chatId) { sendMessage(chatId, text); return text; }
+  if (chatId) sendMessage(chatId, text);
   return text;
 }
 
 function sendMessage(chatId, text, replyMarkup) {
-  const token = PROP.getProperty('bot_token');
   const payload = { chat_id: chatId, text: text, parse_mode: "HTML" };
   if (replyMarkup) payload.reply_markup = replyMarkup;
-  const res = UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/sendMessage`, { 
-    method: "post", contentType: "application/json", 
-    payload: JSON.stringify(payload), muteHttpExceptions: true 
-  });
-  const json = JSON.parse(res.getContentText());
-  return json.result ? json.result.message_id : null;
+  const result = callTelegramApi_("sendMessage", payload);
+  return result && result.result ? result.result.message_id : null;
 }
 
 function deleteMessage(chatId, messageId) {
   if (!messageId) return;
-  const token = PROP.getProperty('bot_token');
-  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/deleteMessage`, { 
-    method: "post", contentType: "application/json", 
-    payload: JSON.stringify({ chat_id: chatId, message_id: messageId }), muteHttpExceptions: true 
-  });
+  callTelegramApi_("deleteMessage", { chat_id: chatId, message_id: messageId });
 }
 
-function editMessage(chatId, messageId, text, replyMarkup = null) {
-  const token = PROP.getProperty('bot_token');
+function editMessage(chatId, messageId, text, replyMarkup) {
+  if (!messageId) return;
   const payload = { chat_id: chatId, message_id: messageId, text: text, parse_mode: "HTML" };
   if (replyMarkup) payload.reply_markup = replyMarkup;
-  
-  UrlFetchApp.fetch(`https://api.telegram.org/bot${token}/editMessageText`, {
-    method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true
-  });
+  callTelegramApi_("editMessageText", payload);
 }
 
 function formatMoney(amount, showSign) {
@@ -2199,7 +2368,7 @@ function transcribeVoiceGemini(base64Audio, mimeType) {
         { method: "post", contentType: "application/json", payload: JSON.stringify(payload), muteHttpExceptions: true }
       );
       const data = JSON.parse(response.getContentText());
-      if (data.error) { lastError = data.error.message; continue; }
+      if (data.error) { lastError = data.error.message || "Unknown error"; continue; }
       if (!data.candidates || !data.candidates.length) {
         lastError = "AI không trả lời được voice.";
         continue;
@@ -2231,9 +2400,13 @@ function emptyBaoBucket() {
 }
 
 function addToBaoBucket(bucket, soTien, isCheck) {
+  // Giao dịch CHECK chưa ghi nhận → không tính vào Thu/Chi/Lợi nhuận
+  if (isCheck) {
+    bucket.check += soTien;
+    return;
+  }
   if (soTien > 0) bucket.thu += soTien;
   else if (soTien < 0) bucket.chi += soTien;
-  if (isCheck) bucket.check += soTien;
 }
 
 /** Đọc Log 1 lần → ghi Bao Cao v2!A2:E5 (D=B+C). Menu + /report. */
@@ -2303,12 +2476,16 @@ function rebuildBaoCao() {
     sheet.getRange("A1:E1").setValues([["Kỳ", "Thu", "Chi", "Lợi nhuận", "CHECK chưa ghi nhận"]]);
     sheet.getRange("A2:E5").setValues(out);
 
-    // Format giao diện đẹp cho sheet Bao Cao v2
-    const fullRange = sheet.getRange("A1:E5");
-    fullRange.setFontFamily("Arial")
+    // Format động theo vùng dữ liệu hiện có
+    const lastRow = sheet.getLastRow();
+    const dataRange = sheet.getRange("A1:E" + lastRow);
+
+    // Font chung (chỉ áp cho vùng dữ liệu)
+    dataRange.setFontFamily("Arial")
              .setFontSize(10)
              .setVerticalAlignment("middle");
 
+    // Header
     const headerRange = sheet.getRange("A1:E1");
     headerRange.setFontWeight("bold")
                .setFontColor("#ffffff")
@@ -2316,25 +2493,22 @@ function rebuildBaoCao() {
                .setHorizontalAlignment("center")
                .setFontSize(11);
 
-    sheet.getRange("A2:A5").setNumberFormat('@');
-    sheet.getRange("A2:A5").setHorizontalAlignment("center");
-    sheet.getRange("B2:E5").setHorizontalAlignment("right");
+    // Dòng dữ liệu: chỉ format số cho B:E, cột Kỳ giữ nguyên text
+    sheet.getRange("B2:E" + lastRow).setNumberFormat('#,##0;[Red]-#,##0;0');
+    sheet.getRange("A2:A" + lastRow).setNumberFormat('@');
+    sheet.getRange("A2:A" + lastRow).setHorizontalAlignment("center");
+    sheet.getRange("B2:E" + lastRow).setHorizontalAlignment("right");
 
-    // Định dạng số có phân cách hàng nghìn, số âm màu đỏ
-    const numberFormat = '#,##0;[Red]-#,##0;0';
-    sheet.getRange("B2:E5").setNumberFormat(numberFormat);
-
-    // Highlight nhẹ dòng Hôm nay (hàng 2)
+    // Highlight dòng Hôm nay (luôn là hàng 2)
     sheet.getRange("A2:E2").setBackground("#fef7e0");
-    sheet.getRange("A3:E5").setBackground("#ffffff");
+    if (lastRow > 2) sheet.getRange("A3:E" + lastRow).setBackground("#ffffff");
 
-    // Border & chiều cao hàng
-    fullRange.setBorder(true, true, true, true, true, true, "#e0e0e0", SpreadsheetApp.BorderStyle.SOLID);
+    // Border
+    dataRange.setBorder(true, true, true, true, true, true, "#e0e0e0", SpreadsheetApp.BorderStyle.SOLID);
     headerRange.setBorder(true, true, true, true, true, true, "#1a73e8", SpreadsheetApp.BorderStyle.SOLID);
 
+    // Chỉ set row height cho vùng header, không can thiệp layout
     sheet.setRowHeight(1, 32);
-    sheet.setRowHeights(2, 4, 28);
-    sheet.autoResizeColumns(1, 5);
 
     SpreadsheetApp.flush();
 
@@ -2371,6 +2545,30 @@ function formatReportMonthLabel(val) {
   return s;
 }
 
+/** Ô bảng monospace: nhãn căn trái, số căn phải (dùng cho tin Telegram). */
+function baoCaoCell(label, value, labelW, valueW) {
+  let l = String(label);
+  while (l.length < labelW) l += " ";
+  let v = String(value);
+  while (v.length < valueW) v = " " + v;
+  return "<code>" + l + v + "</code>";
+}
+
+/** Khối Thu / Chi / Lợi nhuận dùng chung cho báo cáo Hôm nay & Tháng này. */
+function buildBaoCaoDetail(thu, chi, loiNhuan, chuaGhiNhan) {
+  let text = "<blockquote>" +
+             "📥 " + baoCaoCell("Thu nhập", formatMoney(thu, true), 11, 15) + "\n" +
+             "📤 " + baoCaoCell("Chi tiêu", "−" + formatMoney(chi), 11, 15) + "\n" +
+             "──────────────────\n" +
+             "💰 " + baoCaoCell("Lợi nhuận", formatMoney(loiNhuan, true), 11, 15) +
+             "</blockquote>";
+
+  if (chuaGhiNhan !== 0) {
+    text += "\n⏳ <i>Chưa ghi nhận: <b>" + formatMoney(chuaGhiNhan, true) + "</b></i>";
+  }
+  return text;
+}
+
 function sendTodayReport(chatId) {
   const block = readBaoCaoV2Block();
   if (!block) {
@@ -2384,18 +2582,9 @@ function sendTodayReport(chatId) {
   const chuaGhiNhan = Number(row[4]) || 0;
   const now = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm");
 
-  let text = `📊 <b>BÁO CÁO THU CHI HÔM NAY</b>\n` +
-             `📅 <i>Cập nhật: ${now}</i>\n\n` +
-             `<blockquote>` +
-             `🟢 <b>Tổng Thu:</b>  <code>${formatMoney(thu, true)}</code>\n` +
-             `🔴 <b>Tổng Chi:</b>  <code>−${formatMoney(chi)}</code>\n` +
-             `──────────────────\n` +
-             `💵 <b>Lợi nhuận:</b> <b><code>${formatMoney(loiNhuan, true)}</code></b>` +
-             `</blockquote>`;
-
-  if (chuaGhiNhan !== 0) {
-    text += `\n⚠️ <i>Tạm tính (CHECK) chưa ghi nhận: <b>${formatMoney(chuaGhiNhan, true)}</b></i>`;
-  }
+  const text = "📊 <b>BÁO CÁO THU CHI HÔM NAY</b>\n" +
+               "🗓 <i>" + now + "</i>\n\n" +
+               buildBaoCaoDetail(thu, chi, loiNhuan, chuaGhiNhan);
 
   // Nút xem Tháng này / 3 tháng dưới tin hôm nay
   sendMessage(chatId, text, {
@@ -2419,17 +2608,8 @@ function sendMonthReport(chatId, replyMarkup) {
   const loiNhuan = Number(row[3]) || 0;
   const chuaGhiNhan = Number(row[4]) || 0;
 
-  let text = `📆 <b>BÁO CÁO THÁNG ${thangLabel}</b>\n\n` +
-             `<blockquote>` +
-             `🟢 <b>Tổng Thu:</b>  <code>${formatMoney(thu, true)}</code>\n` +
-             `🔴 <b>Tổng Chi:</b>  <code>−${formatMoney(chi)}</code>\n` +
-             `──────────────────\n` +
-             `💵 <b>Lợi nhuận:</b> <b><code>${formatMoney(loiNhuan, true)}</code></b>` +
-             `</blockquote>`;
-
-  if (chuaGhiNhan !== 0) {
-    text += `\n⚠️ <i>Tạm tính (CHECK) chưa ghi nhận: <b>${formatMoney(chuaGhiNhan, true)}</b></i>`;
-  }
+  const text = "📊 <b>BÁO CÁO THÁNG " + thangLabel + "</b>\n\n" +
+               buildBaoCaoDetail(thu, chi, loiNhuan, chuaGhiNhan);
 
   sendMessage(chatId, text, replyMarkup);
 }
@@ -2441,25 +2621,31 @@ function send3MonthReport(chatId, replyMarkup) {
     return;
   }
 
-  let text = `📊 <b>LỢI NHUẬN 3 THÁNG GẦN NHẤT</b>\n\n` +
-             `<blockquote>`;
   let tong = 0;
+  let tongChua = 0;
+  let rows = "";
 
   for (let i = 1; i <= 3; i++) {
     const row = block[i];
     if (!row || !row[0]) continue;
     const thangLabel = formatReportMonthLabel(row[0]);
     const loiNhuan = Number(row[3]) || 0;
-    const chua = Number(row[4]) || 0;
+    tongChua += Number(row[4]) || 0;
 
-    text += `📅 <b>Tháng ${thangLabel}:</b> <code>${formatMoney(loiNhuan, true)}</code>`;
-    if (chua !== 0) text += ` <i>(chờ: ${formatMoney(chua, true)})</i>`;
-    text += `\n`;
+    rows += baoCaoCell(thangLabel, formatMoney(loiNhuan, true), 8, 15) + "\n";
     tong += loiNhuan;
   }
 
-  text += `──────────────────\n` +
-          `💰 <b>TỔNG CỘNG:</b> <b><code>${formatMoney(tong, true)}</code></b>` +
-          `</blockquote>`;
+  let text = "📈 <b>LỢI NHUẬN 3 THÁNG GẦN NHẤT</b>\n\n" +
+             "<blockquote>" +
+             rows +
+             "──────────────────\n" +
+             "💰 " + baoCaoCell("Tổng cộng", formatMoney(tong, true), 8, 15) +
+             "</blockquote>";
+
+  if (tongChua !== 0) {
+    text += "\n⏳ <i>Chưa ghi nhận: <b>" + formatMoney(tongChua, true) + "</b></i>";
+  }
+
   sendMessage(chatId, text, replyMarkup);
 }
