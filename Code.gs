@@ -2127,9 +2127,17 @@ function editMessage(chatId, messageId, text, replyMarkup = null) {
   });
 }
 
-function formatMoney(amount) {
-  if (!amount) return "0 ₫";
-  return Math.abs(Number(amount) || 0).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " ₫";
+function formatMoney(amount, showSign) {
+  if (!amount && amount !== 0) return "0 ₫";
+  const num = Number(amount) || 0;
+  const abs = Math.abs(num).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".") + " ₫";
+  if (num < 0) {
+    return "−" + abs;
+  }
+  if (showSign && num > 0) {
+    return "+" + abs;
+  }
+  return abs;
 }
 
 function guessMimeFromPath(filePath) {
@@ -2294,6 +2302,40 @@ function rebuildBaoCao() {
     if (!sheet) sheet = ss.insertSheet(BAO_CAO_SHEET);
     sheet.getRange("A1:E1").setValues([["Kỳ", "Thu", "Chi", "Lợi nhuận", "CHECK chưa ghi nhận"]]);
     sheet.getRange("A2:E5").setValues(out);
+
+    // Format giao diện đẹp cho sheet Bao Cao v2
+    const fullRange = sheet.getRange("A1:E5");
+    fullRange.setFontFamily("Arial")
+             .setFontSize(10)
+             .setVerticalAlignment("middle");
+
+    const headerRange = sheet.getRange("A1:E1");
+    headerRange.setFontWeight("bold")
+               .setFontColor("#ffffff")
+               .setBackground("#1a73e8")
+               .setHorizontalAlignment("center")
+               .setFontSize(11);
+
+    sheet.getRange("A2:A5").setNumberFormat('@');
+    sheet.getRange("A2:A5").setHorizontalAlignment("center");
+    sheet.getRange("B2:E5").setHorizontalAlignment("right");
+
+    // Định dạng số có phân cách hàng nghìn, số âm màu đỏ
+    const numberFormat = '#,##0;[Red]-#,##0;0';
+    sheet.getRange("B2:E5").setNumberFormat(numberFormat);
+
+    // Highlight nhẹ dòng Hôm nay (hàng 2)
+    sheet.getRange("A2:E2").setBackground("#fef7e0");
+    sheet.getRange("A3:E5").setBackground("#ffffff");
+
+    // Border & chiều cao hàng
+    fullRange.setBorder(true, true, true, true, true, true, "#e0e0e0", SpreadsheetApp.BorderStyle.SOLID);
+    headerRange.setBorder(true, true, true, true, true, true, "#1a73e8", SpreadsheetApp.BorderStyle.SOLID);
+
+    sheet.setRowHeight(1, 32);
+    sheet.setRowHeights(2, 4, 28);
+    sheet.autoResizeColumns(1, 5);
+
     SpreadsheetApp.flush();
 
     const ok = "Đã cập nhật " + BAO_CAO_SHEET + " (hôm nay + 3 tháng).";
@@ -2315,6 +2357,20 @@ function readBaoCaoV2Block() {
   return sheet.getRange("A2:E5").getValues();
 }
 
+function formatReportMonthLabel(val) {
+  if (val instanceof Date) {
+    return Utilities.formatDate(val, "GMT+7", "MM/yyyy");
+  }
+  const s = String(val == null ? "" : val).trim();
+  if (s.indexOf("GMT") >= 0 || s.indexOf("Indochina") >= 0) {
+    try {
+      const d = new Date(s);
+      if (!isNaN(d.getTime())) return Utilities.formatDate(d, "GMT+7", "MM/yyyy");
+    } catch (e) {}
+  }
+  return s;
+}
+
 function sendTodayReport(chatId) {
   const block = readBaoCaoV2Block();
   if (!block) {
@@ -2322,22 +2378,32 @@ function sendTodayReport(chatId) {
     return;
   }
   const row = block[0];
-  const thu = row[1] || 0;
-  const chi = row[2] || 0;
-  const loiNhuan = row[3] || 0;
-  const chuaGhiNhan = row[4] || 0;
+  const thu = Math.abs(Number(row[1]) || 0);
+  const chi = Math.abs(Number(row[2]) || 0);
+  const loiNhuan = Number(row[3]) || 0;
+  const chuaGhiNhan = Number(row[4]) || 0;
   const now = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm");
 
-  let text = `📅 <b>Báo cáo hôm nay - ${now}</b>\n\n` +
-             `💰 Tổng Thu: <b>${formatMoney(thu)}</b>\n` +
-             `🔴 Tổng Chi: <b>${formatMoney(chi)}</b>\n` +
-             `💵 Lợi nhuận: <b>${formatMoney(loiNhuan)}</b>`;
+  let text = `📊 <b>BÁO CÁO THU CHI HÔM NAY</b>\n` +
+             `📅 <i>Cập nhật: ${now}</i>\n\n` +
+             `<blockquote>` +
+             `🟢 <b>Tổng Thu:</b>  <code>${formatMoney(thu, true)}</code>\n` +
+             `🔴 <b>Tổng Chi:</b>  <code>−${formatMoney(chi)}</code>\n` +
+             `──────────────────\n` +
+             `💵 <b>Lợi nhuận:</b> <b><code>${formatMoney(loiNhuan, true)}</code></b>` +
+             `</blockquote>`;
 
   if (chuaGhiNhan !== 0) {
-    text += `\nLợi nhuận chưa được ghi nhận: <b>${formatMoney(chuaGhiNhan)}</b>`;
+    text += `\n⚠️ <i>Tạm tính (CHECK) chưa ghi nhận: <b>${formatMoney(chuaGhiNhan, true)}</b></i>`;
   }
 
-  sendMessage(chatId, text);
+  // Nút xem Tháng này / 3 tháng dưới tin hôm nay
+  sendMessage(chatId, text, {
+    inline_keyboard: [[
+      { text: "📆 Tháng này", callback_data: "REPORT_MONTH" },
+      { text: "📅 3 tháng gần nhất", callback_data: "REPORT_3MONTH" }
+    ]]
+  });
 }
 
 function sendMonthReport(chatId, replyMarkup) {
@@ -2347,19 +2413,22 @@ function sendMonthReport(chatId, replyMarkup) {
     return;
   }
   const row = block[1];
-  const thang = row[0];
-  const thu = row[1] || 0;
-  const chi = row[2] || 0;
-  const loiNhuan = row[3] || 0;
-  const chuaGhiNhan = row[4] || 0;
+  const thangLabel = formatReportMonthLabel(row[0]);
+  const thu = Math.abs(Number(row[1]) || 0);
+  const chi = Math.abs(Number(row[2]) || 0);
+  const loiNhuan = Number(row[3]) || 0;
+  const chuaGhiNhan = Number(row[4]) || 0;
 
-  let text = `📆 <b>Báo cáo ${thang}</b>\n\n` +
-             `💰 Tổng Thu: <b>${formatMoney(thu)}</b>\n` +
-             `🔴 Tổng Chi: <b>${formatMoney(chi)}</b>\n` +
-             `💵 Lợi nhuận: <b>${formatMoney(loiNhuan)}</b>`;
+  let text = `📆 <b>BÁO CÁO THÁNG ${thangLabel}</b>\n\n` +
+             `<blockquote>` +
+             `🟢 <b>Tổng Thu:</b>  <code>${formatMoney(thu, true)}</code>\n` +
+             `🔴 <b>Tổng Chi:</b>  <code>−${formatMoney(chi)}</code>\n` +
+             `──────────────────\n` +
+             `💵 <b>Lợi nhuận:</b> <b><code>${formatMoney(loiNhuan, true)}</code></b>` +
+             `</blockquote>`;
 
   if (chuaGhiNhan !== 0) {
-    text += `\nLợi nhuận chưa được ghi nhận: <b>${formatMoney(chuaGhiNhan)}</b>`;
+    text += `\n⚠️ <i>Tạm tính (CHECK) chưa ghi nhận: <b>${formatMoney(chuaGhiNhan, true)}</b></i>`;
   }
 
   sendMessage(chatId, text, replyMarkup);
@@ -2372,21 +2441,25 @@ function send3MonthReport(chatId, replyMarkup) {
     return;
   }
 
-  let text = `📅 <b>Lợi nhuận 3 tháng gần nhất</b>\n\n`;
+  let text = `📊 <b>LỢI NHUẬN 3 THÁNG GẦN NHẤT</b>\n\n` +
+             `<blockquote>`;
   let tong = 0;
 
   for (let i = 1; i <= 3; i++) {
     const row = block[i];
-    const thang = row[0];
-    const loiNhuan = row[3] || 0;
-    const chua = row[4] || 0;
+    if (!row || !row[0]) continue;
+    const thangLabel = formatReportMonthLabel(row[0]);
+    const loiNhuan = Number(row[3]) || 0;
+    const chua = Number(row[4]) || 0;
 
-    text += `${thang}: <b>${formatMoney(loiNhuan)}</b>`;
-    if (chua !== 0) text += ` (${formatMoney(chua)} chưa ghi nhận)`;
+    text += `📅 <b>Tháng ${thangLabel}:</b> <code>${formatMoney(loiNhuan, true)}</code>`;
+    if (chua !== 0) text += ` <i>(chờ: ${formatMoney(chua, true)})</i>`;
     text += `\n`;
-    tong += Number(loiNhuan) || 0;
+    tong += loiNhuan;
   }
 
-  text += `─────────────────\nTổng 3 tháng: <b>${formatMoney(tong)}</b>`;
+  text += `──────────────────\n` +
+          `💰 <b>TỔNG CỘNG:</b> <b><code>${formatMoney(tong, true)}</code></b>` +
+          `</blockquote>`;
   sendMessage(chatId, text, replyMarkup);
 }

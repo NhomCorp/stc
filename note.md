@@ -24,6 +24,8 @@ Cách dùng: ghi ý tưởng / bug / ý muốn vào đây trước. Khi đủ r�
 
 ## Xong
 
+- **`/report` nút Tháng / 3 tháng như cũ** — tin hôm nay kèm inline `REPORT_MONTH` / `REPORT_3MONTH`.
+- **Bao Cao v2 — format sheet + dấu − Tele** — `rebuildBaoCao` style header xanh / dòng hôm nay vàng / số `#,##0` âm đỏ; bỏ `setHideGridlines` (không có trên Sheet API); Tele `formatMoney(…, true)` cho LN & CHECK.
 - **Báo cáo v2 — bỏ công thức, tính bằng Script** — sheet `Bao Cao v2` (A1:E1 header, A2:hôm nay, A3:A5 rolling 3 tháng); `rebuildBaoCao()` + menu `📊 Báo cáo`; `/report` → rebuild rồi gửi; `send*Report` đọc `A2:E5` 1 lần. *Việc tay:* khi ổn có thể xóa công thức sheet `Bao Cao` cũ.
 - **scanMail Hybrid — Regex trước, Gemini fallback** — `extractMailWithGemini` khi regex hụt; `AI_MAIL_MAX_CALLS = 15`; tin báo `(AI xử lý X mail)`.
 - **Bỏ auto-confirm 45s — ghi ngay + khóa sửa sau 24h** — pass → `commitDraft` ngay; `UNDO_TTL` 24h; trigger `runClearCommittedKeyboard` gỡ nút sau 24h.

@@ -216,11 +216,11 @@ flowchart TB
 | Hàm | Việc làm |
 |-----|----------|
 | `returnMsg` / `sendMessage` / `editMessage` / `deleteMessage` | Telegram API |
-| `formatMoney` | Format VND |
+| `formatMoney(amount, preserveSign?)` | Format VND (`6.200.000 ₫`); `preserveSign` → giữ `−` khi âm (LN/CHECK) |
 | `getTelegramFileBase64` / `getTelegramImageBase64` | Tải file/ảnh Telegram → base64 |
 | `transcribeVoiceGemini` | Voice → transcript |
-| `rebuildBaoCao` / `readBaoCaoV2Block` | Tính & đọc sheet `Bao Cao v2` |
-| `sendTodayReport` / `sendMonthReport` / `send3MonthReport` | Đọc `Bao Cao v2` → Telegram |
+| `rebuildBaoCao` / `readBaoCaoV2Block` | Tính + style sheet `Bao Cao v2` (số âm đỏ) / đọc `A2:E5` |
+| `sendTodayReport` / `sendMonthReport` / `send3MonthReport` | Đọc `Bao Cao v2` → Telegram (`formatMoney(…, true)` cho LN) |
 
 ---
 
@@ -272,8 +272,9 @@ Menu / Web App → configui
 ### E. Báo cáo
 
 ```
-Menu 📊 | /report → rebuildBaoCao (Log → Bao Cao v2!A2:E5)
-  → sendTodayReport / sendMonthReport / send3MonthReport (1 lần getValues)
+Menu 📊 | /report → rebuildBaoCao (Log → Bao Cao v2!A2:E5 + format UI/số)
+  → sendTodayReport (+ nút REPORT_MONTH / REPORT_3MONTH)
+  → callback → sendMonthReport / send3MonthReport
 ```
 
 ---

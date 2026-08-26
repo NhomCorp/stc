@@ -110,8 +110,8 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
   - GD đã ghi: so fingerprint dòng lúc mở vs lúc Điền; khác → báo đã đổi, `🔄 Tải lại`, không `setValues` đè
   - Cập nhật **đúng dòng** (`uniqueKey`); ghi `AI_Learning`
 - `↩️ Hoàn tác`: xóa dòng theo `txId` trong TTL **24h**
-- Lệnh: `/start`, `/report` (rebuild rồi gửi hôm nay), `/scan`
-- Báo cáo: `rebuildBaoCao()` ghi `Bao Cao v2`; `send*Report` đọc `A2:E5` 1 lần; callback `REPORT_*`
+- Lệnh: `/start`, `/report` (rebuild rồi gửi hôm nay + nút `📆 Tháng này` / `📅 3 tháng gần nhất`), `/scan`
+- Báo cáo: `rebuildBaoCao()` ghi `Bao Cao v2` + format UI/số (âm đỏ); `send*Report` đọc `A2:E5` 1 lần, LN/CHECK dùng `formatMoney(…, true)`; callback `REPORT_*`
 - Quét mail: regex trước; regex hụt → `extractMailWithGemini` (tối đa `AI_MAIL_MAX_CALLS`); tin báo `(AI xử lý X mail)`
 - Tin cũ `CONFIRM_`/`EDIT_`: gỡ nút / cố mở sửa nếu còn dữ liệu
 
