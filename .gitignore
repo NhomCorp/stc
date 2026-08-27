@@ -1,0 +1,9 @@
+node_modules/
+
+# clasp — machine/user specific, contain script IDs and OAuth credentials
+.clasp.json
+.clasprc.json
+
+# logs / os cruft
+npm-debug.log*
+.DS_Store
