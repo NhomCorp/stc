@@ -12,16 +12,43 @@ const LOG_COL = {
   SO_TIEN: 2,
   VI: 3,
   DOI_TUONG: 4,
-  DANH_MUC_CHA: 5,   // Cột ArrayFormula (Nhảy cóc qua cột này)
+  lucDANH_MUC_CHA: 5,   // Cột ArrayFormula (Nhảy cóc qua cột này)
   DANH_MUC_CON: 6,
   GHI_CHU: 7,
   UNIQUE_KEY: 8,     // Tracking ID
   STATUS: 9          // Trạng thái CHECK
 };
 
+const MONTH_LOG_COL = {
+  NGAY: 0,
+  PHAN_LOAI: 1,
+  SO_TIEN: 2,
+  VI: 3,
+  DOI_TUONG: 4,
+  DANH_MUC_CON: 5,
+  GHI_CHU: 6,
+  UNIQUE_KEY: 7,
+  STATUS: 8
+};
+
 const AI_LEARNING_SHEET = 'AI_Learning';
 const ALIAS_SHEET_GID = 1498755942;
+const TEMPLATE_BAOCAO_GID = 56513848;
+const TEMPLATE_LOG_GID = 192263148;
 const BAO_CAO_SHEET = 'Bao Cao v2';
+
+// 📑 MỤC LỤC THÁNG — sheet điều hướng: liệt kê Log/Báo cáo từng tháng kèm GID + link
+const MUC_LUC_SHEET_NAME = 'Mục Lục';
+const MUC_LUC_TITLE_ROW = 1;        // A1: tiêu đề lớn
+const MUC_LUC_HEADER_ROW = 2;       // A2:H2: tên cột
+const MUC_LUC_DATA_START_ROW = 3;   // A3 trở đi: dữ liệu từng tháng
+const MUC_LUC_NUM_COLS = 3;
+const MUC_LUC_HEADERS = ['Tháng', 'Log', 'Report'];
+const MUC_LUC_COL = {
+  THANG: 0,
+  LOG: 1,
+  REPORT: 2
+};
 const DRAFT_TTL = 600;      // 10 phút — draft / await text (chưa ghi)
 const UNDO_TTL = 86400;     // 24h — hoàn tác / sửa sau khi ghi (+ gỡ nút Telegram)
 const EDIT_SESS_TTL = 1800; // 30 phút — phiên sửa Telegram
@@ -259,8 +286,40 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('💎 Sổ Thu Chi v2')
     .addItem('⚙️ Cấu hình AI & Bot', 'showConfigDialog')
     .addItem('📧 Quét Mail thủ công', 'triggerScanMailUI')
-    .addItem('📊 Báo cáo', 'rebuildBaoCao')
+    .addItem('📅 Tạo Log & Report tháng hiện tại', 'initMonthHienTai')
+    .addItem('📊 Báo cáo', 'rebuildTatCaBaoCao')
+    .addItem('📑 Dựng lại Mục Lục', 'rebuildMucLuc')
+    .addItem('🔒 Khoá/Bảo vệ Log tháng (B1)', 'guardAllMonthLogB1UI')
     .addToUi();
+  try {
+    const active = SpreadsheetApp.getActive();
+    guardAllMonthLogB1_();
+    repairTamperedB1_(active || SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id')));
+  } catch (e) {
+    // không chặn onOpen nếu môi trường hiện tại không đủ quyền/không có UI đầy đủ
+  }
+}
+
+/** Menu: khoá/bảo vệ B1 cho toàn bộ Log tháng, kèm thông báo. */
+function guardAllMonthLogB1UI() {
+  let c = 0;
+  try {
+    c = guardAllMonthLogB1_();
+    repairTamperedB1_(SpreadsheetApp.getActive() || SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id')));
+  } catch (e) {
+    c = -1;
+  }
+  const msg = c < 0
+    ? "Lỗi khi khoá B1. Bạn cần có quyền owner của spreadsheet để áp bảo vệ."
+    : "Đã khoá/bảo vệ ô B1 cho " + c + " Log tháng.";
+  try { SpreadsheetApp.getActive().toast(msg, 'Bảo vệ B1', 5); } catch (e) { /* ngoài UI */ }
+  return msg;
+}
+
+function rebuildTatCaBaoCao() {
+  const ketQuaChung = rebuildBaoCao();
+  if (ketQuaChung !== true && String(ketQuaChung).indexOf('Đã cập nhật') !== 0) return ketQuaChung;
+  return rebuildBaoCaoThang(getCurrentMonthKey_());
 }
 
 // ==========================================
@@ -271,27 +330,69 @@ function onEdit(e) {
   const range = e.range;
   const sheet = range.getSheet();
   const ss = e.source;
-  const logRange = ss.getRangeByName("Log");
-  if (!logRange || sheet.getName() !== logRange.getSheet().getName()) return;
+  const shName = sheet.getName();
 
-  const logStartRow = logRange.getRow();
-  const logEndRow = logRange.getLastRow();
-  const startCol = logRange.getColumn();
-  const colPhanLoai = startCol + LOG_COL.PHAN_LOAI;
-  const colSoTien = startCol + LOG_COL.SO_TIEN;
+  // B1 là mã định danh tháng: hoàn nguyên tức thì nếu owner vô tình sửa tay.
+  if (isMonthLogSheetName_(shName) && range.getA1Notation() === getMonthLogMonthCell_()) {
+    const monthKey = getMonthKeyFromSheetName_(shName);
+    if (monthKey && getSheetMonthKeyFromB1_(sheet) !== monthKey) {
+      range.setValue(monthKey.replace('_', '/'));
+      SpreadsheetApp.getActive().toast('B1 là mã định danh tháng và không thể thay đổi.', 'Bảo vệ B1', 5);
+    }
+    return;
+  }
+
+  let logStartRow, logEndRow, startCol, colPhanLoai, colSoTien, colNgay, colMap;
+  let monthKeys = [];
+
+  const logRange = ss.getRangeByName("Log");
+  if (logRange && shName === logRange.getSheet().getName()) {
+    logStartRow = logRange.getRow();
+    logEndRow = logRange.getLastRow();
+    startCol = logRange.getColumn();
+    colPhanLoai = startCol + LOG_COL.PHAN_LOAI;
+    colSoTien = startCol + LOG_COL.SO_TIEN;
+    colNgay = startCol + LOG_COL.NGAY;
+    colMap = LOG_COL;
+  } else if (isMonthLogSheetName_(shName)) {
+    const info = getMonthLogRangeInfo_(sheet);
+    logStartRow = info.startRow;
+    logEndRow = sheet.getLastRow();
+    startCol = info.startCol;
+    colPhanLoai = startCol + MONTH_LOG_COL.PHAN_LOAI;
+    colSoTien = startCol + MONTH_LOG_COL.SO_TIEN;
+    colNgay = startCol + MONTH_LOG_COL.NGAY;
+    colMap = MONTH_LOG_COL;
+    const monthKey = getMonthKeyFromSheetName_(shName);
+    if (monthKey) monthKeys.push(monthKey);
+  } else {
+    return;
+  }
 
   const editStartCol = range.getColumn();
   const editEndCol = editStartCol + range.getNumColumns() - 1;
-  // Chỉ xử lý khi vùng sửa giao cột Phân loại hoặc Số tiền
-  if (editEndCol < colPhanLoai || editStartCol > colSoTien) return;
+  
+  // Chỉ xử lý khi vùng sửa giao cột Phân loại, Số tiền, HOẶC Ngày
+  const isDateEdit = editEndCol >= colNgay && editStartCol <= colNgay;
+  const isTypeOrAmountEdit = editEndCol >= colPhanLoai && editStartCol <= colSoTien;
+  if (!isDateEdit && !isTypeOrAmountEdit) return;
 
   const r0 = Math.max(range.getRow(), logStartRow);
   const r1 = Math.min(range.getRow() + range.getNumRows() - 1, logEndRow);
   if (r0 > r1) return;
 
   const n = r1 - r0 + 1;
+  
+  // Đọc giá trị cũ của cột Ngày để so sánh (chỉ cần khi sửa cột Ngày)
+  let oldNgays = [];
+  if (isDateEdit && colMap === LOG_COL) {
+    oldNgays = sheet.getRange(r0, colNgay, n, 1).getValues();
+  }
+  
   const types = sheet.getRange(r0, colPhanLoai, n, 1).getValues();
   const amounts = sheet.getRange(r0, colSoTien, n, 1).getValues();
+  const ngays = sheet.getRange(r0, colNgay, n, 1).getValues();
+  
   const out = [];
   let changed = false;
 
@@ -317,9 +418,34 @@ function onEdit(e) {
     }
     out.push([next]);
     if (next !== num) changed = true;
+
+    // Track tháng mới từ cột Ngày (sau khi sửa)
+    if (colMap === LOG_COL && ngays[i] && ngays[i][0]) {
+      const mk = getMonthKeyFromAnyDate_(ngays[i][0]);
+      if (mk && monthKeys.indexOf(mk) === -1) monthKeys.push(mk);
+    }
   }
 
-  if (changed) sheet.getRange(r0, colSoTien, n, 1).setValues(out);
+  // Nếu sửa cột Ngày → track thêm tháng cũ để rebuild cả hai
+  if (isDateEdit && colMap === LOG_COL) {
+    for (let i = 0; i < oldNgays.length; i++) {
+      if (oldNgays[i] && oldNgays[i][0]) {
+        const oldMk = getMonthKeyFromAnyDate_(oldNgays[i][0]);
+        const newMk = (ngays[i] && ngays[i][0]) ? getMonthKeyFromAnyDate_(ngays[i][0]) : null;
+        if (oldMk && oldMk !== newMk && monthKeys.indexOf(oldMk) === -1) {
+          monthKeys.push(oldMk);
+        }
+      }
+    }
+  }
+
+  if (changed) {
+    sheet.getRange(r0, colSoTien, n, 1).setValues(out);
+  }
+  if (monthKeys.length) {
+    monthKeys.forEach(function (mk) { if (mk) rebuildBaoCaoThang(mk); });
+    rebuildBaoCao();
+  }
 }
 
 // ==========================================
@@ -1081,25 +1207,53 @@ function readLogRowByUniqueKey(uniqueKey) {
   try {
     const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
     const logRange = ss.getRangeByName("Log");
-    if (!logRange) return null;
-    const sheet = logRange.getSheet();
-    const startRow = logRange.getRow();
-    const startCol = logRange.getColumn();
-    const idData = sheet.getRange(startRow, startCol + LOG_COL.UNIQUE_KEY, logRange.getNumRows(), 1).getValues();
-    for (let i = 0; i < idData.length; i++) {
-      if (idData[i][0] && idData[i][0].toString() === String(uniqueKey)) {
-        const vals = sheet.getRange(startRow + i, startCol, 1, 10).getValues()[0];
-        return {
-          ngay_gd: vals[LOG_COL.NGAY],
-          phan_loai: vals[LOG_COL.PHAN_LOAI],
-          so_tien: vals[LOG_COL.SO_TIEN],
-          vi: vals[LOG_COL.VI],
-          doi_tuong: vals[LOG_COL.DOI_TUONG],
-          danh_muc_con: vals[LOG_COL.DANH_MUC_CON],
-          ghi_chu: vals[LOG_COL.GHI_CHU] || "",
-          uniqueKey: uniqueKey,
-          status: vals[LOG_COL.STATUS] || ""
-        };
+    if (logRange) {
+      const sheet = logRange.getSheet();
+      const startRow = logRange.getRow();
+      const startCol = logRange.getColumn();
+      const idData = sheet.getRange(startRow, startCol + LOG_COL.UNIQUE_KEY, logRange.getNumRows(), 1).getValues();
+      for (let i = 0; i < idData.length; i++) {
+        if (idData[i][0] && idData[i][0].toString() === String(uniqueKey)) {
+          const vals = sheet.getRange(startRow + i, startCol, 1, 10).getValues()[0];
+          return {
+            ngay_gd: vals[LOG_COL.NGAY],
+            phan_loai: vals[LOG_COL.PHAN_LOAI],
+            so_tien: vals[LOG_COL.SO_TIEN],
+            vi: vals[LOG_COL.VI],
+            doi_tuong: vals[LOG_COL.DOI_TUONG],
+            danh_muc_con: vals[LOG_COL.DANH_MUC_CON],
+            ghi_chu: vals[LOG_COL.GHI_CHU] || "",
+            uniqueKey: uniqueKey,
+            status: vals[LOG_COL.STATUS] || ""
+          };
+        }
+      }
+    }
+
+    const sheets = ss.getSheets();
+    for (let s = 0; s < sheets.length; s++) {
+      const sh = sheets[s];
+      if (!isMonthLogSheetName_(sh.getName())) continue;
+      const info = getMonthLogRangeInfo_(sh);
+      const lastRow = sh.getLastRow();
+      if (lastRow < info.startRow) continue;
+      const numRows = lastRow - info.startRow + 1;
+      const idData = sh.getRange(info.startRow, info.startCol + MONTH_LOG_COL.UNIQUE_KEY, numRows, 1).getValues();
+      for (let i = 0; i < idData.length; i++) {
+        if (idData[i][0] && idData[i][0].toString() === String(uniqueKey)) {
+          const vals = sh.getRange(info.startRow + i, info.startCol, 1, info.numCols).getValues()[0];
+          return {
+            ngay_gd: vals[MONTH_LOG_COL.NGAY],
+            phan_loai: vals[MONTH_LOG_COL.PHAN_LOAI],
+            so_tien: vals[MONTH_LOG_COL.SO_TIEN],
+            vi: vals[MONTH_LOG_COL.VI],
+            doi_tuong: vals[MONTH_LOG_COL.DOI_TUONG],
+            danh_muc_con: vals[MONTH_LOG_COL.DANH_MUC_CON],
+            ghi_chu: vals[MONTH_LOG_COL.GHI_CHU] || "",
+            uniqueKey: uniqueKey,
+            status: vals[MONTH_LOG_COL.STATUS] || ""
+          };
+        }
       }
     }
     return null;
@@ -1909,6 +2063,7 @@ function saveBatchToSheet(batchData) {
 
     let part1_Array = []; 
     let part2_Array = [];
+    const monthRowsByKey = {};
     for (let i = 0; i < batchData.length; i++) {
       let item = batchData[i];
       let data = item.data;
@@ -1920,6 +2075,7 @@ function saveBatchToSheet(batchData) {
         }
         data = normalizeTransaction(data, liveData);
       }
+      item.data = data;
       part1_Array.push([
         data.ngay_gd,
         data.phan_loai,
@@ -1933,6 +2089,10 @@ function saveBatchToSheet(batchData) {
         item.uniqueKey,
         data.status || ""
       ]);
+
+      const monthKey = getMonthKeyFromDate_(data.ngay_gd);
+      if (!monthRowsByKey[monthKey]) monthRowsByKey[monthKey] = [];
+      monthRowsByKey[monthKey].push(makeMonthLogRow_(item, data));
     }
 
     // 🛡️ BẢO BỐI 2: TÌM DÒNG CHỐT ĐÁY BẰNG MẮT THẦN (Không phụ thuộc Named Range)
@@ -1958,10 +2118,21 @@ function saveBatchToSheet(batchData) {
     const formatTarget = sheet.getRange(targetRow, startCol, numNewRows, 10);
     formatSource.copyTo(formatTarget, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
 
-    // BƯỚC 4: GHI DỮ LIỆU
+    // BƯỚC 4: GHI DỮ LIỆU VÀO LOG TỔNG
     sheet.getRange(targetRow, startCol, part1_Array.length, 5).setValues(part1_Array);
-    sheet.getRange(targetRow, startCol + 6, part2_Array.length, 4).setValues(part2_Array);   
+    sheet.getRange(targetRow, startCol + 6, part2_Array.length, 4).setValues(part2_Array);
 
+    const monthKeys = Object.keys(monthRowsByKey);
+    for (let m = 0; m < monthKeys.length; m++) {
+      const monthKey = monthKeys[m];
+      const monthSheets = getOrCreateMonthSheets("01/" + monthKey.replace("_", "/"));
+      appendRowsToMonthLog_(monthSheets.logSheet, monthRowsByKey[monthKey]);
+      rebuildBaoCaoThang(monthKey);
+      // Nếu tháng chưa có trong mục lục, tự động thêm
+      ensureMonthInMucLuc_(monthKey, monthSheets);
+    }
+
+    rebuildBaoCao();
     SpreadsheetApp.flush(); 
     return true;
   } catch (e) { 
@@ -1974,25 +2145,83 @@ function saveBatchToSheet(batchData) {
 function updateRowByUniqueKey(uniqueKey, data) {
   try {
     const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+    let updatedAny = false;
     const logRange = ss.getRangeByName("Log");
-    if (!logRange) return "Không tìm thấy Log";
-    const sheet = logRange.getSheet();
-    const startRow = logRange.getRow();
-    const startCol = logRange.getColumn();
-    const idData = sheet.getRange(startRow, startCol + LOG_COL.UNIQUE_KEY, logRange.getNumRows(), 1).getValues();
-    for (let i = 0; i < idData.length; i++) {
-      if (idData[i][0] && idData[i][0].toString() === String(uniqueKey)) {
-        const row = startRow + i;
-        sheet.getRange(row, startCol, 1, 5).setValues([[
-          data.ngay_gd, data.phan_loai, data.so_tien,
-          data.vi || "Chưa phân loại", data.doi_tuong || "Chưa phân loại"
-        ]]);
-        sheet.getRange(row, startCol + 6, 1, 4).setValues([[
-          data.danh_muc_con || "Chưa phân loại", data.ghi_chu || "", uniqueKey, data.status || ""
-        ]]);
-        SpreadsheetApp.flush();
-        return true;
+    if (logRange) {
+      const sheet = logRange.getSheet();
+      const startRow = logRange.getRow();
+      const startCol = logRange.getColumn();
+      const idData = sheet.getRange(startRow, startCol + LOG_COL.UNIQUE_KEY, logRange.getNumRows(), 1).getValues();
+      for (let i = 0; i < idData.length; i++) {
+        if (idData[i][0] && idData[i][0].toString() === String(uniqueKey)) {
+          const row = startRow + i;
+          sheet.getRange(row, startCol, 1, 5).setValues([[
+            data.ngay_gd, data.phan_loai, data.so_tien,
+            data.vi || "Chưa phân loại", data.doi_tuong || "Chưa phân loại"
+          ]]);
+          sheet.getRange(row, startCol + 6, 1, 4).setValues([[
+            data.danh_muc_con || "Chưa phân loại", data.ghi_chu || "", uniqueKey, data.status || ""
+          ]]);
+          updatedAny = true;
+          break;
+        }
       }
+    }
+
+    const sheets = ss.getSheets();
+    const newMonthKey = getMonthKeyFromDate_(data.ngay_gd);
+    for (let s = 0; s < sheets.length; s++) {
+      const sh = sheets[s];
+      const shName = sh.getName();
+      if (!isMonthLogSheetName_(shName)) continue;
+      const info = getMonthLogRangeInfo_(sh);
+      const lastRow = sh.getLastRow();
+      if (lastRow < info.startRow) continue;
+      const numRows = lastRow - info.startRow + 1;
+      const idData = sh.getRange(info.startRow, info.startCol + MONTH_LOG_COL.UNIQUE_KEY, numRows, 1).getValues();
+      for (let i = 0; i < idData.length; i++) {
+        if (idData[i][0] && idData[i][0].toString() === String(uniqueKey)) {
+          const targetRow = info.startRow + i;
+          const currentMonthKey = getMonthKeyFromSheetName_(shName);
+          if (currentMonthKey === newMonthKey) {
+            sh.getRange(targetRow, info.startCol, 1, info.numCols).setValues([[
+              data.ngay_gd,
+              data.phan_loai,
+              data.so_tien,
+              data.vi || "Chưa phân loại",
+              data.doi_tuong || "Chưa phân loại",
+              data.danh_muc_con || "Chưa phân loại",
+              data.ghi_chu || "",
+              uniqueKey,
+              data.status || ""
+            ]]);
+          } else {
+            sh.deleteRow(targetRow);
+            const targetSheets = getOrCreateMonthSheets(data.ngay_gd);
+            appendRowsToMonthLog_(targetSheets.logSheet, [[
+              data.ngay_gd,
+              data.phan_loai,
+              data.so_tien,
+              data.vi || "Chưa phân loại",
+              data.doi_tuong || "Chưa phân loại",
+              data.danh_muc_con || "Chưa phân loại",
+              data.ghi_chu || "",
+              uniqueKey,
+              data.status || ""
+            ]]);
+            rebuildBaoCaoThang(currentMonthKey);
+          }
+          rebuildBaoCaoThang(newMonthKey);
+          updatedAny = true;
+          break;
+        }
+      }
+    }
+
+    if (updatedAny) {
+      rebuildBaoCao();
+      SpreadsheetApp.flush();
+      return true;
     }
     return "Không tìm thấy dòng " + uniqueKey;
   } catch (e) {
@@ -2003,24 +2232,89 @@ function updateRowByUniqueKey(uniqueKey, data) {
 function deleteRowsByUniqueKeys(keys) {
   if (!keys || !keys.length) return 0;
   const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
-  const logRange = ss.getRangeByName("Log");
-  if (!logRange) return 0;
-  const sheet = logRange.getSheet();
-  const startRow = logRange.getRow();
-  const startCol = logRange.getColumn();
   const keySet = new Set(keys.map(String));
-  const idData = sheet.getRange(startRow, startCol + LOG_COL.UNIQUE_KEY, logRange.getNumRows(), 1).getValues();
-  const rowsToDelete = [];
-  for (let i = 0; i < idData.length; i++) {
-    const k = idData[i][0] ? String(idData[i][0]) : "";
-    if (k && keySet.has(k)) rowsToDelete.push(startRow + i);
-  }
-  if (!rowsToDelete.length) return 0;
+  const affectedMonths = new Set();
 
+  const logRange = ss.getRangeByName("Log");
+  let totalDeleted = 0;
+  if (logRange) {
+    const sheet = logRange.getSheet();
+    const startRow = logRange.getRow();
+    const startCol = logRange.getColumn();
+    const keyList = keys.map(String);
+    const idData = sheet.getRange(startRow, startCol + LOG_COL.UNIQUE_KEY, logRange.getNumRows(), 1).getValues();
+    const rowsToDelete = [];
+    for (let i = 0; i < idData.length; i++) {
+      const k = idData[i][0] ? String(idData[i][0]) : "";
+      if (k && keySet.has(k)) {
+        rowsToDelete.push(startRow + i);
+        for (let j = 0; j < keyList.length; j++) {
+          if (keyList[j] === k) {
+            affectedMonths.add(getMonthKeyFromDate_(readMonthOfUniqueKey_(ss, keyList[j], LOG_COL, logRange)));
+          }
+        }
+      }
+    }
+    if (rowsToDelete.length) {
+      totalDeleted += deleteRowsFromRange_(sheet, rowsToDelete);
+    }
+  }
+
+  const sheets = ss.getSheets();
+  for (let s = 0; s < sheets.length; s++) {
+    const sh = sheets[s];
+    const shName = sh.getName();
+    if (!isMonthLogSheetName_(shName)) continue;
+    const info = getMonthLogRangeInfo_(sh);
+    const lastRow = sh.getLastRow();
+    if (lastRow < info.startRow) continue;
+    const numRows = lastRow - info.startRow + 1;
+    const idData = sh.getRange(info.startRow, info.startCol + MONTH_LOG_COL.UNIQUE_KEY, numRows, 1).getValues();
+    const rowsToDelete = [];
+    for (let i = 0; i < idData.length; i++) {
+      const k = idData[i][0] ? String(idData[i][0]) : "";
+      if (k && keySet.has(k)) rowsToDelete.push(info.startRow + i);
+    }
+    if (rowsToDelete.length) {
+      totalDeleted += deleteRowsFromRange_(sh, rowsToDelete);
+      affectedMonths.add(getMonthKeyFromSheetName_(shName));
+    }
+  }
+
+  affectedMonths.forEach(function (mk) {
+    if (mk) rebuildBaoCaoThang(mk);
+  });
+  rebuildBaoCao();
+  SpreadsheetApp.flush();
+  return totalDeleted;
+}
+
+function readMonthOfUniqueKey_(ss, uniqueKey, colMap, logRange) {
+  try {
+    if (logRange) {
+      const sheet = logRange.getSheet();
+      const startRow = logRange.getRow();
+      const startCol = logRange.getColumn();
+      const idData = sheet.getRange(startRow, startCol + colMap.UNIQUE_KEY, logRange.getNumRows(), 1).getValues();
+      for (let i = 0; i < idData.length; i++) {
+        if (idData[i][0] && String(idData[i][0]) === String(uniqueKey)) {
+          const v = sheet.getRange(startRow + i, startCol + colMap.NGAY, 1, 1).getValues()[0][0];
+          return v;
+        }
+      }
+    }
+    return new Date();
+  } catch (e) {
+    return new Date();
+  }
+}
+
+function deleteRowsFromRange_(sheet, rowsToDelete) {
+  if (!rowsToDelete.length) return 0;
   rowsToDelete.sort(function (a, b) { return b - a; });
   let rangeEnd = rowsToDelete[0];
   let rangeStart = rangeEnd;
-  for (let i = 1; i <= rowsToDelete.length; i++) {
+  for (let i = 1; i < rowsToDelete.length; i++) {
     const row = rowsToDelete[i];
     if (row === rangeStart - 1) {
       rangeStart = row;
@@ -2030,6 +2324,7 @@ function deleteRowsByUniqueKeys(keys) {
     rangeStart = row;
     rangeEnd = row;
   }
+  sheet.deleteRows(rangeStart, rangeEnd - rangeStart + 1);
   SpreadsheetApp.flush();
   return rowsToDelete.length;
 }
@@ -2038,36 +2333,74 @@ function loadDraftFromSheet(txId) {
   try {
     const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
     const logRange = ss.getRangeByName("Log");
-    if (!logRange) return null;
-    const sheet = logRange.getSheet();
-    const startRow = logRange.getRow();
-    const startCol = logRange.getColumn();
-    const numRows = logRange.getNumRows();
-    const values = sheet.getRange(startRow, startCol, numRows, 10).getValues();
     const items = [];
-    for (let i = 0; i < values.length; i++) {
-      const key = values[i][LOG_COL.UNIQUE_KEY] ? values[i][LOG_COL.UNIQUE_KEY].toString() : "";
-      if (!key || key.indexOf(txId) !== 0) continue;
-      const so = Number(values[i][LOG_COL.SO_TIEN]) || 0;
-      const phan = values[i][LOG_COL.PHAN_LOAI];
-      let ngayVal = values[i][LOG_COL.NGAY];
-      if (ngayVal instanceof Date) ngayVal = Utilities.formatDate(ngayVal, "GMT+7", "dd/MM/yyyy");
-      else ngayVal = cellToDisplay(ngayVal);
-      const data = {
-        ngay_gd: ngayVal,
-        phan_loai: phan,
-        so_tien: so,
-        so_tien_abs: Math.abs(so),
-        vi: values[i][LOG_COL.VI],
-        doi_tuong: values[i][LOG_COL.DOI_TUONG],
-        danh_muc_con: values[i][LOG_COL.DANH_MUC_CON],
-        ghi_chu: values[i][LOG_COL.GHI_CHU] || "",
-        status: values[i][LOG_COL.STATUS] || "",
-        pass: values[i][LOG_COL.STATUS] !== "CHECK",
-        reasons: []
-      };
-      items.push({ uniqueKey: key, data: data, aiGuess: snapshotTx(data) });
+
+    if (logRange) {
+      const sheet = logRange.getSheet();
+      const startRow = logRange.getRow();
+      const startCol = logRange.getColumn();
+      const numRows = logRange.getNumRows();
+      const values = sheet.getRange(startRow, startCol, numRows, 10).getValues();
+      for (let i = 0; i < values.length; i++) {
+        const key = values[i][LOG_COL.UNIQUE_KEY] ? values[i][LOG_COL.UNIQUE_KEY].toString() : "";
+        if (!key || key.indexOf(txId) !== 0) continue;
+        const so = Number(values[i][LOG_COL.SO_TIEN]) || 0;
+        const phan = values[i][LOG_COL.PHAN_LOAI];
+        let ngayVal = values[i][LOG_COL.NGAY];
+        if (ngayVal instanceof Date) ngayVal = Utilities.formatDate(ngayVal, "GMT+7", "dd/MM/yyyy");
+        else ngayVal = cellToDisplay(ngayVal);
+        const data = {
+          ngay_gd: ngayVal,
+          phan_loai: phan,
+          so_tien: so,
+          so_tien_abs: Math.abs(so),
+          vi: values[i][LOG_COL.VI],
+          doi_tuong: values[i][LOG_COL.DOI_TUONG],
+          danh_muc_con: values[i][LOG_COL.DANH_MUC_CON],
+          ghi_chu: values[i][LOG_COL.GHI_CHU] || "",
+          status: values[i][LOG_COL.STATUS] || "",
+          pass: values[i][LOG_COL.STATUS] !== "CHECK",
+          reasons: []
+        };
+        items.push({ uniqueKey: key, data: data, aiGuess: snapshotTx(data) });
+      }
     }
+
+    if (!items.length) {
+      const sheets = ss.getSheets();
+      for (let s = 0; s < sheets.length; s++) {
+        const sh = sheets[s];
+        if (!isMonthLogSheetName_(sh.getName())) continue;
+        const info = getMonthLogRangeInfo_(sh);
+        const lastRow = sh.getLastRow();
+        if (lastRow < info.startRow) continue;
+        const values = sh.getRange(info.startRow, info.startCol, lastRow - info.startRow + 1, info.numCols).getValues();
+        for (let i = 0; i < values.length; i++) {
+          const key = values[i][MONTH_LOG_COL.UNIQUE_KEY] ? values[i][MONTH_LOG_COL.UNIQUE_KEY].toString() : "";
+          if (!key || key.indexOf(txId) !== 0) continue;
+          const so = Number(values[i][MONTH_LOG_COL.SO_TIEN]) || 0;
+          const phan = values[i][MONTH_LOG_COL.PHAN_LOAI];
+          let ngayVal = values[i][MONTH_LOG_COL.NGAY];
+          if (ngayVal instanceof Date) ngayVal = Utilities.formatDate(ngayVal, "GMT+7", "dd/MM/yyyy");
+          else ngayVal = cellToDisplay(ngayVal);
+          const data = {
+            ngay_gd: ngayVal,
+            phan_loai: phan,
+            so_tien: so,
+            so_tien_abs: Math.abs(so),
+            vi: values[i][MONTH_LOG_COL.VI],
+            doi_tuong: values[i][MONTH_LOG_COL.DOI_TUONG],
+            danh_muc_con: values[i][MONTH_LOG_COL.DANH_MUC_CON],
+            ghi_chu: values[i][MONTH_LOG_COL.GHI_CHU] || "",
+            status: values[i][MONTH_LOG_COL.STATUS] || "",
+            pass: values[i][MONTH_LOG_COL.STATUS] !== "CHECK",
+            reasons: []
+          };
+          items.push({ uniqueKey: key, data: data, aiGuess: snapshotTx(data) });
+        }
+      }
+    }
+
     if (!items.length) return null;
     return { txId: txId, sourceText: "", committed: true, items: items };
   } catch (e) {
@@ -2086,6 +2419,450 @@ function ensureAiLearningSheet() {
     ]]);
   }
   return sheet;
+}
+
+function getSheetByGid_(ss, gid) {
+  const target = Number(gid);
+  return ss.getSheets().find(function (sheet) { return sheet.getSheetId() === target; }) || null;
+}
+
+function normalizeSheetName_(name) {
+  return String(name || "").trim();
+}
+
+function parseMonthDate_(dateStr) {
+  const parsed = parseLogDate(dateStr);
+  if (parsed) return parsed;
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function getMonthKeyFromDate_(dateStr) {
+  return Utilities.formatDate(parseMonthDate_(dateStr), "GMT+7", "MM_yyyy");
+}
+
+function getCurrentMonthKey_() {
+  return Utilities.formatDate(new Date(), "GMT+7", "MM_yyyy");
+}
+
+function getMonthKeyFromAnyDate_(val) {
+  const d = parseLogDate(val);
+  if (d) return Utilities.formatDate(d, "GMT+7", "MM_yyyy");
+  return null;
+}
+
+function isMonthLogSheetName_(name) {
+  return /^Log_\d{2}_\d{4}$/.test(normalizeSheetName_(name));
+}
+
+function getMonthKeyFromSheetName_(name) {
+  const match = normalizeSheetName_(name).match(/^Log_(\d{2}_\d{4})$/);
+  return match ? match[1] : "";
+}
+
+function monthSheetName_(monthKey) {
+  return "Log_" + monthKey;
+}
+
+function monthReportSheetName_(monthKey) {
+  return "Report_" + monthKey;
+}
+
+// ==========================================
+// 🗓️ PHẦN: CHUẨN THÁNG CHO LOG THÁNG (B1) & SO KHỚP GIAO DỊCH
+// ==========================================
+// Mọi nghiệp vụ (báo cáo, cảnh báo onEdit, kiểm tra/migration) đều dùng chung
+// bộ hàm này thay vì tự parse riêng.
+// Quy ước: A1 = "Giao dịch tháng", B1 = tháng chuẩn (MM/yyyy hoặc MM_yyyy).
+const MONTH_LOG_META_ROW = 1;
+const MONTH_LOG_TITLE_COL = 1;   // A1
+const MONTH_LOG_MONTH_COL = 2;   // B1
+
+function getMonthLogTitleCell_() { return "A" + MONTH_LOG_META_ROW + ":" + MONTH_LOG_META_ROW; }
+function getMonthLogMonthCell_() { return "B" + MONTH_LOG_META_ROW; }
+
+/** Đọc tháng chuẩn của sheet từ B1. Trả về MM_yyyy, hoặc "" nếu rỗng/không hợp lệ. */
+function getSheetMonthKeyFromB1_(sheet) {
+  if (!sheet) return "";
+  const raw = sheet.getRange(getMonthLogMonthCell_()).getValue();
+  return normalizeMonthKey_(raw);
+}
+
+/** Chuẩn hóa mọi giá trị tháng về MM_yyyy (dùng nội bộ). */
+function normalizeMonthKey_(raw) {
+  const s = normalizeSheetName_(raw).trim();
+  if (!s) return "";
+  // Đã đúng dạng MM_yyyy
+  let m = s.match(/^(\d{1,2})[_-](\d{4})$/);
+  if (m) return pad2_(m[1]) + "_" + m[2];
+  // Dạng MM/yyyy hoặc MM/yyyy...
+  m = s.match(/^(\d{1,2})\/(\d{4})/);
+  if (m) return pad2_(m[1]) + "_" + m[2];
+  // Dạng tháng/yyyy trong tên sheet Log_MM_yyyy
+  m = s.match(/^Log_(\d{2}_\d{4})$/);
+  if (m) return m[1];
+  return "";
+}
+
+function pad2_(n) { return String(n).length < 2 ? "0" + n : String(n); }
+
+/** Từ giá trị cột Ngày, trả về tháng giao dịch MM_yyyy, hoặc "" nếu không đọc được. */
+function getTransactionMonthKey_(ngayVal) {
+  const d = parseLogDate(ngayVal);
+  if (!d) return "";
+  return Utilities.formatDate(d, "GMT+7", "MM_yyyy");
+}
+
+/**
+ * So khớp một giao dịch với tháng chuẩn của sheet.
+ * Trả về:
+ *  { sheetMonthKey, txMonthKey, match, reason }
+ * - match = true: Ngày thuộc đúng tháng chuẩn B1 (hoặc B1 rỗng → coi là hợp lệ)
+ * - match = false: lệch tháng → cần cảnh báo/chuyển sheet
+ */
+function checkMonthMatch_(sheet, ngayVal) {
+  const sheetMonthKey = getSheetMonthKeyFromB1_(sheet);
+  const txMonthKey = getTransactionMonthKey_(ngayVal);
+  if (!sheetMonthKey) {
+    // Chưa thiết lập B1 → không phạt, coi như hợp lệ để không break flow cũ
+    return { sheetMonthKey: "", txMonthKey: txMonthKey, match: true, reason: "THIEU_B1" };
+  }
+  if (!txMonthKey) {
+    // Không đọc được ngày → không đủ căn cứ kết luận sai tháng
+    return { sheetMonthKey: sheetMonthKey, txMonthKey: "", match: true, reason: "THIEU_NGAY" };
+  }
+  const match = sheetMonthKey === txMonthKey;
+  return {
+    sheetMonthKey: sheetMonthKey,
+    txMonthKey: txMonthKey,
+    match: match,
+    reason: match ? "OK" : "LECH_THANG"
+  };
+}
+
+function getMonthLogDataStartRow_(sheet) {
+  const maxRows = Math.min(sheet.getLastRow(), 20);
+  if (maxRows > 0) {
+    const values = sheet.getRange(1, 1, maxRows, Math.min(sheet.getMaxColumns(), 10)).getValues();
+    for (let r = 0; r < values.length; r++) {
+      const row = values[r].map(function (v) { return normalizeSheetName_(v).toLowerCase(); });
+      const hasNgay = row.indexOf("ngày") >= 0;
+      const hasTien = row.indexOf("số tiền") >= 0;
+      const hasTracking = row.indexOf("tracking") >= 0 || row.indexOf("uniquekey") >= 0;
+      if (hasNgay && hasTien && hasTracking) return r + 2;
+    }
+  }
+  return 3;
+}
+
+function getMonthLogRangeInfo_(sheet) {
+  return {
+    sheet: sheet,
+    startRow: getMonthLogDataStartRow_(sheet),
+    startCol: 1,
+    numCols: 9
+  };
+}
+
+function getOrCreateMonthSheets(dateStr) {
+  const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+  const monthKey = getMonthKeyFromDate_(dateStr);
+  const logName = monthSheetName_(monthKey);
+  const reportName = monthReportSheetName_(monthKey);
+
+  let logSheet = ss.getSheetByName(logName);
+  if (!logSheet) {
+    const templateLog = getSheetByGid_(ss, TEMPLATE_LOG_GID) || ss.getSheetByName("Template_Log");
+    if (!templateLog) throw new Error("Không tìm thấy Template_Log");
+    logSheet = templateLog.copyTo(ss).setName(logName);
+    logSheet.showSheet();
+    // Ghi metadata tháng chuẩn: A1 = "Giao dịch tháng", B1 = MM/yyyy
+    logSheet.getRange(getMonthLogTitleCell_()).setValues([["Giao dịch tháng", monthKey.replace("_", "/")]]);
+  }
+
+  let reportSheet = ss.getSheetByName(reportName);
+  if (!reportSheet) {
+    const templateReport = getSheetByGid_(ss, TEMPLATE_BAOCAO_GID) || ss.getSheetByName("Template_BaoCao");
+    if (!templateReport) throw new Error("Không tìm thấy Template_BaoCao");
+    reportSheet = templateReport.copyTo(ss).setName(reportName);
+    reportSheet.showSheet();
+  }
+
+  // Bảo vệ ô B1 (tháng chuẩn) để tránh thay đổi vô ý
+  protectMonthLogB1_(logSheet);
+
+  return { logSheet: logSheet, baoCaoSheet: reportSheet, reportSheet: reportSheet, monthKey: monthKey };
+}
+
+/**
+ * Bảo vệ ô B1 (tháng chuẩn MM/yyyy) trên sheet Log tháng.
+ * Ô này là mã định danh dùng để đối chiếu các trường data, không được phép thay đổi thủ công.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} logSheet
+ */
+function protectMonthLogB1_(logSheet) {
+  if (!logSheet) return;
+
+  const ss = logSheet.getParent();
+  const rangeB1 = logSheet.getRange("B1");
+
+  // Xóa các protection cũ trên ô B1 (nếu có) để tránh trùng lặp
+  const existing = ss.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+  for (let i = 0; i < existing.length; i++) {
+    const p = existing[i];
+    if (p.getRange() && p.getRange().getA1Notation() === "B1" && p.getRange().getSheet().getName() === logSheet.getName()) {
+      p.remove();
+    }
+  }
+
+  // Tạo protection mới chỉ cho ô B1; tài khoản chạy script vẫn có quyền cập nhật.
+  const protection = rangeB1.protect();
+  protection.setDescription('B1 — mã định danh tháng của Log, không thay đổi thủ công');
+  protection.setWarningOnly(false);
+
+  const effectiveUser = Session.getEffectiveUser();
+  const effectiveEmail = effectiveUser.getEmail();
+  if (effectiveEmail) protection.addEditor(effectiveUser);
+
+  const removableEditors = protection.getEditors().filter(function (user) {
+    return user.getEmail() !== effectiveEmail;
+  });
+  if (removableEditors.length) protection.removeEditors(removableEditors);
+  if (protection.canDomainEdit()) protection.setDomainEdit(false);
+}
+
+/**
+ * Áp dụng bảo vệ B1 cho TẤT CẢ Log tháng đã tồn tại.
+ * Chạy khi mở spreadsheet hoặc bấm menu thủ công.
+ */
+function guardAllMonthLogB1_() {
+  const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+  const sheets = ss.getSheets();
+  let count = 0;
+  for (let i = 0; i < sheets.length; i++) {
+    if (isMonthLogSheetName_(sheets[i].getName())) {
+      protectMonthLogB1_(sheets[i]);
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * Nếu người dùng sửa tay B1, hoàn nguyên về giá trị gốc.
+ * Ongoing protection sẽ chặn majority cases; hàm này là lớp an toàn bổ sung.
+ * @param {GoogleAppsScript.Spreadsheet.Spreadsheet} ss
+ */
+function repairTamperedB1_(ss) {
+  if (!ss) return;
+  const sheets = ss.getSheets();
+  const now = new Date();
+  for (let i = 0; i < sheets.length; i++) {
+    const sh = sheets[i];
+    if (!isMonthLogSheetName_(sh.getName())) continue;
+
+    const sheetKey = getSheetMonthKeyFromB1_(sh);
+    const nameKey = getMonthKeyFromSheetName_(sh.getName());
+
+    // B1 rỗng hoặc không khớp tên sheet → phục hồi
+    if (sheetKey !== nameKey) {
+      sh.getRange("B1").setValue(nameKey.replace("_", "/"));
+    }
+  }
+}
+
+// ==========================================
+// 📑 PHẦN: MỤC LỤC THÁNG (sơ đồ điều hướng)
+// ==========================================
+// Sheet "Mục Lục" là bảng điều hướng: mỗi tháng một dòng, kèm GID và HYPERLINK
+// nhảy trực tiếp sang Log / Báo cáo tháng. Sheet này chỉ do script ghi giá trị,
+// không dùng công thức volatile.
+
+/** Lấy (hoặc tạo mới) sheet Mục Lục kèm tiêu đề + header chuẩn. */
+function getOrCreateMucLucSheet_(ss) {
+  let toc = ss.getSheetByName(MUC_LUC_SHEET_NAME);
+  if (!toc) toc = ss.insertSheet(MUC_LUC_SHEET_NAME, 0);
+  const titleCell = toc.getRange(MUC_LUC_TITLE_ROW, 1);
+  if (!normalizeSheetName_(titleCell.getValue())) {
+    titleCell.setValue('📑 MỤC LỤC — Log & Report theo tháng');
+    titleCell.setFontWeight('bold').setFontSize(13);
+  }
+  const headerRange = toc.getRange(MUC_LUC_HEADER_ROW, 1, 1, MUC_LUC_NUM_COLS);
+  if (!normalizeSheetName_(headerRange.getValues()[0][0])) {
+    headerRange.setValues([MUC_LUC_HEADERS]);
+    headerRange.setFontWeight('bold');
+    toc.setFrozenRows(MUC_LUC_HEADER_ROW);
+  }
+  return toc;
+}
+
+/** Đếm số giao dịch thực có trong một Log tháng (dựa trên cột UniqueKey). */
+function countMonthLogRows_(logSheet) {
+  const info = getMonthLogRangeInfo_(logSheet);
+  const lastRow = logSheet.getLastRow();
+  if (lastRow < info.startRow) return 0;
+  const keys = logSheet
+    .getRange(info.startRow, info.startCol + MONTH_LOG_COL.UNIQUE_KEY, lastRow - info.startRow + 1, 1)
+    .getValues();
+  let count = 0;
+  for (let i = 0; i < keys.length; i++) {
+    if (normalizeSheetName_(keys[i][0])) count++;
+  }
+  return count;
+}
+
+/** Dựng một dòng mục lục cho tháng (3 cột: Tháng, Log, Report; link nhảy trực tiếp vào tên ô). */
+function buildMucLucRow_(monthKey, logSheet, reportSheet) {
+  const logName = logSheet.getName();
+  const reportName = reportSheet.getName();
+  const logGid = logSheet.getSheetId();
+  const reportGid = reportSheet.getSheetId();
+  return [
+    monthKey.replace('_', '/'),
+    '=HYPERLINK("#gid=' + logGid + '";"' + logName + '")',
+    '=HYPERLINK("#gid=' + reportGid + '";"' + reportName + '")'
+  ];
+}
+
+/** Tìm dòng của một tháng trong mục lục; trả về số dòng hoặc 0 nếu chưa có. */
+function findMucLucRow_(toc, monthKey) {
+  const lastRow = toc.getLastRow();
+  if (lastRow < MUC_LUC_DATA_START_ROW) return 0;
+  const numRows = lastRow - MUC_LUC_DATA_START_ROW + 1;
+  // Cột LOG hiện là cột B (index 1), nhưng nó chứa công thức HYPERLINK. Ta so sánh bằng tên sheet chuẩn.
+  const target = monthSheetName_(monthKey);
+  const logNames = toc.getRange(MUC_LUC_DATA_START_ROW, MUC_LUC_COL.LOG + 1, numRows, 1).getFormulas();
+  for (let i = 0; i < logNames.length; i++) {
+    const formula = logNames[i][0];
+    if (formula && formula.indexOf(target) !== -1) return MUC_LUC_DATA_START_ROW + i;
+  }
+  return 0;
+}
+
+/**
+ * Đảm bảo một tháng có mặt trong Mục Lục và số liệu được cập nhật.
+ * Nếu chưa có thì thêm dòng mới; nếu đã có thì ghi lại link.
+ */
+function ensureMonthInMucLuc_(monthKey, monthSheets) {
+  if (!monthKey || !monthSheets || !monthSheets.logSheet || !monthSheets.reportSheet) return;
+  const ss = monthSheets.logSheet.getParent();
+  const toc = getOrCreateMucLucSheet_(ss);
+  const values = [buildMucLucRow_(monthKey, monthSheets.logSheet, monthSheets.reportSheet)];
+  let row = findMucLucRow_(toc, monthKey);
+  if (!row) {
+    const lastRow = toc.getLastRow();
+    row = lastRow < MUC_LUC_DATA_START_ROW ? MUC_LUC_DATA_START_ROW : lastRow + 1;
+  }
+  toc.getRange(row, 1, 1, MUC_LUC_NUM_COLS).setValues(values);
+}
+
+/**
+ * Tạo Log/Report cho một tháng và ghi vào Mục Lục.
+ * Không truyền tham số → dùng tháng hiện tại (chạy trực tiếp từ Apps Script IDE).
+ */
+function initMonth(dateStr) {
+  const target = dateStr || Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy");
+  const monthSheets = getOrCreateMonthSheets(target);
+  ensureMonthInMucLuc_(monthSheets.monthKey, monthSheets);
+  SpreadsheetApp.flush();
+  return "Đã sẵn sàng tháng " + monthSheets.monthKey.replace('_', '/');
+}
+
+/** Menu: tạo tháng hiện tại + cập nhật mục lục, có thông báo cho người dùng. */
+function initMonthHienTai() {
+  const msg = initMonth();
+  try { SpreadsheetApp.getActive().toast(msg, 'Mục Lục', 5); } catch (e) { /* chạy ngoài UI */ }
+  return msg;
+}
+
+/** Quét toàn bộ sheet Log_MM_yyyy đang có và dựng lại Mục Lục từ đầu. */
+function rebuildMucLuc() {
+  const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+  const toc = getOrCreateMucLucSheet_(ss);
+  const monthKeys = ss.getSheets()
+    .map(function (sheet) { return getMonthKeyFromSheetName_(sheet.getName()); })
+    .filter(Boolean)
+    .sort(function (a, b) {
+      const pa = a.split('_');
+      const pb = b.split('_');
+      return (pa[1] + pa[0]).localeCompare(pb[1] + pb[0]);
+    });
+
+  const lastRow = toc.getLastRow();
+  if (lastRow >= MUC_LUC_DATA_START_ROW) {
+    toc.getRange(MUC_LUC_DATA_START_ROW, 1, lastRow - MUC_LUC_DATA_START_ROW + 1, MUC_LUC_NUM_COLS).clearContent();
+  }
+
+  const rows = [];
+  for (let i = 0; i < monthKeys.length; i++) {
+    const monthKey = monthKeys[i];
+    const logSheet = ss.getSheetByName(monthSheetName_(monthKey));
+    const reportSheet = ss.getSheetByName(monthReportSheetName_(monthKey));
+    if (!logSheet || !reportSheet) continue;
+    rows.push(buildMucLucRow_(monthKey, logSheet, reportSheet));
+  }
+  if (rows.length) {
+    toc.getRange(MUC_LUC_DATA_START_ROW, 1, rows.length, MUC_LUC_NUM_COLS).setValues(rows);
+  }
+  SpreadsheetApp.flush();
+  const msg = "Đã dựng lại Mục Lục: " + rows.length + " tháng.";
+  try { SpreadsheetApp.getActive().toast(msg, 'Mục Lục', 5); } catch (e) { /* chạy ngoài UI */ }
+  return msg;
+}
+
+/**
+ * Click vào cột Tháng (cột A) trong Mục Lục → mở ngay Log tháng đó.
+ * Simple trigger, không cần cài đặt thủ công.
+ */
+function onSelectionChange(e) {
+  if (!e || !e.range) return;
+  const sheet = e.range.getSheet();
+  if (sheet.getName() !== MUC_LUC_SHEET_NAME) return;
+  if (e.range.getColumn() !== MUC_LUC_COL.THANG + 1) return; // chỉ cột A (Tháng)
+  const row = e.range.getRow();
+  if (row < MUC_LUC_DATA_START_ROW) return;
+  // Cột LOG là cột B, chứa công thức HYPERLINK. Lấy tên sheet từ công thức.
+  const formula = sheet.getRange(row, MUC_LUC_COL.LOG + 1).getFormula();
+  if (!formula) return;
+  const match = formula.match(/"([^"]+)"/);
+  const logName = match ? match[1] : null;
+  if (logName) {
+    const target = sheet.getParent().getSheetByName(logName);
+    if (target) target.activate();
+  }
+}
+
+function makeMonthLogRow_(item, data) {
+  return [
+    data.ngay_gd,
+    data.phan_loai,
+    data.so_tien,
+    data.vi || "Chưa phân loại",
+    data.doi_tuong || "Chưa phân loại",
+    data.danh_muc_con || "Chưa phân loại",
+    data.ghi_chu || "",
+    item.uniqueKey,
+    data.status || ""
+  ];
+}
+
+function appendRowsToMonthLog_(sheet, rows) {
+  if (!rows || !rows.length) return 0;
+  const info = getMonthLogRangeInfo_(sheet);
+  const requiredCols = info.startCol + info.numCols - 1;
+  if (sheet.getMaxColumns() < requiredCols) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), requiredCols - sheet.getMaxColumns());
+  }
+
+  let lastDataRow = sheet.getLastRow();
+  if (lastDataRow < info.startRow) lastDataRow = info.startRow - 1;
+  const dummyRow = lastDataRow + 1;
+  sheet.insertRowsBefore(dummyRow, rows.length);
+  const targetRow = dummyRow;
+  const formatSource = sheet.getRange(targetRow + rows.length, info.startCol, 1, info.numCols);
+  const formatTarget = sheet.getRange(targetRow, info.startCol, rows.length, info.numCols);
+  formatSource.copyTo(formatTarget, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+  sheet.getRange(targetRow, info.startCol, rows.length, info.numCols).setValues(rows);
+  return rows.length;
 }
 
 function saveAiLearning(sourceText, before, after, context) {
@@ -2198,22 +2975,39 @@ function getLiveData() {
     
     let history = [];
     const logRange = ss.getRangeByName("Log");
-    
-    if (logRange) {
+
+    const currentMonthKey = getCurrentMonthKey_();
+    const currentLogName = monthSheetName_(currentMonthKey);
+    const currentLogSheet = ss.getSheetByName(currentLogName);
+
+    if (currentLogSheet) {
+      const info = getMonthLogRangeInfo_(currentLogSheet);
+      const lastRow = currentLogSheet.getLastRow();
+      if (lastRow >= info.startRow) {
+        const fetchRows = Math.min(100, lastRow - info.startRow + 1);
+        const fetchStartRow = lastRow - fetchRows + 1;
+        let rawData = currentLogSheet.getRange(fetchStartRow, info.startCol, fetchRows, info.numCols).getValues();
+        rawData.reverse();
+        history = rawData
+          .filter(row => row[MONTH_LOG_COL.SO_TIEN] !== "" && row[MONTH_LOG_COL.STATUS] !== "CHECK")
+          .slice(0, 20)
+          .map(row => `${row[MONTH_LOG_COL.VI]} | ${row[MONTH_LOG_COL.DOI_TUONG]} | ${row[MONTH_LOG_COL.DANH_MUC_CON]} | ${row[MONTH_LOG_COL.PHAN_LOAI]}`);
+      }
+    } else if (logRange) {
       const logSheet = logRange.getSheet();
       const startRow = logRange.getRow();
       const startCol = logRange.getColumn();
       const totalRows = logRange.getNumRows();
 
-      const fetchRows = Math.min(100, totalRows); 
-      
+      const fetchRows = Math.min(100, totalRows);
+
       if (fetchRows > 0) {
         const fetchStartRow = startRow + totalRows - fetchRows;
         let rawData = logSheet.getRange(fetchStartRow, startCol, fetchRows, 10).getValues();
         rawData.reverse();
         history = rawData
           .filter(row => row[LOG_COL.SO_TIEN] !== "" && row[LOG_COL.STATUS] !== "CHECK")
-          .slice(0, 20) 
+          .slice(0, 20)
           .map(row => `${row[LOG_COL.VI]} | ${row[LOG_COL.DOI_TUONG]} | ${row[LOG_COL.DANH_MUC_CON]} | ${row[LOG_COL.PHAN_LOAI]}`);
       }
     }
@@ -2407,6 +3201,95 @@ function addToBaoBucket(bucket, soTien, isCheck) {
   }
   if (soTien > 0) bucket.thu += soTien;
   else if (soTien < 0) bucket.chi += soTien;
+}
+
+function getCategoryParentMap_(ss) {
+  const map = {};
+  const range = ss.getRangeByName("Category");
+  if (!range) return map;
+  const values = range.getValues();
+  for (let i = 0; i < values.length; i++) {
+    const parent = normalizeSheetName_(values[i][0]);
+    const child = normalizeSheetName_(values[i][1]);
+    if (!child || map[child]) continue;
+    map[child] = parent || "Chưa phân loại";
+  }
+  return map;
+}
+
+function addToGroupBucket_(groups, key, soTien, isCheck) {
+  const name = normalizeSheetName_(key) || "Chưa phân loại";
+  if (!groups[name]) groups[name] = emptyBaoBucket();
+  addToBaoBucket(groups[name], soTien, isCheck);
+}
+
+function groupsToRows_(groups) {
+  return Object.keys(groups).sort().map(function (name) {
+    const b = groups[name];
+    return [name, b.thu, b.chi, b.thu + b.chi];
+  });
+}
+
+function setBlockValues_(sheet, startRow, startCol, numCols, values) {
+  const clearRows = Math.max(1, sheet.getMaxRows() - startRow + 1);
+  sheet.getRange(startRow, startCol, clearRows, numCols).clearContent();
+  if (values && values.length) {
+    sheet.getRange(startRow, startCol, values.length, numCols).setValues(values);
+  }
+}
+
+function rebuildBaoCaoThang(monthKey) {
+  const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+  const key = normalizeSheetName_(monthKey) || getCurrentMonthKey_();
+  const logSheet = ss.getSheetByName(monthSheetName_(key));
+  if (!logSheet) return "Không tìm thấy " + monthSheetName_(key);
+  const baoSheet = (getOrCreateMonthSheets("01/" + key.replace("_", "/"))).baoCaoSheet;
+  const info = getMonthLogRangeInfo_(logSheet);
+  const lastRow = logSheet.getLastRow();
+  const total = emptyBaoBucket();
+  const byWallet = {};
+  const byUser = {};
+  const byParent = {};
+  const byChild = {};
+  const parentMap = getCategoryParentMap_(ss);
+  let count = 0;
+
+  if (lastRow >= info.startRow) {
+    const values = logSheet.getRange(info.startRow, info.startCol, lastRow - info.startRow + 1, info.numCols).getValues();
+    for (let r = 0; r < values.length; r++) {
+      const row = values[r];
+      const soTien = Number(row[MONTH_LOG_COL.SO_TIEN]);
+      if (!soTien || isNaN(soTien)) continue;
+      const status = normalizeSheetName_(row[MONTH_LOG_COL.STATUS]).toUpperCase();
+      const isCheck = status.indexOf("CHECK") >= 0;
+      const child = normalizeSheetName_(row[MONTH_LOG_COL.DANH_MUC_CON]) || "Chưa phân loại";
+      const parent = parentMap[child] || "Chưa phân loại";
+      count++;
+      addToBaoBucket(total, soTien, isCheck);
+      addToGroupBucket_(byWallet, row[MONTH_LOG_COL.VI], soTien, isCheck);
+      addToGroupBucket_(byUser, row[MONTH_LOG_COL.DOI_TUONG], soTien, isCheck);
+      addToGroupBucket_(byParent, parent, soTien, isCheck);
+      addToGroupBucket_(byChild, child, soTien, isCheck);
+    }
+  }
+
+  baoSheet.getRange("A1:B1").setValues([["Báo cáo tháng", key.replace("_", "/")]]);
+  baoSheet.getRange("A3").setValue("Tổng quan tháng");
+  baoSheet.getRange("A4:A8").setValues([["Thu"], ["Chi"], ["Lãi/Lỗ"], ["Cần xác nhận"], ["Số giao dịch"]]);
+  baoSheet.getRange("B4:B8").setValues([[total.thu], [total.chi], [total.thu + total.chi], [total.check], [count]]);
+  setBlockValues_(baoSheet, 11, 1, 4, groupsToRows_(byWallet));
+  setBlockValues_(baoSheet, 11, 6, 4, groupsToRows_(byUser));
+  setBlockValues_(baoSheet, 11, 11, 4, groupsToRows_(byParent));
+  setBlockValues_(baoSheet, 11, 16, 4, groupsToRows_(byChild));
+  
+  const numberFormat = "#.##0";
+  const blockRows = baoSheet.getMaxRows() - 10;
+  baoSheet.getRange("B4:B8").setNumberFormat(numberFormat);
+  [2, 7, 12, 17].forEach(function (startCol) {
+    baoSheet.getRange(11, startCol, blockRows, 3).setNumberFormat(numberFormat);
+  });
+  SpreadsheetApp.flush();
+  return true;
 }
 
 /** Đọc Log 1 lần → ghi Bao Cao v2!A2:E5 (D=B+C). Menu + /report. */
