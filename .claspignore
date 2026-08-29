@@ -1,0 +1,6 @@
+# Only the Apps Script sources are pushed to the GAS project.
+# Everything else here stays local to the dev environment.
+**/**
+!Code.gs
+!configui.html
+!appsscript.json

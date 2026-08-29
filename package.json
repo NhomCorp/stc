@@ -1,0 +1,20 @@
+{
+  "name": "stc",
+  "version": "2.0.0",
+  "description": "Sổ Thu Chi AI v2 — Google Apps Script Telegram/Gemini/Sheets bot",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "lint": "eslint \"**/*.gs\"",
+    "check": "for f in *.gs; do cp \"$f\" \"/tmp/${f%.gs}.js\" && node --check \"/tmp/${f%.gs}.js\" && echo \"syntax ok: $f\"; done",
+    "validate": "npm run check && npm run lint",
+    "push": "clasp push",
+    "pull": "clasp pull",
+    "deploy": "clasp deploy"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0"
+  }
+}
