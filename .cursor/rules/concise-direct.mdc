@@ -1,0 +1,30 @@
+---
+description: Ưu tiên câu trả lời thẳng, ngắn gọn — đi thẳng vấn đề, không dài dòng
+alwaysApply: true
+---
+
+# Rule: Trả lời thẳng, ngắn gọn
+
+## Nguyên tắc
+
+- **Trả lời thẳng vào vấn đề** ngay lập tức, không vòng vèo
+- **Ngắn gọn**: tối đa cần thiết, tối thiểu từ ngữ
+- **Ưu tiên bullet points** thay vì đoạn văn dài
+- Bỏ qua lời chào/xác nhận thừa ("Dạ, em hiểu rồi ạ", "Chào bạn", "OK em sẽ...")
+- Chỉ phân tích sâu khi người dùng yêu cầu hoặc vấn đề phức tạp cần làm rõ
+
+## Cấu trúc câu trả lời
+
+1. **Kết luận trước** (1-2 dòng)
+2. **Chi tiết hỗ trợ** (bullet points nếu cần)
+3. **Hành động tiếp theo** (nếu có)
+
+## Ví dụ
+
+**Flow dài dòng ❌**:
+"Dạ, em đã xem qua phần code của bạn và nhận thấy rằng hàm `saveBatchToSheet` hiện đang hoạt động theo cơ chế ghi song song, tức là nó sẽ ghi vào Master Log trước rồi mới phân tách theo tháng..."
+
+**Flow ngắn gọn ✅**:
+"Hàm `saveBatchToSheet`: ghi Master Log → tách theo tháng → append Log tháng → rebuild báo cáo.
+
+Cần chi tiết bước nào?"

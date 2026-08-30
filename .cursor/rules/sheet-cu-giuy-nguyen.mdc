@@ -1,0 +1,47 @@
+---
+description: Sheet Cũ giữ nguyên — code/flow liên quan không được động vào, để vận hành theo nguyên gốc
+alwaysApply: true
+---
+
+# Sheet Cũ — Giữ nguyên tuyệt đối
+
+Code và flow liên quan đến các sheet Cũ **giữ nguyên tuyệt đối**, không
+được sửa, không động vào, để bộ máy cũ vận hành theo nguyên gốc.
+Khi nào có bug ở bộ máy cũ thì sửa sau — hiện tại vẫn đang hoạt động OK.
+
+## Sheet Cũ (bảo vệ tuyệt đối)
+
+### Sheet chính (code cũ đang ghi/đọc)
+
+| Sheet | GID | Trạng thái |
+|-------|-----|-----------|
+| Giao dịch_v2 | `2063390740` | Code cũ đang dùng — không động vào |
+| Bao cao_v2 | `1475474497` | Code cũ đang dùng — không động vào |
+| Tóm tắt_v2 | `129580313` | Code cũ đang dùng — không động vào |
+
+### Sheet phụ (bổ trợ cho code cũ)
+
+| Sheet | GID | Trạng thái |
+|-------|-----|-----------|
+| Alias | `1498755942` | Code cũ đang đọc — không động vào |
+| AI_Learning | `203251644` | Code cũ đang đọc/ghi — không động vào |
+| Quet Mail | `2033507127` | Code cũ đang đọc — không động vào |
+| Nháp | `352148465` | Không quan tâm |
+
+## Sheet Mới (tự do phát triển)
+
+- `Mục Lục`, `Template_Log`, `Template_Report`
+- `Log_MM_YYYY`, `Report_MM_YYYY` (nhân bản từ template)
+- Bất kỳ sheet nào **không nằm trong bảng Sheet Cũ ở trên**
+- Quy ước đặt tên: dùng `Template_Report` (không dùng `Template_BaoCao`)
+
+## Quy tắc bắt buộc
+
+1. **Không được** sửa code/flow đang ghi hoặc đọc các Sheet Cũ.
+2. **Không được** thay đổi cấu trúc (cột, header, định dạng, Named Range, công thức).
+3. **Không được** xóa dữ liệu đã có trên các Sheet Cũ.
+4. **Không được** đổi tên, di chuyển, hoặc ẩn các Sheet Cũ.
+5. **Không được** thay đổi Protected Range / quyền sửa.
+6. Code mới (nếu có) phải dùng **Sheet Mới**, không đè lên Sheet Cũ.
+7. Flow cũ có thể **tham khảo** để thiết kế bộ máy mới, nhưng không sửa trực tiếp flow cũ.
+8. Nếu phát hiện Sheet Cũ bị thay đổi cấu trúc/dữ liệu → **không tự hoàn nguyên**, báo cáo người dùng.

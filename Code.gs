@@ -33,9 +33,13 @@ const MONTH_LOG_COL = {
 
 const AI_LEARNING_SHEET = 'AI_Learning';
 const ALIAS_SHEET_GID = 1498755942;
-const TEMPLATE_BAOCAO_GID = 56513848;
+const TEMPLATE_REPORT_GID = 56513848;
 const TEMPLATE_LOG_GID = 192263148;
 const BAO_CAO_SHEET = 'Bao Cao v2';
+const REPORT_REFRESH_TRIGGER_HANDLER = 'runScheduledReportRefresh';
+const REPORT_REFRESH_INTERVAL_MINUTES = 15;
+const LOG_MONTH_TITLE = 'Thu Chi tháng';
+const REPORT_MONTH_TITLE = 'Báo cáo tháng:';
 
 // 📑 MỤC LỤC THÁNG — sheet điều hướng: liệt kê Log/Báo cáo từng tháng kèm GID + link
 const MUC_LUC_SHEET_NAME = 'Mục Lục';
@@ -44,6 +48,12 @@ const MUC_LUC_HEADER_ROW = 2;       // A2:H2: tên cột
 const MUC_LUC_DATA_START_ROW = 3;   // A3 trở đi: dữ liệu từng tháng
 const MUC_LUC_NUM_COLS = 3;
 const MUC_LUC_HEADERS = ['Tháng', 'Log', 'Report'];
+
+// 📒 Log_Chuyen — lịch sử di chuyển giao dịch lệch tháng (sheet mới, không đụng Sheet Cũ)
+const LOG_CHUYEN_SHEET_NAME = 'Log_Chuyen';
+const LOG_CHUYEN_HEADERS = ['Thời gian', 'UNIQUE_KEY', 'Ngày GD', 'Từ sheet', 'Sang sheet', 'Trạng thái', 'Ghi chú'];
+const MANUAL_KEY_PREFIX = 'MAN_';
+const MONTH_MISMATCH_BG = '#f4cccc';
 const MUC_LUC_COL = {
   THANG: 0,
   LOG: 1,
@@ -286,9 +296,9 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu('💎 Sổ Thu Chi v2')
     .addItem('⚙️ Cấu hình AI & Bot', 'showConfigDialog')
     .addItem('📧 Quét Mail thủ công', 'triggerScanMailUI')
-    .addItem('📅 Tạo Log & Report tháng hiện tại', 'initMonthHienTai')
+    .addItem('📅 Tạo Log & Report (Tuỳ chọn tháng)', 'showInitMonthDialog')
     .addItem('📊 Báo cáo', 'rebuildTatCaBaoCao')
-    .addItem('📑 Dựng lại Mục Lục', 'rebuildMucLuc')
+    .addItem('🧹 Gộp Chuẩn Hóa (Quét & Sửa Lỗi)', 'runAllNormalizationTasksUI')
     .addItem('🔒 Khoá/Bảo vệ Log tháng (B1)', 'guardAllMonthLogB1UI')
     .addToUi();
   try {
@@ -320,6 +330,87 @@ function rebuildTatCaBaoCao() {
   const ketQuaChung = rebuildBaoCao();
   if (ketQuaChung !== true && String(ketQuaChung).indexOf('Đã cập nhật') !== 0) return ketQuaChung;
   return rebuildBaoCaoThang(getCurrentMonthKey_());
+}
+
+/**
+ * Chuẩn hóa sheet tháng cũ theo Template_Report hiện tại.
+ * Chạy thủ công từ menu một lần; không gọi trong onOpen.
+ */
+function normalizeExistingMonthSheets() {
+  const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+  const templateReport = getSheetByGid_(ss, TEMPLATE_REPORT_GID) || ss.getSheetByName('Template_Report') || ss.getSheetByName('Template_BaoCao');
+  if (!templateReport) throw new Error('Không tìm thấy Template_Report.');
+
+  const monthKeys = ss.getSheets()
+    .map(function (sheet) { return getMonthKeyFromSheetName_(sheet.getName()); })
+    .filter(Boolean);
+  if (!monthKeys.length) return 'Không có sheet Log_MM_YYYY để chuẩn hóa.';
+
+  const reportSheets = monthKeys.map(function (monthKey) {
+    return ss.getSheetByName(monthReportSheetName_(monthKey));
+  }).filter(Boolean);
+
+  // Bảo toàn dữ liệu Log; chỉ chuẩn hóa metadata tháng.
+  monthKeys.forEach(function (monthKey) {
+    const logSheet = ss.getSheetByName(monthSheetName_(monthKey));
+    // Ghi cả title (A1) và month key (B1) cùng lúc để tránh điền toàn row 1
+    logSheet.getRange(getMonthLogTitleCell_()).setValues([[LOG_MONTH_TITLE, monthKey.replace('_', '/')]]);
+  });
+
+  // Xóa Report cũ trước khi clone để tên Report_MM_YYYY không bị trùng.
+  reportSheets.forEach(function (reportSheet) { ss.deleteSheet(reportSheet); });
+
+  // getOrCreateMonthSheets sẽ clone từng Report từ Template_Report mới.
+  monthKeys.forEach(function (monthKey) {
+    getOrCreateMonthSheets('01/' + monthKey.replace('_', '/'));
+    rebuildBaoCaoThang(monthKey);
+  });
+
+  rebuildMucLuc();
+  SpreadsheetApp.flush();
+  const msg = 'Đã chuẩn hóa ' + monthKeys.length + ' Log và tạo lại ' + reportSheets.length + ' Report theo Template_Report.';
+  try { SpreadsheetApp.getActive().toast(msg, 'Chuẩn hóa sheet tháng', 8); } catch (e) {}
+  return msg;
+}
+
+function setTrigger() {
+  try {
+    const triggers = ScriptApp.getProjectTriggers();
+    let found = false;
+    for (let i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === REPORT_REFRESH_TRIGGER_HANDLER) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      ScriptApp.newTrigger(REPORT_REFRESH_TRIGGER_HANDLER)
+        .timeBased()
+        .everyMinutes(REPORT_REFRESH_INTERVAL_MINUTES)
+        .create();
+    }
+    const msg = 'Đã bật tự cập nhật Report mỗi ' + REPORT_REFRESH_INTERVAL_MINUTES + ' phút.';
+    try { SpreadsheetApp.getActive().toast(msg, 'Report', 5); } catch (e) {}
+    return msg;
+  } catch (e) {
+    const msg = 'Không bật được trigger tự cập nhật Report: ' + (e && e.message ? e.message : e);
+    try { SpreadsheetApp.getActive().toast(msg, 'Report', 8); } catch (e2) {}
+    return msg;
+  }
+}
+
+function runScheduledReportRefresh() {
+  const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+  
+  // Dựng lại Mục Lục
+  rebuildMucLuc();
+  
+  const monthKeys = ss.getSheets()
+    .map(function (sheet) { return getMonthKeyFromSheetName_(sheet.getName()); })
+    .filter(Boolean);
+  const results = monthKeys.map(function (monthKey) { return rebuildBaoCaoThang(monthKey); });
+  const overall = rebuildBaoCao();
+  return { overall: overall, monthReports: results.length, mucLucRebuilt: true };
 }
 
 // ==========================================
@@ -372,13 +463,19 @@ function onEdit(e) {
   const editStartCol = range.getColumn();
   const editEndCol = editStartCol + range.getNumColumns() - 1;
   
-  // Chỉ xử lý khi vùng sửa giao cột Phân loại, Số tiền, HOẶC Ngày
+  // Chỉ xử lý khi vùng sửa giao cột Phân loại, Số tiền, Ngày,
+  // hoặc (Log tháng) bất kỳ cột data — để auto điền UNIQUE_KEY khi trống.
   const isDateEdit = editEndCol >= colNgay && editStartCol <= colNgay;
   const isTypeOrAmountEdit = editEndCol >= colPhanLoai && editStartCol <= colSoTien;
-  if (!isDateEdit && !isTypeOrAmountEdit) return;
+  let isMonthLogTouch = false;
+  if (colMap === MONTH_LOG_COL) {
+    const colLast = startCol + MONTH_LOG_COL.STATUS;
+    isMonthLogTouch = editEndCol >= startCol && editStartCol <= colLast;
+  }
+  if (!isDateEdit && !isTypeOrAmountEdit && !isMonthLogTouch) return;
 
   const r0 = Math.max(range.getRow(), logStartRow);
-  const r1 = Math.min(range.getRow() + range.getNumRows() - 1, logEndRow);
+  const r1 = Math.min(range.getRow() + range.getNumRows() - 1, Math.max(logEndRow, range.getRow() + range.getNumRows() - 1));
   if (r0 > r1) return;
 
   const n = r1 - r0 + 1;
@@ -442,6 +539,17 @@ function onEdit(e) {
   if (changed) {
     sheet.getRange(r0, colSoTien, n, 1).setValues(out);
   }
+
+  // Log tháng: quản lý và bảo vệ mã UNIQUE_KEY (hoàn nguyên nếu bị sửa/xóa tay, tự cấp MAN_ nếu trống, xóa mã nếu cả dòng bị xóa)
+  if (colMap === MONTH_LOG_COL) {
+    syncAndGuardMonthLogKeys_(sheet, r0, n, e);
+  }
+
+  // Log tháng: tô đỏ cả dòng nếu Ngày lệch tháng chuẩn B1; đúng tháng thì bỏ nền cảnh báo.
+  if (isDateEdit && colMap === MONTH_LOG_COL) {
+    highlightMonthMismatchRows_(sheet, r0, n);
+  }
+
   if (monthKeys.length) {
     monthKeys.forEach(function (mk) { if (mk) rebuildBaoCaoThang(mk); });
     rebuildBaoCao();
@@ -515,12 +623,16 @@ function doPost(e) {
 
   if (text.startsWith('/')) {
     if (text === '/start' || text.indexOf('/start') === 0) {
+      // Tự động lưu chatId vào Script Properties để dùng cho Trigger tự động
+      try {
+        PROP.setProperty('chat_id', String(chatId));
+      } catch (e) {}
+
       // remove_keyboard: gỡ Reply Keyboard cũ (Tháng này / 3 tháng…) còn dính trên mobile
-      sendMessage(chatId, "🤖 Bot Sổ Thu Chi AI v2 sẵn sàng!\nGửi ảnh/text/voice. Case rõ → ghi ngay (Sửa/Hoàn tác trong 24h); mơ hồ → chờ xác nhận.\nReply tin GD: <code>ví MB</code>, <code>380k</code>, <code>hủy</code>…", { remove_keyboard: true });
+      sendMessage(chatId, "🤖 Bot Sổ Thu Chi AI v2 sẵn sàng!\nĐã kết nối và lưu chat ID của bạn.\nGửi ảnh/text/voice. Case rõ → ghi ngay (Sửa/Hoàn tác trong 24h); mơ hồ → chờ xác nhận.\nReply tin GD: <code>ví MB</code>, <code>380k</code>, <code>hủy</code>…", { remove_keyboard: true });
       return;
     }
     if (text === '/report' || text.indexOf('/report') === 0) {
-      rebuildBaoCao();
       sendTodayReport(chatId);
       return;
     }
@@ -669,6 +781,17 @@ function handleCallbackQuery(cq) {
     // F:txId:idx:field
     const idx = parseInt(parts[2], 10);
     const field = parts[3];
+    if (field === "pl") {
+      // Toggle Thu/Chi ngay lập tức (1 chạm)
+      const sess = getEditSession(txId, idx) || openEditSession(txId, idx);
+      if (sess) {
+        const current = sess.draft.phan_loai || "Chi";
+        const next = current === "Thu" ? "Chi" : "Thu";
+        applyToEditSession(sess, { phan_loai: next });
+        showEditMenu(chatId, messageId, txId, idx);
+      }
+      return;
+    }
     beginFieldEdit(chatId, messageId, txId, idx, field);
     return;
   }
@@ -818,6 +941,8 @@ function showEditMenu(chatId, messageId, txId, idx) {
   }
   const d = sess.draft;
   const dirty = diffSnapshots(snapshotTx(sess.base), snapshotTx(sess.draft)).length > 0;
+  const currentType = d.phan_loai || "Chi";
+  const toggleLabel = currentType === "Thu" ? "🔴 Đổi sang Chi" : "🔵 Đổi sang Thu";
   let text = "✏️ <b>Phiên sửa GD #" + (idx + 1) + "</b>" + (dirty ? " · có nháp chưa lưu" : "") + "\n" +
     formatOneTx(d) + "\n\nChọn field hoặc sửa nhanh — gom vào nháp, rồi bấm Lưu vào sổ.";
   const rows = [
@@ -831,7 +956,7 @@ function showEditMenu(chatId, messageId, txId, idx) {
       { text: "👤 Đối tượng", callback_data: "F:" + txId + ":" + idx + ":dt" }
     ],
     [
-      { text: "Thu/Chi", callback_data: "F:" + txId + ":" + idx + ":pl" },
+      { text: toggleLabel, callback_data: "F:" + txId + ":" + idx + ":pl" },
       { text: "Ngày", callback_data: "F:" + txId + ":" + idx + ":ng" },
       { text: "Ghi chú", callback_data: "F:" + txId + ":" + idx + ":gc" }
     ]
@@ -1589,25 +1714,35 @@ function escapeHtml(s) {
 
 function scheduleClearCommittedKeyboard(chatId, messageId) {
   if (!chatId || !messageId) return;
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(5000);
     let list = [];
     const raw = PROP.getProperty("PENDING_CLEAR_KEYBOARDS");
     if (raw) {
       try { list = JSON.parse(raw); if (!Array.isArray(list)) list = []; } catch (e) { list = []; }
     }
-    const expireAt = Date.now() + (UNDO_TTL * 1000);
-    list.push({ chatId: String(chatId), messageId: messageId, expireAt: expireAt });
-    // Giữ tối đa 50 item gần nhất để tránh phình to Script Properties
-    if (list.length > 50) list = list.slice(list.length - 50);
+    // Lưu timestamp theo giây (epoch sec) để tiết kiệm dung lượng, hỗ trợ tương thích cả format cũ và mới
+    const expireAtSec = Math.floor((Date.now() + (UNDO_TTL * 1000)) / 1000);
+    list.push({ c: String(chatId), m: messageId, t: expireAtSec });
+    
+    // Tăng sức chứa lên tối đa 200 item gần nhất
+    if (list.length > 200) list = list.slice(list.length - 200);
     PROP.setProperty("PENDING_CLEAR_KEYBOARDS", JSON.stringify(list));
+  } catch (e) {
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
 
-    // Đảm bảo có sẵn duy nhất 1 trigger định kỳ quét gỡ nút (mỗi 1 giờ)
-    ensureClearKeyboardTrigger();
-  } catch (e) {}
+  // Đảm bảo có sẵn duy nhất 1 trigger định kỳ quét gỡ nút (mỗi 1 giờ)
+  ensureClearKeyboardTrigger();
 }
 
 function ensureClearKeyboardTrigger() {
   try {
+    // Kiểm tra cờ trước để tránh gọi getProjectTriggers() tốn tài nguyên mỗi lần ghi sổ
+    if (PROP.getProperty("HAS_CLEAR_KB_TRIGGER") === "1") return;
+
     const triggers = ScriptApp.getProjectTriggers();
     let found = false;
     for (let i = 0; i < triggers.length; i++) {
@@ -1622,32 +1757,67 @@ function ensureClearKeyboardTrigger() {
         .everyHours(1)
         .create();
     }
+    PROP.setProperty("HAS_CLEAR_KB_TRIGGER", "1");
   } catch (e) {}
 }
 
-/** Trigger định kỳ mỗi giờ: quét và gỡ nút Sửa/Hoàn tác quá hạn 24h, tránh vượt trần 20 trigger */
+/** Trigger định kỳ mỗi giờ: quét và gỡ nút Sửa/Hoàn tác quá hạn 24h bằng batch fetchAll */
 function runClearCommittedKeyboardInterval() {
+  const lock = LockService.getScriptLock();
   try {
+    lock.waitLock(10000);
     const raw = PROP.getProperty("PENDING_CLEAR_KEYBOARDS");
     if (!raw) return;
     let list = [];
     try { list = JSON.parse(raw); if (!Array.isArray(list)) list = []; } catch (e) { return; }
     if (list.length === 0) return;
 
-    const now = Date.now();
+    const nowSec = Math.floor(Date.now() / 1000);
     const remaining = [];
+    const clearRequests = [];
+    const token = PROP.getProperty('bot_token');
+
     for (let i = 0; i < list.length; i++) {
       const item = list[i];
-      if (now >= item.expireAt) {
-        try {
-          clearInlineKeyboard(item.chatId, item.messageId);
-        } catch (err) {}
+      // Hỗ trợ cả schema mới (c, m, t) lẫn cũ (chatId, messageId, expireAt)
+      const cId = item.c || item.chatId;
+      const mId = item.m || item.messageId;
+      let expSec = item.t;
+      if (expSec === undefined && item.expireAt) {
+        expSec = Math.floor(item.expireAt / 1000);
+      }
+
+      if (nowSec >= expSec) {
+        if (token && cId && mId) {
+          clearRequests.push({
+            url: "https://api.telegram.org/bot" + token + "/editMessageReplyMarkup",
+            method: "post",
+            contentType: "application/json",
+            payload: JSON.stringify({
+              chat_id: cId,
+              message_id: mId,
+              reply_markup: { inline_keyboard: [] }
+            }),
+            muteHttpExceptions: true
+          });
+        }
       } else {
         remaining.push(item);
       }
     }
+
+    // Gọi API Telegram song song bằng fetchAll để tối ưu tốc độ mạng
+    if (clearRequests.length > 0) {
+      try {
+        UrlFetchApp.fetchAll(clearRequests);
+      } catch (err) {}
+    }
+
     PROP.setProperty("PENDING_CLEAR_KEYBOARDS", JSON.stringify(remaining));
-  } catch (err) {}
+  } catch (err) {
+  } finally {
+    try { lock.releaseLock(); } catch (e) {}
+  }
 }
 
 /** Tương thích trigger one-shot cũ (CLR_KB_<uid>) — tự xóa sau khi chạy */
@@ -2478,7 +2648,7 @@ const MONTH_LOG_META_ROW = 1;
 const MONTH_LOG_TITLE_COL = 1;   // A1
 const MONTH_LOG_MONTH_COL = 2;   // B1
 
-function getMonthLogTitleCell_() { return "A" + MONTH_LOG_META_ROW + ":" + MONTH_LOG_META_ROW; }
+function getMonthLogTitleCell_() { return "A" + MONTH_LOG_META_ROW + ":B" + MONTH_LOG_META_ROW; }
 function getMonthLogMonthCell_() { return "B" + MONTH_LOG_META_ROW; }
 
 /** Đọc tháng chuẩn của sheet từ B1. Trả về MM_yyyy, hoặc "" nếu rỗng/không hợp lệ. */
@@ -2490,6 +2660,10 @@ function getSheetMonthKeyFromB1_(sheet) {
 
 /** Chuẩn hóa mọi giá trị tháng về MM_yyyy (dùng nội bộ). */
 function normalizeMonthKey_(raw) {
+  // Nếu B1 là Date object (Google Sheets tự convert "08/2026" → Date) → format thẳng
+  if (raw instanceof Date && !isNaN(raw.getTime())) {
+    return Utilities.formatDate(raw, "GMT+7", "MM_yyyy");
+  }
   const s = normalizeSheetName_(raw).trim();
   if (!s) return "";
   // Đã đúng dạng MM_yyyy
@@ -2576,20 +2750,25 @@ function getOrCreateMonthSheets(dateStr) {
     if (!templateLog) throw new Error("Không tìm thấy Template_Log");
     logSheet = templateLog.copyTo(ss).setName(logName);
     logSheet.showSheet();
-    // Ghi metadata tháng chuẩn: A1 = "Giao dịch tháng", B1 = MM/yyyy
-    logSheet.getRange(getMonthLogTitleCell_()).setValues([["Giao dịch tháng", monthKey.replace("_", "/")]]);
+    // Ghi metadata tháng chuẩn: A1 = "Thu Chi tháng", B1 = MM/yyyy
+    logSheet.getRange(getMonthLogTitleCell_()).setValues([[LOG_MONTH_TITLE, monthKey.replace("_", "/")]]);
   }
 
   let reportSheet = ss.getSheetByName(reportName);
   if (!reportSheet) {
-    const templateReport = getSheetByGid_(ss, TEMPLATE_BAOCAO_GID) || ss.getSheetByName("Template_BaoCao");
-    if (!templateReport) throw new Error("Không tìm thấy Template_BaoCao");
+    const templateReport = getSheetByGid_(ss, TEMPLATE_REPORT_GID) || ss.getSheetByName("Template_Report") || ss.getSheetByName("Template_BaoCao");
+    if (!templateReport) throw new Error("Không tìm thấy Template_Report (hoặc Template_BaoCao cũ)");
     reportSheet = templateReport.copyTo(ss).setName(reportName);
     reportSheet.showSheet();
   }
 
   // Bảo vệ ô B1 (tháng chuẩn) để tránh thay đổi vô ý
   protectMonthLogB1_(logSheet);
+
+  // Tự động đồng bộ/cập nhật dòng công thức của tháng mới vào Bao Cao v2
+  try {
+    rebuildBaoCao();
+  } catch (e) {}
 
   return { logSheet: logSheet, baoCaoSheet: reportSheet, reportSheet: reportSheet, monthKey: monthKey };
 }
@@ -2768,8 +2947,190 @@ function initMonth(dateStr) {
 }
 
 /** Menu: tạo tháng hiện tại + cập nhật mục lục, có thông báo cho người dùng. */
-function initMonthHienTai() {
-  const msg = initMonth();
+function showInitMonthDialog() {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <base target="_top">
+      <style>
+        body { 
+          font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+          padding: 24px; 
+          color: #202124;
+          background-color: #fff;
+        }
+        .title {
+          font-size: 16px;
+          font-weight: 500;
+          margin-bottom: 8px;
+          color: #202124;
+        }
+        .subtitle {
+          font-size: 13px;
+          color: #5f6368;
+          margin-bottom: 20px;
+        }
+        .container { 
+          display: flex; 
+          flex-direction: column; 
+          gap: 24px; 
+        }
+        .row { 
+          display: flex; 
+          align-items: center; 
+          gap: 12px; 
+        }
+        .input-group {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          flex: 1;
+        }
+        label {
+          font-size: 12px;
+          font-weight: 600;
+          color: #5f6368;
+          text-transform: uppercase;
+          letter-spacing: 0.3px;
+        }
+        select { 
+          padding: 10px 12px; 
+          font-size: 14px; 
+          border: 1px solid #dadce0;
+          border-radius: 4px;
+          background-color: #fff;
+          color: #202124;
+          outline: none;
+          transition: border-color 0.2s;
+          width: 100%;
+          cursor: pointer;
+        }
+        select:focus {
+          border-color: #1a73e8;
+        }
+        select:hover {
+          background-color: #f8f9fa;
+        }
+        .actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          margin-top: 16px;
+          padding-top: 16px;
+          border-top: 1px solid #ebebeb;
+        }
+        button { 
+          padding: 10px 24px; 
+          font-size: 14px;
+          border: none; 
+          border-radius: 4px; 
+          cursor: pointer; 
+          font-weight: 500;
+          transition: background-color 0.2s, box-shadow 0.2s;
+        }
+        #submitBtn { 
+          background-color: #1a73e8; 
+          color: white; 
+        }
+        #submitBtn:hover { 
+          background-color: #1557b0;
+          box-shadow: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+        }
+        #submitBtn:disabled {
+          background-color: #8ab4f8;
+          cursor: not-allowed;
+          box-shadow: none;
+        }
+        .cancel { 
+          background-color: transparent; 
+          color: #1a73e8; 
+        }
+        .cancel:hover { 
+          background-color: #f4f8fe; 
+        }
+      </style>
+      <script>
+        function submit() {
+          const btn = document.getElementById('submitBtn');
+          btn.disabled = true;
+          btn.textContent = 'Đang tạo...';
+          
+          const month = document.getElementById('month').value;
+          const year = document.getElementById('year').value;
+
+          const dateStr = "01/" + (month < 10 ? '0' + month : month) + "/" + year;
+          google.script.run
+            .withSuccessHandler(closeAndNotify)
+            .withFailureHandler(showError)
+            .initMonthFromHtml(dateStr);
+        }
+
+        function closeAndNotify(msg) {
+          google.script.host.close();
+        }
+
+        function showError(err) {
+          alert('Lỗi: ' + err.message);
+          const btn = document.getElementById('submitBtn');
+          btn.disabled = false;
+          btn.textContent = 'Tạo mới';
+        }
+      </script>
+    </head>
+    <body>
+      <div class="title">Tạo Log & Report Tháng</div>
+      <div class="subtitle">Hệ thống sẽ tự động tạo Sheet theo template và cập nhật Mục Lục.</div>
+      
+      <div class="container">
+        <div class="row">
+          <div class="input-group">
+            <label for="month">Tháng</label>
+            <select id="month">
+              <option value="1">Tháng 1</option><option value="2">Tháng 2</option>
+              <option value="3">Tháng 3</option><option value="4">Tháng 4</option>
+              <option value="5">Tháng 5</option><option value="6">Tháng 6</option>
+              <option value="7">Tháng 7</option><option value="8">Tháng 8</option>
+              <option value="9">Tháng 9</option><option value="10">Tháng 10</option>
+              <option value="11">Tháng 11</option><option value="12">Tháng 12</option>
+            </select>
+          </div>
+          <div class="input-group">
+            <label for="year">Năm</label>
+            <select id="year">
+              <script>
+                const currentYear = new Date().getFullYear();
+                for(let i = currentYear - 2; i <= currentYear + 2; i++) {
+                  document.write('<option value="' + i + '">' + i + '</option>');
+                }
+              </script>
+            </select>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="cancel" onclick="google.script.host.close()">Huỷ</button>
+          <button id="submitBtn" onclick="submit()">Tạo mới</button>
+        </div>
+      </div>
+      <script>
+        const now = new Date();
+        document.getElementById('month').value = now.getMonth() + 1;
+        document.getElementById('year').value = now.getFullYear();
+      </script>
+    </body>
+    </html>
+  `;
+  
+  const htmlOutput = HtmlService.createHtmlOutput(html)
+    .setWidth(400)
+    .setHeight(280);
+  SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'Khởi tạo dữ liệu tháng');
+}
+
+/** Function được gọi từ HTML dialog */
+function initMonthFromHtml(dateStr) {
+  const msg = initMonth(dateStr);
   try { SpreadsheetApp.getActive().toast(msg, 'Mục Lục', 5); } catch (e) { /* chạy ngoài UI */ }
   return msg;
 }
@@ -2853,15 +3214,24 @@ function appendRowsToMonthLog_(sheet, rows) {
     sheet.insertColumnsAfter(sheet.getMaxColumns(), requiredCols - sheet.getMaxColumns());
   }
 
+  // Dòng cuối cùng có dữ liệu (text/giá trị)
   let lastDataRow = sheet.getLastRow();
   if (lastDataRow < info.startRow) lastDataRow = info.startRow - 1;
+
+  // Dummy Row = dòng trống cuối cùng đã có sẵn định dạng mẫu
   const dummyRow = lastDataRow + 1;
+
+  // Chèn N dòng lên trên Dummy Row → Dummy bị đẩy xuống vị trí (dummyRow + N)
   sheet.insertRowsBefore(dummyRow, rows.length);
-  const targetRow = dummyRow;
-  const formatSource = sheet.getRange(targetRow + rows.length, info.startCol, 1, info.numCols);
-  const formatTarget = sheet.getRange(targetRow, info.startCol, rows.length, info.numCols);
-  formatSource.copyTo(formatTarget, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-  sheet.getRange(targetRow, info.startCol, rows.length, info.numCols).setValues(rows);
+
+  // Copy format + data validation từ Dummy (đã bị đẩy xuống) lên các dòng vừa chèn
+  const formatSource = sheet.getRange(dummyRow + rows.length, info.startCol, 1, info.numCols);
+  const insertedRange = sheet.getRange(dummyRow, info.startCol, rows.length, info.numCols);
+  formatSource.copyTo(insertedRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+  formatSource.copyTo(insertedRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+
+  // Ghi đè dữ liệu vào các dòng vừa chèn
+  insertedRange.setValues(rows);
   return rows.length;
 }
 
@@ -3273,26 +3643,50 @@ function rebuildBaoCaoThang(monthKey) {
     }
   }
 
-  baoSheet.getRange("A1:B1").setValues([["Báo cáo tháng", key.replace("_", "/")]]);
-  baoSheet.getRange("A3").setValue("Tổng quan tháng");
-  baoSheet.getRange("A4:A8").setValues([["Thu"], ["Chi"], ["Lãi/Lỗ"], ["Cần xác nhận"], ["Số giao dịch"]]);
-  baoSheet.getRange("B4:B8").setValues([[total.thu], [total.chi], [total.thu + total.chi], [total.check], [count]]);
-  setBlockValues_(baoSheet, 11, 1, 4, groupsToRows_(byWallet));
-  setBlockValues_(baoSheet, 11, 6, 4, groupsToRows_(byUser));
-  setBlockValues_(baoSheet, 11, 11, 4, groupsToRows_(byParent));
-  setBlockValues_(baoSheet, 11, 16, 4, groupsToRows_(byChild));
+  // Metadata header
+  baoSheet.getRange("A1:B1").setValues([[REPORT_MONTH_TITLE, key.replace("_", "/")]]);
   
-  const numberFormat = "#.##0";
-  const blockRows = baoSheet.getMaxRows() - 10;
-  baoSheet.getRange("B4:B8").setNumberFormat(numberFormat);
+  // Tổng quan tháng (A3:B7) - Row 3-7
+  const overviewLabels = [
+    ["Thu:"],
+    ["Chi:"],
+    ["Ròng:"],
+    ["Cần xác nhận:"],
+    ["Số giao dịch:"]
+  ];
+  const overviewValues = [
+    [total.thu],
+    [total.chi],
+    [total.thu + total.chi],
+    [total.check],
+    [count]
+  ];
+  baoSheet.getRange("A3:A7").setValues(overviewLabels);
+  baoSheet.getRange("B3:B7").setValues(overviewValues);
+  
+  // Chi tiết (Header row 9, Data row 10)
+  // Cột A-D (Ví), F-I (Đối tượng), K-N (Danh mục cha), P-S (Danh mục con)
+  setBlockValues_(baoSheet, 10, 1, 4, groupsToRows_(byWallet));
+  setBlockValues_(baoSheet, 10, 6, 4, groupsToRows_(byUser));
+  setBlockValues_(baoSheet, 10, 11, 4, groupsToRows_(byParent));
+  setBlockValues_(baoSheet, 10, 16, 4, groupsToRows_(byChild));
+  
+  // Format số cho cột tiền (cột 2,3,4 của các block)
+  const numberFormat = "#,##0;[Red]-#,##0;0";
+  const blockRows = Math.max(1, baoSheet.getMaxRows() - 9);
+  baoSheet.getRange("B3:B7").setNumberFormat(numberFormat);
   [2, 7, 12, 17].forEach(function (startCol) {
-    baoSheet.getRange(11, startCol, blockRows, 3).setNumberFormat(numberFormat);
+    baoSheet.getRange(10, startCol, blockRows, 3).setNumberFormat(numberFormat);
   });
   SpreadsheetApp.flush();
   return true;
 }
 
-/** Đọc Log 1 lần → ghi Bao Cao v2!A2:E5 (D=B+C). Menu + /report. */
+/**
+ * Cập nhật/Dựng lại Bao Cao v2:
+ * - Dòng 2: Tổng hợp Hôm nay (tính từ Log tháng hiện tại)
+ * - Dòng 3+: Danh sách tất cả các tháng (sắp xếp giảm dần theo thời gian) dùng công thức liên kết tới Report_MM_YYYY.
+ */
 function rebuildBaoCao() {
   const lock = LockService.getScriptLock();
   try { lock.waitLock(15000); } catch (e) {
@@ -3303,67 +3697,95 @@ function rebuildBaoCao() {
 
   try {
     const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
-    const logRange = ss.getRangeByName("Log");
-    if (!logRange) {
-      const err = "Không tìm thấy Named Range 'Log'";
-      try { SpreadsheetApp.getUi().alert("BÁO CÁO", err, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e2) {}
-      return err;
-    }
-
-    const values = logRange.getValues();
     const tz = "GMT+7";
     const now = new Date();
     const todayStr = Utilities.formatDate(now, tz, "dd/MM/yyyy");
+    const currentMonthKey = getCurrentMonthKey_(); // dạng MM_yyyy
 
-    const months = [];
-    for (let i = 0; i < 3; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      months.push({
-        key: Utilities.formatDate(d, tz, "yyyy-MM"),
-        label: Utilities.formatDate(d, tz, "MM/yyyy")
-      });
+    // 1. Tính số liệu Hôm nay từ sheet Log của tháng hiện tại
+    const currentLogSheet = ss.getSheetByName(monthSheetName_(currentMonthKey));
+    let todayBucket = emptyBaoBucket();
+    if (currentLogSheet && currentLogSheet.getLastRow() >= getMonthLogDataStartRow_(currentLogSheet)) {
+      const info = getMonthLogRangeInfo_(currentLogSheet);
+      const lastRow = currentLogSheet.getLastRow();
+      const values = currentLogSheet.getRange(info.startRow, info.startCol, lastRow - info.startRow + 1, info.numCols).getValues();
+      for (let r = 0; r < values.length; r++) {
+        const row = values[r];
+        const ngay = parseLogDate(row[MONTH_LOG_COL.NGAY]);
+        if (!ngay) continue;
+        const ngayStr = Utilities.formatDate(ngay, tz, "dd/MM/yyyy");
+        if (ngayStr !== todayStr) continue;
+
+        const soTien = Number(row[MONTH_LOG_COL.SO_TIEN]);
+        if (!soTien || isNaN(soTien)) continue;
+        const status = normalizeSheetName_(row[MONTH_LOG_COL.STATUS]).toUpperCase();
+        const isCheck = status.indexOf("CHECK") >= 0;
+        addToBaoBucket(todayBucket, soTien, isCheck);
+      }
     }
 
-    const todayBucket = emptyBaoBucket();
-    const byMonth = {};
-    months.forEach(function (m) { byMonth[m.key] = emptyBaoBucket(); });
-
-    for (let r = 0; r < values.length; r++) {
-      const row = values[r];
-      const ngay = parseLogDate(row[LOG_COL.NGAY]);
-      if (!ngay) continue;
-      const soTien = Number(row[LOG_COL.SO_TIEN]);
-      if (!soTien || isNaN(soTien)) continue;
-      const status = String(row[LOG_COL.STATUS] == null ? "" : row[LOG_COL.STATUS]).trim().toUpperCase();
-      const isCheck = status.indexOf("CHECK") >= 0;
-      const ngayStr = Utilities.formatDate(ngay, tz, "dd/MM/yyyy");
-      const mKey = Utilities.formatDate(ngay, tz, "yyyy-MM");
-
-      if (ngayStr === todayStr) addToBaoBucket(todayBucket, soTien, isCheck);
-      if (byMonth[mKey]) addToBaoBucket(byMonth[mKey], soTien, isCheck);
+    // 2. Lấy toàn bộ danh sách các tháng có sheet Report_MM_YYYY
+    const allSheets = ss.getSheets();
+    const monthKeysSet = {};
+    for (let i = 0; i < allSheets.length; i++) {
+      const sName = allSheets[i].getName();
+      const m = sName.match(/^Report_(\d{2}_\d{4})$/);
+      if (m && m[1]) {
+        monthKeysSet[m[1]] = true;
+      }
     }
+    // Đảm bảo tháng hiện tại có trong danh sách
+    monthKeysSet[currentMonthKey] = true;
 
-    function rowOf(label, b) {
-      return [label, b.thu, b.chi, b.thu + b.chi, b.check];
-    }
-
-    const out = [
-      rowOf(todayStr, todayBucket),
-      rowOf(months[0].label, byMonth[months[0].key]),
-      rowOf(months[1].label, byMonth[months[1].key]),
-      rowOf(months[2].label, byMonth[months[2].key])
-    ];
+    // Sắp xếp các tháng theo thứ tự giảm dần thời gian (mới nhất lên trên)
+    const sortedMonthKeys = Object.keys(monthKeysSet).sort(function(a, b) {
+      const partA = a.split('_');
+      const partB = b.split('_');
+      const dateA = new Date(parseInt(partA[1], 10), parseInt(partA[0], 10) - 1, 1);
+      const dateB = new Date(parseInt(partB[1], 10), parseInt(partB[0], 10) - 1, 1);
+      return dateB.getTime() - dateA.getTime();
+    });
 
     let sheet = ss.getSheetByName(BAO_CAO_SHEET);
     if (!sheet) sheet = ss.insertSheet(BAO_CAO_SHEET);
-    sheet.getRange("A1:E1").setValues([["Kỳ", "Thu", "Chi", "Lợi nhuận", "CHECK chưa ghi nhận"]]);
-    sheet.getRange("A2:E5").setValues(out);
 
-    // Format động theo vùng dữ liệu hiện có
-    const lastRow = sheet.getLastRow();
-    const dataRange = sheet.getRange("A1:E" + lastRow);
+    // Xóa nội dung cũ để rebuild sạch sẽ
+    sheet.clearContents();
 
-    // Font chung (chỉ áp cho vùng dữ liệu)
+    // Ghi Header (Cột D là Ròng)
+    sheet.getRange("A1:E1").setValues([["Kỳ", "Thu", "Chi", "Ròng", "CHECK chưa ghi nhận"]]);
+
+    // Dòng 2: Hôm nay (Giá trị tĩnh)
+    const todayRow = [todayStr, todayBucket.thu, todayBucket.chi, todayBucket.thu + todayBucket.chi, todayBucket.check];
+    sheet.getRange("A2:E2").setValues([todayRow]);
+
+    // Dòng 3 trở đi: Công thức link sang các sheet Report_MM_YYYY
+    if (sortedMonthKeys.length > 0) {
+      const monthRows = [];
+      for (let k = 0; k < sortedMonthKeys.length; k++) {
+        const mKey = sortedMonthKeys[k];
+        const rSheetName = monthReportSheetName_(mKey);
+        const mLabel = mKey.replace("_", "/");
+        monthRows.push([
+          mLabel,
+          "='" + rSheetName + "'!B3",
+          "='" + rSheetName + "'!B4",
+          "='" + rSheetName + "'!B5",
+          "='" + rSheetName + "'!B6"
+        ]);
+      }
+      sheet.getRange(3, 1, monthRows.length, 5).setFormulas(monthRows.map(function(r) {
+        return [r[0], r[1], r[2], r[3], r[4]];
+      }));
+      // Cột A là label tháng nên ghi lại value cho cột A
+      const colALabels = monthRows.map(function(r) { return [r[0]]; });
+      sheet.getRange(3, 1, monthRows.length, 1).setValues(colALabels);
+    }
+
+    const lastRow = Math.max(sheet.getLastRow(), 2);
+    const dataRange = sheet.getRange(1, 1, lastRow, 5);
+
+    // Font & Căn chỉnh
     dataRange.setFontFamily("Arial")
              .setFontSize(10)
              .setVerticalAlignment("middle");
@@ -3376,26 +3798,26 @@ function rebuildBaoCao() {
                .setHorizontalAlignment("center")
                .setFontSize(11);
 
-    // Dòng dữ liệu: chỉ format số cho B:E, cột Kỳ giữ nguyên text
-    sheet.getRange("B2:E" + lastRow).setNumberFormat('#,##0;[Red]-#,##0;0');
-    sheet.getRange("A2:A" + lastRow).setNumberFormat('@');
-    sheet.getRange("A2:A" + lastRow).setHorizontalAlignment("center");
-    sheet.getRange("B2:E" + lastRow).setHorizontalAlignment("right");
+    // Định dạng số & căn lề
+    sheet.getRange(2, 2, lastRow - 1, 4).setNumberFormat('#,##0;[Red]-#,##0;0');
+    sheet.getRange(2, 1, lastRow - 1, 1).setNumberFormat('@');
+    sheet.getRange(2, 1, lastRow - 1, 1).setHorizontalAlignment("center");
+    sheet.getRange(2, 2, lastRow - 1, 4).setHorizontalAlignment("right");
 
-    // Highlight dòng Hôm nay (luôn là hàng 2)
+    // Highlight dòng Hôm nay (hàng 2)
     sheet.getRange("A2:E2").setBackground("#fef7e0");
-    if (lastRow > 2) sheet.getRange("A3:E" + lastRow).setBackground("#ffffff");
+    if (lastRow > 2) {
+      sheet.getRange(3, 1, lastRow - 2, 5).setBackground("#ffffff");
+    }
 
     // Border
     dataRange.setBorder(true, true, true, true, true, true, "#e0e0e0", SpreadsheetApp.BorderStyle.SOLID);
     headerRange.setBorder(true, true, true, true, true, true, "#1a73e8", SpreadsheetApp.BorderStyle.SOLID);
-
-    // Chỉ set row height cho vùng header, không can thiệp layout
     sheet.setRowHeight(1, 32);
 
     SpreadsheetApp.flush();
 
-    const ok = "Đã cập nhật " + BAO_CAO_SHEET + " (hôm nay + 3 tháng).";
+    const ok = "Đã cập nhật " + BAO_CAO_SHEET + " (" + sortedMonthKeys.length + " tháng).";
     try { SpreadsheetApp.getUi().alert("BÁO CÁO", ok, SpreadsheetApp.getUi().ButtonSet.OK); } catch (e2) {}
     return ok;
   } catch (err) {
@@ -3437,22 +3859,47 @@ function baoCaoCell(label, value, labelW, valueW) {
   return "<code>" + l + v + "</code>";
 }
 
-/** Khối Thu / Chi / Lợi nhuận dùng chung cho báo cáo Hôm nay & Tháng này. */
-function buildBaoCaoDetail(thu, chi, loiNhuan, chuaGhiNhan) {
-  let text = "<blockquote>" +
-             "📥 " + baoCaoCell("Thu nhập", formatMoney(thu, true), 11, 15) + "\n" +
-             "📤 " + baoCaoCell("Chi tiêu", "−" + formatMoney(chi), 11, 15) + "\n" +
+function buildBaoCaoDetail(thu, chi, rong, chuaGhiNhan) {
+  const signRong = rong > 0 ? "+" : "";
+  let text = "━━━━━━━━━━━━━━━━━━\n" +
+             "🔹 Thu nhập:        " + formatMoney(thu, true) + "\n" +
+             "🔸 Chi tiêu:        -" + formatMoney(chi, false) + "\n" +
              "──────────────────\n" +
-             "💰 " + baoCaoCell("Lợi nhuận", formatMoney(loiNhuan, true), 11, 15) +
-             "</blockquote>";
+             "💰 <b>Ròng:</b>            <b>" + signRong + formatMoney(rong, true) + "</b>";
 
-  if (chuaGhiNhan !== 0) {
-    text += "\n⏳ <i>Chưa ghi nhận: <b>" + formatMoney(chuaGhiNhan, true) + "</b></i>";
+  if (chuaGhiNhan && chuaGhiNhan !== 0) {
+    text += "\n⏳ Chờ xác nhận:    " + formatMoney(chuaGhiNhan, true);
   }
   return text;
 }
 
 function sendTodayReport(chatId) {
+  // Nếu chạy từ Trigger hẹn giờ (không truyền chatId):
+  if (!chatId) {
+    chatId = PROP.getProperty('chat_id');
+    // Fallback: lấy từ PENDING_CLEAR_KEYBOARDS nếu chưa có chat_id trong PROP
+    if (!chatId) {
+      try {
+        const raw = PROP.getProperty("PENDING_CLEAR_KEYBOARDS");
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list) && list.length > 0) {
+            const last = list[list.length - 1];
+            chatId = last.c || last.chatId;
+            if (chatId) PROP.setProperty('chat_id', String(chatId));
+          }
+        }
+      } catch (e) {}
+    }
+  }
+  if (!chatId) {
+    console.warn("Chưa có chat_id. Hãy gõ bất kỳ tin nhắn nào hoặc /start trên Telegram.");
+    return;
+  }
+
+  // 1. Luôn tính/làm mới số liệu hôm nay trên Bao Cao v2 trước khi gửi
+  rebuildBaoCao();
+
   const block = readBaoCaoV2Block();
   if (!block) {
     sendMessage(chatId, "❌ Chưa có sheet <b>" + BAO_CAO_SHEET + "</b>. Chạy menu 📊 Báo cáo hoặc /report.");
@@ -3461,13 +3908,13 @@ function sendTodayReport(chatId) {
   const row = block[0];
   const thu = Math.abs(Number(row[1]) || 0);
   const chi = Math.abs(Number(row[2]) || 0);
-  const loiNhuan = Number(row[3]) || 0;
+  const rong = Number(row[3]) || 0;
   const chuaGhiNhan = Number(row[4]) || 0;
-  const now = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm");
+  const now = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy • HH:mm");
 
-  const text = "📊 <b>BÁO CÁO THU CHI HÔM NAY</b>\n" +
-               "🗓 <i>" + now + "</i>\n\n" +
-               buildBaoCaoDetail(thu, chi, loiNhuan, chuaGhiNhan);
+  const text = "📊 <b>BÁO CÁO HÔM NAY</b>\n" +
+               "🗓 <i>" + now + "</i>\n" +
+               buildBaoCaoDetail(thu, chi, rong, chuaGhiNhan);
 
   // Nút xem Tháng này / 3 tháng dưới tin hôm nay
   sendMessage(chatId, text, {
@@ -3488,11 +3935,13 @@ function sendMonthReport(chatId, replyMarkup) {
   const thangLabel = formatReportMonthLabel(row[0]);
   const thu = Math.abs(Number(row[1]) || 0);
   const chi = Math.abs(Number(row[2]) || 0);
-  const loiNhuan = Number(row[3]) || 0;
+  const rong = Number(row[3]) || 0;
   const chuaGhiNhan = Number(row[4]) || 0;
+  const now = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy • HH:mm");
 
-  const text = "📊 <b>BÁO CÁO THÁNG " + thangLabel + "</b>\n\n" +
-               buildBaoCaoDetail(thu, chi, loiNhuan, chuaGhiNhan);
+  const text = "📊 <b>BÁO CÁO THÁNG " + thangLabel + "</b>\n" +
+               "🗓 <i>Cập nhật: " + now + "</i>\n" +
+               buildBaoCaoDetail(thu, chi, rong, chuaGhiNhan);
 
   sendMessage(chatId, text, replyMarkup);
 }
@@ -3504,31 +3953,518 @@ function send3MonthReport(chatId, replyMarkup) {
     return;
   }
 
-  let tong = 0;
-  let tongChua = 0;
+  let tongRong = 0;
   let rows = "";
+  const now = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy • HH:mm");
 
   for (let i = 1; i <= 3; i++) {
     const row = block[i];
     if (!row || !row[0]) continue;
     const thangLabel = formatReportMonthLabel(row[0]);
-    const loiNhuan = Number(row[3]) || 0;
-    tongChua += Number(row[4]) || 0;
+    const rong = Number(row[3]) || 0;
+    const sign = rong > 0 ? "+" : "";
 
-    rows += baoCaoCell(thangLabel, formatMoney(loiNhuan, true), 8, 15) + "\n";
-    tong += loiNhuan;
+    rows += "• Tháng " + thangLabel + ":   <b>" + sign + formatMoney(rong, true) + "</b>\n";
+    tongRong += rong;
   }
 
-  let text = "📈 <b>LỢI NHUẬN 3 THÁNG GẦN NHẤT</b>\n\n" +
-             "<blockquote>" +
+  const signTong = tongRong > 0 ? "+" : "";
+  let text = "📊 <b>BÁO CÁO 3 THÁNG GẦN NHẤT</b>\n" +
+             "🗓 <i>Cập nhật: " + now + "</i>\n" +
+             "━━━━━━━━━━━━━━━━━━\n" +
              rows +
              "──────────────────\n" +
-             "💰 " + baoCaoCell("Tổng cộng", formatMoney(tong, true), 8, 15) +
-             "</blockquote>";
-
-  if (tongChua !== 0) {
-    text += "\n⏳ <i>Chưa ghi nhận: <b>" + formatMoney(tongChua, true) + "</b></i>";
-  }
+             "💰 <b>Tổng Ròng:</b>      <b>" + signTong + formatMoney(tongRong, true) + "</b>";
 
   sendMessage(chatId, text, replyMarkup);
+}
+
+// ==========================================
+// 🧹 PHẦN: CHUẨN HÓA DỮ LIỆU THÁNG (LỆCH THÁNG / MÃ THỦ CÔNG / LOG_CHUYEN)
+// ==========================================
+// Flow đã chốt:
+// 1) Sinh MAN_... cho dòng nhập tay thiếu UNIQUE_KEY (không dùng TX_, không đụng mã mail có "-")
+// 2) onEdit tô đỏ dòng lệch tháng; menu Chuẩn hóa mới di chuyển về đúng Log_MM_YYYY
+// 3) Ghi lịch sử vào Log_Chuyen
+// 4) Rebuild Report tháng nguồn + đích, cập nhật Mục Lục
+// Không đụng Sheet Cũ (Giao dịch_v2 / Bao cao_v2 / Tóm tắt_v2 / Alias / AI_Learning / Quet Mail).
+
+/** Sinh mã tracking cho giao dịch nhập tay trên sheet. Tiền tố MAN_, dài để giảm rủi ro trùng. */
+function generateManualUniqueKey_() {
+  const now = new Date();
+  const datePart = Utilities.formatDate(now, "GMT+7", "yyyyMMdd");
+  const timePart = Utilities.formatDate(now, "GMT+7", "HHmmss");
+  const randA = Math.random().toString(36).slice(2, 10).toUpperCase();
+  const randB = Math.random().toString(36).slice(2, 6).toUpperCase();
+  return MANUAL_KEY_PREFIX + datePart + "_" + timePart + "_" + randA + randB;
+}
+
+/** Dòng Log tháng có dữ liệu thực ở bất kỳ ô nào khác ngoài ô UNIQUE_KEY. */
+function hasOtherDataInMonthRow_(row) {
+  if (!row || !row.length) return false;
+  const keyCol = MONTH_LOG_COL.UNIQUE_KEY;
+  for (let c = 0; c < row.length; c++) {
+    if (c === keyCol) continue;
+    const v = row[c];
+    if (v !== "" && v !== null && v !== undefined && String(v).trim() !== "") {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Dòng Log tháng có dữ liệu thực (có ít nhất 1 ô bất kỳ có dữ liệu). */
+function isMonthLogDataRow_(row) {
+  if (!row || !row.length) return false;
+  for (let c = 0; c < row.length; c++) {
+    const v = row[c];
+    if (v !== "" && v !== null && v !== undefined && String(v).trim() !== "") {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Xử lý & bảo vệ mã UNIQUE_KEY trên Log tháng:
+ * 1) Nếu hàng CÒN dữ liệu khác nhưng ô mã TRỐNG/BỊ XÓA -> cấp mã MAN_...
+ * 2) Nếu hàng BỊ XÓA TRẮNG TOÀN BỘ các ô khác -> xóa sạch ô mã (không để mã mồ côi)
+ * 3) Bảo vệ mọi mã (TX_*, mail, MAN_...): nếu cố tình sửa ô mã khi hàng còn dữ liệu -> hoàn nguyên e.oldValue (hoặc sinh mới nếu mất dấu)
+ */
+function syncAndGuardMonthLogKeys_(sheet, startRow, numRows, e) {
+  if (!sheet || numRows <= 0) return 0;
+  const info = getMonthLogRangeInfo_(sheet);
+  const data = sheet.getRange(startRow, info.startCol, numRows, info.numCols).getValues();
+  const keyCol = MONTH_LOG_COL.UNIQUE_KEY;
+  const keyRange = sheet.getRange(startRow, info.startCol + keyCol, numRows, 1);
+  const currentKeys = keyRange.getValues();
+  const outKeys = [];
+  let filled = 0;
+  let changed = false;
+  let warnedTamper = false;
+
+  const editedCol = e && e.range ? e.range.getColumn() : -1;
+  const isKeyColEdit = editedCol === (info.startCol + keyCol);
+
+  for (let i = 0; i < data.length; i++) {
+    const row = data[i];
+    const rawKey = currentKeys[i][0];
+    const key = rawKey == null ? "" : String(rawKey).trim();
+    const hasOthers = hasOtherDataInMonthRow_(row);
+
+    if (hasOthers) {
+      if (!key) {
+        // Bị xóa hoặc mới nhập thêm dữ liệu vào hàng trống -> Cấp mã MAN_
+        if (isKeyColEdit && e && e.oldValue) {
+          // Người dùng chủ động ấn xóa ô mã -> Khôi phục lại đúng mã cũ
+          outKeys.push([e.oldValue]);
+          warnedTamper = true;
+        } else {
+          outKeys.push([generateManualUniqueKey_()]);
+          filled++;
+          Utilities.sleep(1);
+        }
+        changed = true;
+      } else if (isKeyColEdit && e && e.oldValue && String(e.oldValue).trim() !== "" && key !== String(e.oldValue).trim()) {
+        // Cố tình sửa tay mã bất kỳ (TX_ / Mail / MAN_) -> Hoàn nguyên tuyệt đối
+        outKeys.push([e.oldValue]);
+        warnedTamper = true;
+        changed = true;
+      } else {
+        outKeys.push([rawKey]);
+      }
+    } else {
+      // Toàn bộ các cột khác đều trống -> Dòng đã bị xóa sạch -> Ô mã biến mất theo
+      if (key) {
+        outKeys.push([""]);
+        changed = true;
+      } else {
+        outKeys.push([""]);
+      }
+    }
+  }
+
+  if (changed) {
+    keyRange.setValues(outKeys);
+  }
+
+  if (warnedTamper) {
+    try {
+      SpreadsheetApp.getActive().toast("Mã tracking là định danh hệ thống, không được phép sửa hoặc xóa tay.", "Bảo vệ Mã", 5);
+    } catch (err) {}
+  }
+
+  return filled;
+}
+
+/**
+ * Tô đỏ cả dòng nếu Ngày lệch tháng B1; đúng tháng / thiếu ngày → bỏ nền cảnh báo.
+ * @param {GoogleAppsScript.Spreadsheet.Sheet} sheet
+ * @param {number} startRow dòng bắt đầu (1-based)
+ * @param {number} numRows số dòng
+ */
+function highlightMonthMismatchRows_(sheet, startRow, numRows) {
+  if (!sheet || numRows <= 0) return;
+  const info = getMonthLogRangeInfo_(sheet);
+  const ngays = sheet.getRange(startRow, info.startCol + MONTH_LOG_COL.NGAY, numRows, 1).getValues();
+  for (let i = 0; i < numRows; i++) {
+    const row = startRow + i;
+    const check = checkMonthMatch_(sheet, ngays[i][0]);
+    const range = sheet.getRange(row, info.startCol, 1, info.numCols);
+    if (check.reason === "LECH_THANG") {
+      range.setBackground(MONTH_MISMATCH_BG);
+    } else {
+      range.setBackground(null);
+    }
+  }
+}
+
+/** Đảm bảo sheet Log_Chuyen tồn tại với header chuẩn. */
+function ensureLogChuyenSheet_() {
+  const ss = SpreadsheetApp.openById(PROP.getProperty("spreadsheet_id"));
+  let sheet = ss.getSheetByName(LOG_CHUYEN_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(LOG_CHUYEN_SHEET_NAME);
+    sheet.appendRow(LOG_CHUYEN_HEADERS);
+    sheet.getRange(1, 1, 1, LOG_CHUYEN_HEADERS.length).setFontWeight("bold");
+    sheet.setFrozenRows(1);
+  } else if (sheet.getLastRow() < 1) {
+    sheet.appendRow(LOG_CHUYEN_HEADERS);
+    sheet.getRange(1, 1, 1, LOG_CHUYEN_HEADERS.length).setFontWeight("bold");
+  }
+  return sheet;
+}
+
+/** Ghi một dòng lịch sử di chuyển vào Log_Chuyen. */
+function logMoveTransaction_(uniqueKey, ngayGd, fromSheet, toSheet, status, note) {
+  const sheet = ensureLogChuyenSheet_();
+  const now = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy HH:mm:ss");
+  let ngayStr = ngayGd;
+  if (ngayGd instanceof Date) {
+    ngayStr = Utilities.formatDate(ngayGd, "GMT+7", "dd/MM/yyyy");
+  }
+  sheet.appendRow([
+    now,
+    uniqueKey || "",
+    ngayStr == null ? "" : ngayStr,
+    fromSheet || "",
+    toSheet || "",
+    status || "OK",
+    note || ""
+  ]);
+}
+
+/**
+ * Quét toàn bộ Log_MM_YYYY, điền MAN_... cho dòng thiếu UNIQUE_KEY.
+ * Không đụng mã TX_* (Telegram) và mã có "-" (mail).
+ * @returns {number} số dòng được điền mã
+ */
+function ensureUniqueKeyForManualRows() {
+  const ss = SpreadsheetApp.openById(PROP.getProperty("spreadsheet_id"));
+  const sheets = ss.getSheets();
+  let totalFilled = 0;
+
+  for (let s = 0; s < sheets.length; s++) {
+    const sheet = sheets[s];
+    if (!isMonthLogSheetName_(sheet.getName())) continue;
+
+    const info = getMonthLogRangeInfo_(sheet);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < info.startRow) continue;
+
+    const numRows = lastRow - info.startRow + 1;
+    totalFilled += syncAndGuardMonthLogKeys_(sheet, info.startRow, numRows, null);
+  }
+
+  return totalFilled;
+}
+
+/** Menu: sinh mã UNIQUE_KEY cho dòng thủ công. */
+function ensureUniqueKeyForManualRowsUI() {
+  let count = 0;
+  let errMsg = "";
+  try {
+    count = ensureUniqueKeyForManualRows();
+  } catch (e) {
+    errMsg = e && e.message ? e.message : String(e);
+  }
+  const msg = errMsg
+    ? "Lỗi sinh mã: " + errMsg
+    : "Đã sinh mã MAN_ cho " + count + " dòng thủ công thiếu UNIQUE_KEY.";
+  try {
+    SpreadsheetApp.getUi().alert("Sinh mã UNIQUE_KEY", msg, SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e2) {
+    try { SpreadsheetApp.getActive().toast(msg, "UNIQUE_KEY", 8); } catch (e3) {}
+  }
+  return msg;
+}
+
+/**
+ * Kiểm tra UNIQUE_KEY đã tồn tại trên một Log tháng chưa.
+ * @returns {boolean}
+ */
+function monthLogHasUniqueKey_(sheet, uniqueKey) {
+  if (!sheet || !uniqueKey) return false;
+  const info = getMonthLogRangeInfo_(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < info.startRow) return false;
+  const numRows = lastRow - info.startRow + 1;
+  const keys = sheet
+    .getRange(info.startRow, info.startCol + MONTH_LOG_COL.UNIQUE_KEY, numRows, 1)
+    .getValues();
+  const target = String(uniqueKey);
+  for (let i = 0; i < keys.length; i++) {
+    if (keys[i][0] != null && String(keys[i][0]) === target) return true;
+  }
+  return false;
+}
+
+/**
+ * Chuẩn hóa dữ liệu tháng:
+ * - Sinh MAN_ cho dòng thiếu key
+ * - Di chuyển dòng lệch tháng sang đúng Log_MM_YYYY
+ * - Ghi Log_Chuyen
+ * - Rebuild Report + Mục Lục các tháng liên quan
+ * @returns {string} tóm tắt kết quả
+ */
+function normalizeMonthData() {
+  const ss = SpreadsheetApp.openById(PROP.getProperty("spreadsheet_id"));
+  const filled = ensureUniqueKeyForManualRows();
+
+  const moves = [];
+  const monthSheets = ss.getSheets().filter(function (sh) {
+    return isMonthLogSheetName_(sh.getName());
+  });
+
+  let totalScanned = 0;
+
+  for (let s = 0; s < monthSheets.length; s++) {
+    const sheet = monthSheets[s];
+    const fromKey = getSheetMonthKeyFromB1_(sheet) || getMonthKeyFromSheetName_(sheet.getName());
+    if (!fromKey) continue;
+
+    const info = getMonthLogRangeInfo_(sheet);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < info.startRow) continue;
+
+    const numRows = lastRow - info.startRow + 1;
+    const data = sheet.getRange(info.startRow, info.startCol, numRows, info.numCols).getValues();
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      if (!isMonthLogDataRow_(row)) continue;
+      totalScanned++;
+
+      const check = checkMonthMatch_(sheet, row[MONTH_LOG_COL.NGAY]);
+      if (check.reason !== "LECH_THANG") {
+        sheet.getRange(info.startRow + i, info.startCol, 1, info.numCols).setBackground(null);
+        continue;
+      }
+
+      moves.push({
+        sourceName: sheet.getName(),
+        sheetRow: info.startRow + i,
+        rowValues: row.slice(),
+        uniqueKey: row[MONTH_LOG_COL.UNIQUE_KEY] ? String(row[MONTH_LOG_COL.UNIQUE_KEY]) : "",
+        ngay: row[MONTH_LOG_COL.NGAY],
+        fromKey: fromKey,
+        toKey: check.txMonthKey
+      });
+    }
+  }
+
+  const moved = [];
+  const errors = [];
+  const affected = {};
+  const deleteBySheet = {};
+
+  for (let m = 0; m < moves.length; m++) {
+    const item = moves[m];
+    try {
+      if (!item.toKey) {
+        errors.push("Không đọc được tháng đích: dòng " + item.sheetRow + " @" + item.sourceName);
+        continue;
+      }
+      if (!item.uniqueKey) {
+        errors.push("Thiếu UNIQUE_KEY: dòng " + item.sheetRow + " @" + item.sourceName);
+        continue;
+      }
+
+      const targetSheets = getOrCreateMonthSheets("01/" + item.toKey.replace("_", "/"));
+      const targetSheet = targetSheets.logSheet;
+
+      if (monthLogHasUniqueKey_(targetSheet, item.uniqueKey)) {
+        const note = "Trùng UNIQUE_KEY tại đích — bỏ qua di chuyển";
+        logMoveTransaction_(item.uniqueKey, item.ngay, item.sourceName, targetSheet.getName(), "SKIP", note);
+        errors.push(note + ": " + item.uniqueKey);
+        continue;
+      }
+
+      const cleanRow = item.rowValues.slice();
+      const tInfo = getMonthLogRangeInfo_(targetSheet);
+      let lastBefore = targetSheet.getLastRow();
+      if (lastBefore < tInfo.startRow) lastBefore = tInfo.startRow - 1;
+      appendRowsToMonthLog_(targetSheet, [cleanRow]);
+      targetSheet.getRange(lastBefore + 1, tInfo.startCol, 1, tInfo.numCols).setBackground(null);
+
+      logMoveTransaction_(item.uniqueKey, item.ngay, item.sourceName, targetSheet.getName(), "OK", "");
+      moved.push(item);
+
+      if (!deleteBySheet[item.sourceName]) deleteBySheet[item.sourceName] = [];
+      deleteBySheet[item.sourceName].push(item.sheetRow);
+
+      affected[item.fromKey] = true;
+      affected[item.toKey] = true;
+      ensureMonthInMucLuc_(item.toKey, targetSheets);
+    } catch (e) {
+      const msg = e && e.message ? e.message : String(e);
+      errors.push("Lỗi di chuyển " + (item.uniqueKey || "?") + ": " + msg);
+      try {
+        logMoveTransaction_(item.uniqueKey, item.ngay, item.sourceName, item.toKey, "ERROR", msg);
+      } catch (e2) {}
+    }
+  }
+
+  Object.keys(deleteBySheet).forEach(function (name) {
+    const sh = ss.getSheetByName(name);
+    if (!sh) return;
+    const rows = deleteBySheet[name].slice().sort(function (a, b) { return b - a; });
+    for (let i = 0; i < rows.length; i++) {
+      sh.deleteRow(rows[i]);
+    }
+  });
+
+  Object.keys(affected).forEach(function (mk) {
+    try {
+      rebuildBaoCaoThang(mk);
+      const ms = getOrCreateMonthSheets("01/" + mk.replace("_", "/"));
+      ensureMonthInMucLuc_(mk, ms);
+    } catch (e) {
+      errors.push("Rebuild " + mk + ": " + (e && e.message ? e.message : e));
+    }
+  });
+
+  SpreadsheetApp.flush();
+
+  let result = "Đã quét " + totalScanned + " dòng.\n";
+  result += "Sinh mã MAN_ cho " + filled + " dòng thủ công.\n";
+  result += "Di chuyển " + moved.length + " dòng lệch tháng.\n";
+  result += "Lịch sử ghi tại sheet " + LOG_CHUYEN_SHEET_NAME + ".\n";
+  if (errors.length) {
+    result += "Cảnh báo/lỗi (" + errors.length + "): " + errors.slice(0, 5).join(" | ");
+    if (errors.length > 5) result += " ...";
+  } else {
+    result += "Hoàn tất.";
+  }
+  return result;
+}
+
+/** Menu: chuẩn hóa dữ liệu tháng (sinh mã + di chuyển + báo cáo + Log_Chuyen). */
+function normalizeMonthDataUI() {
+  let result = "";
+  try {
+    result = normalizeMonthData();
+  } catch (e) {
+    result = "Lỗi chuẩn hóa: " + (e && e.message ? e.message : e);
+  }
+  try {
+    SpreadsheetApp.getUi().alert("Chuẩn hóa dữ liệu tháng", result, SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e2) {
+    try { SpreadsheetApp.getActive().toast(result, "Chuẩn hóa tháng", 10); } catch (e3) {}
+  }
+  return result;
+}
+/**
+ * Quét toàn bộ sheet Log_MM_YYYY và tô đỏ tất cả các dòng lệch tháng (kể cả dữ liệu cũ).
+ * Dòng đúng tháng sẽ được xóa màu cảnh báo về bình thường.
+ * @returns {number} Số dòng lệch tháng phát hiện được
+ */
+function highlightAllMonthMismatchRows() {
+  const ss = SpreadsheetApp.openById(PROP.getProperty('spreadsheet_id'));
+  const sheets = ss.getSheets();
+  let totalMismatch = 0;
+
+  for (let s = 0; s < sheets.length; s++) {
+    const sheet = sheets[s];
+    if (!isMonthLogSheetName_(sheet.getName())) continue;
+
+    const info = getMonthLogRangeInfo_(sheet);
+    const lastRow = sheet.getLastRow();
+    if (lastRow < info.startRow) continue;
+
+    const numRows = lastRow - info.startRow + 1;
+    const ngays = sheet.getRange(info.startRow, info.startCol + MONTH_LOG_COL.NGAY, numRows, 1).getValues();
+    
+    for (let i = 0; i < numRows; i++) {
+      const check = checkMonthMatch_(sheet, ngays[i][0]);
+      const rangeRow = info.startRow + i;
+      const targetRange = sheet.getRange(rangeRow, info.startCol, 1, info.numCols);
+      
+      if (check.reason === "LECH_THANG") {
+        targetRange.setBackground(MONTH_MISMATCH_BG); // Tô nền hồng
+        totalMismatch++;
+      } else {
+        // Chỉ bỏ nền nếu hiện tại nó đang bị tô đỏ cảnh báo
+        const currentBg = targetRange.getBackgrounds()[0][0];
+        if (currentBg === MONTH_MISMATCH_BG) {
+          targetRange.setBackground(null);
+        }
+      }
+    }
+  }
+
+  return totalMismatch;
+}
+
+/**
+ * Gộp chung tất cả các tác vụ chuẩn hóa thành một quy trình duy nhất:
+ * 1. Chuẩn hóa format (B1) cho các sheet cũ
+ * 2. Tô màu các dòng lệch tháng
+ * 3. Sinh mã UNIQUE_KEY cho các dòng thiếu
+ * 4. Tự động di chuyển dòng lệch về đúng tháng & Ghi Log_Chuyen
+ */
+function runAllNormalizationTasks() {
+  const result = [];
+  
+  // 1. Chuẩn hóa B1 sheet cũ
+  const res1 = normalizeExistingMonthSheets();
+  if (res1 && typeof res1 === 'string' && res1.indexOf('Lỗi') === -1) {
+    result.push("✓ " + res1);
+  }
+
+  // 2. Tô màu các dòng lệch tháng (chỉ báo cáo số lượng, ko dừng)
+  const mismatchCount = highlightAllMonthMismatchRows();
+  result.push("✓ Quét phát hiện " + mismatchCount + " dòng lệch tháng.");
+
+  // 3 & 4. Hàm normalizeMonthData() bản chất đã bao gồm ensureUniqueKeyForManualRows() 
+  // và thực hiện cả việc di chuyển lệch tháng + ghi log
+  const res34 = normalizeMonthData();
+  result.push(res34); // text có sẵn xuống dòng từ hàm này
+
+  // 5. Cập nhật và đồng bộ công thức toàn diện cho Bao Cao v2
+  try {
+    const resBaoCao = rebuildBaoCao();
+    result.push("✓ " + resBaoCao);
+  } catch (eBaoCao) {
+    result.push("⚠ Không cập nhật được Bao Cao v2: " + (eBaoCao && eBaoCao.message ? eBaoCao.message : eBaoCao));
+  }
+  
+  return result.join("\n\n");
+}
+
+/** Menu: Chạy gộp tất cả tác vụ chuẩn hóa 1-click */
+function runAllNormalizationTasksUI() {
+  let resultMsg = "";
+  try {
+    resultMsg = runAllNormalizationTasks();
+  } catch (e) {
+    resultMsg = "Lỗi chuẩn hoá gộp: " + (e && e.message ? e.message : e);
+  }
+  
+  try {
+    SpreadsheetApp.getUi().alert("Hoàn tất Chuẩn hóa toàn diện", resultMsg, SpreadsheetApp.getUi().ButtonSet.OK);
+  } catch (e2) {
+    try { SpreadsheetApp.getActive().toast(resultMsg, "Chuẩn hóa", 15); } catch (e3) {}
+  }
+  return resultMsg;
 }

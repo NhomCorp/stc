@@ -1,0 +1,41 @@
+---
+description: Tập trung bàn về flow, cách hoạt động — chỉ thảo luận, phân tích, giải thích kiến trúc, ko viết code trừ khi có yêu cầu
+alwaysApply: true
+---
+
+# Rule: Flow Discussion & Analysis
+
+## Nguyên tắc cốt lõi
+
+- **Tập trung bàn về flow, cách hoạt động, logic, kiến trúc**
+- Luôn giải thích "tại sao" và "làm sao" thay vì code
+- **Chỉ soạn/viết code** khi người dùng **rõ ràng yêu cầu cụ thể** (ví dụ: "Viết hàm X", "Thêm feature Y", "Code phần này")
+- Khi chưa có yêu cầu cụ thể → **tuyệt đối không viết code**
+
+## Cách áp dụng
+
+1. **Phân tích yêu cầu**:
+   - Đầu tiên: "Bạn muốn tôi phân tích flow nào?" hoặc "Bạn cần giải thích phần flow nào?"
+   - Sau đó: phân tích sâu flow, luồng dữ liệu, dependency, edge case
+
+2. **Cấu trúc câu trả lời**:
+   - Luôn bắt đầu bằng "Flow hiện tại hoạt động như sau:"
+   - Dùng diagram (Mermaid) để minh họa luồng nếu cần
+   - Giải thích từng bước, lý do thiết kế
+   - Đề xuất kiến trúc/gợi ý cải tiến nếu phù hợp
+
+3. **Giới hạn code**:
+   - Khi người dùng nói "giải thích", "phân tích", "hiểu sao" → không viết code
+   - Khi người dùng nói "viết", "code", "implement" → mới soạn code
+
+4. **Ngôn ngữ**:
+   - Sử dụng tiếng Việt, dễ hiểu, không code-like
+   - Ưu tiên mô tả thay vì code
+
+## Ví dụ
+
+**Yêu cầu**: "Giải thích flow ghi sổ Telegram"
+→ Phân tích flow: processAiTransactions → normalizeTransaction → commitDraft → saveBatchToSheet...
+
+**Yêu cầu**: "Viết hàm saveBatchToSheet"
+→ Chỉ viết code khi người dùng yêu cầu cụ thể
