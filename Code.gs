@@ -61,7 +61,7 @@ const MUC_LUC_COL = {
 };
 const DRAFT_TTL = 600;      // 10 phút — draft / await text (chưa ghi)
 const UNDO_TTL = 86400;     // 24h — hoàn tác / sửa sau khi ghi (+ gỡ nút Telegram)
-const EDIT_SESS_TTL = 1800; // 30 phút — phiên sửa Telegram
+const EDIT_SESS_TTL = 86400; // 24h — đồng bộ với UNDO_TTL để tránh lỗi "hết phiên sửa" khi draft vẫn còn
 const OPTS_PAGE_SIZE = 6;   // phân trang gợi ý ví/DM/ĐT
 const AI_MAIL_MAX_CALLS = 15; // quét mail: tối đa N lần gọi Gemini fallback / lần quét
 
