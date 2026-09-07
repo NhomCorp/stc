@@ -1,0 +1,58 @@
+# Rule: Quy tắc chèn dòng kèm định dạng (Dummy Row Insertion)
+
+Áp dụng cho mọi thao tác thêm/ghi dòng mới vào bảng tính (Sheet Tổng, Sheet Log Tháng `Log_MM_YYYY`, v.v.).
+
+## Nguyên tắc cốt lõi
+
+1. **Dòng chốt đáy (Dummy Row)**:
+   - Dòng ngay sau dòng dữ liệu cuối cùng (`lastDataRow = sheet.getLastRow()`).
+   - Có thể không có ký tự (trống dữ liệu) nhưng **đã có sẵn định dạng chuẩn** (màu nền, font, viền, Data Validation/Dropdown).
+   - Vị trí Dummy Row trước khi chèn: `dummyRow = lastDataRow + 1`.
+
+2. **Chèn N dòng LÊN TRÊN Dummy Row**:
+   ```javascript
+   sheet.insertRowsBefore(dummyRow, numRows);
+   ```
+   - Khi chèn `numRows` dòng lên trên `dummyRow`, dòng Dummy Row gốc bị đẩy xuống vị trí:
+     `dummyRow + numRows`.
+
+3. **Sao chép định dạng & Data Validation từ Dummy Row lên N dòng vừa chèn**:
+   ```javascript
+   const formatSource = sheet.getRange(dummyRow + numRows, startCol, 1, numCols);
+   const insertedRange = sheet.getRange(dummyRow, startCol, numRows, numCols);
+
+   formatSource.copyTo(insertedRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+   formatSource.copyTo(insertedRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+   ```
+
+4. **Điền dữ liệu vào N dòng vừa chèn**:
+   ```javascript
+   insertedRange.setValues(dataRows);
+   ```
+
+## Mã mẫu chuẩn (`appendRowsToMonthLog_`)
+
+```javascript
+function appendRowsToMonthLog_(sheet, rows) {
+  if (!rows || !rows.length) return 0;
+  const info = getMonthLogRangeInfo_(sheet);
+  const requiredCols = info.startCol + info.numCols - 1;
+  if (sheet.getMaxColumns() < requiredCols) {
+    sheet.insertColumnsAfter(sheet.getMaxColumns(), requiredCols - sheet.getMaxColumns());
+  }
+
+  let lastDataRow = sheet.getLastRow();
+  if (lastDataRow < info.startRow) lastDataRow = info.startRow - 1;
+
+  const dummyRow = lastDataRow + 1;
+  sheet.insertRowsBefore(dummyRow, rows.length);
+
+  const formatSource = sheet.getRange(dummyRow + rows.length, info.startCol, 1, info.numCols);
+  const insertedRange = sheet.getRange(dummyRow, info.startCol, rows.length, info.numCols);
+  formatSource.copyTo(insertedRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+  formatSource.copyTo(insertedRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+
+  insertedRange.setValues(rows);
+  return rows.length;
+}
+```

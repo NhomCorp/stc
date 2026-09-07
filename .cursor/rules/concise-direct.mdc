@@ -9,7 +9,9 @@ alwaysApply: true
 
 - **Trả lời thẳng vào vấn đề** ngay lập tức, không vòng vèo
 - **Ngắn gọn**: tối đa cần thiết, tối thiểu từ ngữ
+- **Giải thích ngắn gọn, dễ hiểu**: trình bày mạch lạc, ngăn cách rõ ràng
 - **Ưu tiên bullet points** thay vì đoạn văn dài
+- **Có thể dùng ví dụ minh hoạ** trực quan, dễ hiểu (flow, dữ liệu mẫu)
 - Bỏ qua lời chào/xác nhận thừa ("Dạ, em hiểu rồi ạ", "Chào bạn", "OK em sẽ...")
 - Chỉ phân tích sâu khi người dùng yêu cầu hoặc vấn đề phức tạp cần làm rõ
 

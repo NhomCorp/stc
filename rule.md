@@ -1,90 +1,83 @@
 # Sổ Thu Chi AI v2 — Rule dự án
 
-Nguồn sự thật khi sửa code. File chính: `Code.gs` (Apps Script), đồng bộ `stc script 2308.json`. UI: `configui.html`. Doc kiến trúc: `Structure.md` (sơ đồ hàm + luồng); chi tiết giai đoạn sheet tháng xem `.cursor/plans/refactor_sheet_theo_tháng_*.plan.md`.
+Nguồn sự thật khi sửa code. Kiến trúc **Modular** (7 file .gs + 1 html). Doc kiến trúc: `Structure.md`.
 
 ---
 
 ## 1. Vai trò file
 
 | File | Vai trò |
-|------|---------|
-| `Code.gs` | **Nguồn chính** — Telegram, Gemini, quét mail, ghi Sheet, báo cáo, Properties |
-| `stc script 2308.json` | Bản đồng bộ với `Code.gs` (tiện diff/backup); deploy lấy từ `Code.gs` |
-| `stc script 2308.txt` | Bản cũ — không sửa tiếp |
-| `configui.html` | Dialog/WebApp cấu hình: model, API keys, prompt cá nhân, chủ TK, quét mail |
-| `feedback v2.txt` | Ghi chú migrate v1 → v2 (cấu trúc Sheet) |
+|------|---------
+| `0_Config.gs` | Hằng số, GID, tọa độ 9 cột, doGet Web App, menu GAS, quản lý Token |
+| `1_Telegram.gs` | Webhook doPost, xử lý Text/Voice/Photo/Callback, Draft/Commit, Undo 24h |
+| `2_GeminiAI.gs` | Gọi Gemini API, trích xuất JSON, chuẩn hóa giao dịch, đọc Alias & AI_Learning |
+| `3_MailScanner.gs` | Quét Gmail theo Rule/Regex & AI Fallback, chống trùng UNIQUE_KEY |
+| `4_SheetStore.gs` | CRUD Log_MM_YYYY, clone Template, Mục Lục, Dummy Row, onEdit/onOpen |
+| `5_ReportRebuild.gs` | Hybrid báo cáo: dirty-set, rebuild Report tháng (lọc CHECK/Chưa phân loại), timestamp, trigger dirty, Hôm nay trên Bao Cao |
+| `9_Tools.gs` | Theme Log/Report tháng + menu Làm mới format/data Log |
+| `configui.html` | Dialog/WebApp cấu hình: model, API keys, prompt, chủ TK, quét mail |
+| `archive/Code.legacy.txt` | **THƯ VIỆN THAM KHẢO** — monolith cũ. Không deploy, không đổi đuôi `.gs` |
 | `rule.md` | Rule nghiệp vụ + kỹ thuật (file này) |
-| `Structure.md` | Sơ đồ hàm + luồng `Code.gs`; cập nhật khi tách/gộp/thêm hàm |
+| `Structure.md` | Kiến trúc, sơ đồ luồng, bản đồ Sheet |
 | `note.md` | Gom việc / backlog |
+| `feedback v2.txt` | Ghi chú migrate v1 → v2 (lịch sử) |
 
-Trong Apps Script: HTML file name phải là `configui` (khớp `createHtmlOutputFromFile('configui')`).
+Trong Apps Script: HTML file name phải là `configui` (khớp `createTemplateFromFile('configui')`).
 
 ---
 
-## 2. Sheet & Named Range (Hệ thống ghi song song)
+## 2. Sheet & Cấu trúc dữ liệu
 
-Dự án sử dụng **hai mô hình dữ liệu song song** để tối ưu hóa hiệu năng và bảo mật báo cáo:
-- **Master Log**: Bảng ghi tổng hợp, tích lũy vô hạn.
-- **Monthly Shard**: Tự động chia tách giao dịch theo từng tháng riêng biệt nhằm sinh báo cáo tĩnh theo tháng mà không làm chậm hệ thống.
+### 2.1 Nguồn dữ liệu duy nhất: `Log_MM_YYYY` (9 cột, index 0)
 
-### 2.1 Master Log (dải ô đặt tên `Log` - 10 cột, index 0-based)
+Hệ thống mới **chỉ ghi 1 nơi duy nhất** — sheet tháng `Log_MM_YYYY`.  
+Không còn Master Log, không ghi song song.
 
-| Index | Tên | Ghi chú |
-|------:|-----|--------|
-| 0 | Ngày | `dd/MM/yyyy` |
-| 1 | Phân loại | Chỉ `Thu` / `Chi` |
-| 2 | Số tiền | Chi = âm, Thu = dương |
-| 3 | Nguồn tiền (Ví) | Named Range `Wallet` |
-| 4 | Đối tượng | Named Range `userr` |
-| 5 | Danh mục cha | **Không ghi từ script** — ArrayFormula tự nhảy / để trống |
-| 6 | Danh mục con | Named Range `Category` (cột phụ) |
-| 7 | Ghi chú | |
-| 8 | UniqueKey / Tracking | Mail ref hoặc `TX_xxxxxx_i` |
-| 9 | Status | `CHECK` khi cần review |
+| Index | Cột | Tên | Ghi chú |
+|------:|:---:|-----|---------|
+| 0 | A | Ngày | `dd/MM/yyyy` |
+| 1 | B | Phân loại | Chỉ `Thu` / `Chi` |
+| 2 | C | Số tiền | Chi = âm, Thu = dương |
+| 3 | D | Nguồn tiền (Ví) | Cash, Bank, Credit... |
+| 4 | E | Đối tượng | Bản thân, Couple, Khách lẻ... |
+| 5 | F | Danh mục con | Ăn sáng, Cafe, Xăng xe, ADS... |
+| 6 | G | Ghi chú | Nội dung diễn giải |
+| 7 | H | Unique Key | `TX_*` (Telegram) / mã ref mail |
+| 8 | I | Status | `CHECK:reason,…` khi cần review; **rỗng** khi OK |
 
-- **Quy tắc ghi lô Master Log**: Tìm dòng dummy cuối cùng (dòng Tổng/Trống để giữ định dạng). Chèn dòng **ở trên** dummy → Copy định dạng từ dòng dummy cũ → Ghi data nhảy cóc qua cột index 5.
+- Tọa độ chuẩn: `MONTH_LOG_COL` trong `0_Config.gs`
+- Dữ liệu bắt đầu từ **dòng 3** (dòng 1: Title, dòng 2: Header)
+- Ô **B1** chứa mã tháng `MM/yyyy` — script tự động bảo vệ & khóa
 
-### 2.2 Monthly Shard Log (sheet tháng `Log_MM_YYYY` - 9 cột, index 0-based)
+### 2.2 Bản đồ Sheet
 
-Các sheet này được nhân bản tự động từ sheet ẩn `Template_Log` (GID `192263148`) khi có giao dịch phát sinh. Đặc trưng là **không chứa cột Danh mục cha** (ArrayFormula được đưa thẳng vào template báo cáo hoặc bỏ qua để tối ưu tốc độ đọc ghi).
+| Nhóm | Sheet | GID | Vai trò |
+|------|-------|-----|---------|
+| Điều hướng | `Mục Lục` | Tự động | Link nhanh tới Log & Report từng tháng |
+| Dữ liệu | `Log_MM_YYYY` | Clone từ Template | **Nguồn gốc duy nhất** — script chỉ append |
+| Báo cáo tháng | `Report_MM_YYYY` | Clone từ Template | Script `rebuildReportMonth` ghi số tĩnh (lọc CHECK / Chưa phân loại) |
+| Báo cáo tổng | `Bao Cao v2` | `1475474497` | Hôm nay = script A2:E2; bảng tháng = link `Report!B3:B6`; F1 timestamp |
+| Báo cáo trọn đời | `Tóm tắt_v2` | `129580313` | Lifetime: VSTACK/QUERY/SUMIFS toàn bộ Log tháng |
+| Template | `Template_Log` | `192263148` | Khuôn mẫu clone Log tháng mới |
+| Template | `Template_Report` | `56513848` | Khuôn mẫu clone Report tháng mới |
+| Bổ trợ | `Quet Mail` | `2033507127` | Rule quét Gmail: keyword, ví, đối tượng, danh mục |
+| Bổ trợ | `Alias` | `1498755942` | Map từ khóa → Ví/Danh mục/Đối tượng |
+| Bổ trợ | `AI_Learning` | `203251644` | Lưu vết sửa tay để dạy AI |
+| Truy vết | `Log_Chuyen` | Tự động | Lịch sử chuyển giao dịch giữa tháng |
 
-| Index | Tên | Ghi chú |
-|------:|-----|--------|
-| 0 | Ngày | `dd/MM/yyyy` |
-| 1 | Phân loại | Chỉ `Thu` / `Chi` |
-| 2 | Số tiền | Chi = âm, Thu = dương |
-| 3 | Nguồn tiền (Ví) | Khớp sổ |
-| 4 | Đối tượng | Khớp sổ |
-| 5 | Danh mục con | Khớp sổ |
-| 6 | Ghi chú | |
-| 7 | UniqueKey / Tracking | ID giao dịch |
-| 8 | Status | `CHECK` khi cần review |
-
-- **Bảo vệ mã định danh B1**: Ô `B1` trên sheet tháng chứa mã tháng chuẩn (dạng `MM/yyyy`). Script tự động bảo vệ, khóa ô này. Nếu người dùng vô tình sửa tay, trigger `onEdit` sẽ ngay lập tức hoàn nguyên giá trị ban đầu để chống lỗi lệch tháng dữ liệu.
-
-### 2.3 Named Range & Các Sheet hỗ trợ khác
-
-- `Wallet` — danh sách ví.
-- `userr` — đối tượng.
-- `Category` — danh mục (script lấy cột index 1).
-- Tab `Quet Mail` — các từ khóa, cấu hình quét Gmail.
-- Tab `Alias` — map từ khóa phân loại nhanh Telegram: `Keyword | Wallet | Categories | User | Ghi chú`; nhiều keyword cách nhau bằng dấu `|`.
-- Tab `Bao Cao v2` — báo cáo nhanh hôm nay + 3 tháng gần nhất của Master Log (script ghi đè dữ liệu tĩnh, font Arial 10, Header màu xanh `#1a73e8`, dòng Hôm nay màu vàng `#fef7e0`).
-- Sheet `Report_MM_YYYY` — báo cáo chi tiết từng tháng (Ví / Đối tượng / Danh mục cha / Danh mục con) tạo tự động từ `Template_BaoCao` (GID `56513848`).
-- Sheet `Mục Lục` — bảng điều hướng tĩnh: liệt kê từng tháng (cột A), link nhảy nhanh sang Log tháng (cột B), và Report tháng (cột C). Script tự động update thông qua trigger `onSelectionChange` khi click vào cột Tháng.
-- Tab ẩn `AI_Learning` — lưu vết bài học sửa đổi của người dùng: `Thời gian | Nội dung gốc | Field | AI đoán | User sửa | Ngữ cảnh | Số lần`.
-
-### 2.4 Quét Mail (từ hàng 2, cột A–E)
+### 2.3 Quét Mail (tab `Quet Mail`, từ hàng 2)
 
 | Cột | Ý nghĩa | Map sang Log |
-|-----|---------|--------------|
+|-----|---------|-------------|
 | A | Keyword (chủ đề mail) | — |
-| B | Ghi chú mặc định | Log col 7 (có thể bị ghi đè bằng PTTT) |
-| C | Nguồn tiền | Log col 3 |
-| D | Đối tượng | Log col 4 |
-| E | Danh mục con | Log col 6 |
+| B | Ghi chú mặc định | col 6 (có thể bị ghi đè bằng PTTT từ mail) |
+| C | Nguồn tiền | col 3 |
+| D | Đối tượng | col 4 |
+| E | Danh mục con | col 5 |
 
-Mail quét mặc định = **Chi**; danh mục cha để trống.
+Mail quét mặc định = **Chi**, không áp CHECK nếu các trường đầy đủ.
+
+> **Nguyên tắc bảo vệ Sheet cũ**: Giữ nguyên vẹn tuyệt đối các sheet cũ (`Giao dịch_v2`, `Bao cao_v2`, `Tóm tắt_v2`, `Alias`, `AI_Learning`, `Quet Mail`). Xem chi tiết tại `.cursor/rules/sheet-cu-giuy-nguyen.mdc`.
 
 ---
 
@@ -92,17 +85,18 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
 
 | Key | Mục đích |
 |-----|----------|
-| `bot_token` | Telegram bot |
-| `admin_id` | Chỉ chat này được xử lý |
-| `spreadsheet_id` | ID Sheet |
+| `bot_token` | Telegram bot token |
+| `admin_id` | Chat ID admin — chỉ chat này được xử lý |
+| `chat_id` | Chat ID lưu từ `/start` |
+| `spreadsheet_id` | ID Google Spreadsheet |
 | `ai_model` | Model Gemini (mặc định `gemini-2.5-flash`) |
 | `ai_prompt` | Prompt cá nhân (thói quen nhà) |
-| `ai_keys` | JSON array chứa danh sách các API keys để xoay vòng tránh quota |
-| `ai_key_labels` | JSON array nhãn mô tả cho API keys tương ứng (index-matched) |
-| `owner_names` | JSON array tên chủ tài khoản ngân hàng (dùng suy đoán Thu/Chi) |
+| `ai_keys` | JSON array API keys Gemini (xoay vòng) |
+| `ai_key_labels` | JSON array nhãn mô tả cho keys (index-matched) |
+| `owner_names` | Tên chủ tài khoản ngân hàng (suy đoán Thu/Chi) |
 | `so_ngay_quet` | Số ngày quét mail (mặc định 1) |
 | `quet_tu_ngay` / `quet_den_ngay` | Khoảng ngày quét Gmail tùy chọn |
-| `config_token` | Token bảo mật URL trang WebApp cấu hình |
+| `config_token` | Token bảo mật URL WebApp cấu hình |
 | `webhook_secret` | Secret token chống spam webhook |
 
 ---
@@ -111,78 +105,98 @@ Mail quét mặc định = **Chi**; danh mục cha để trống.
 
 **Trong code (bắt buộc, không đưa vào textarea UI):**
 
-- Map đúng sổ tay: Ví / Đối tượng / Danh mục con.
-- Phân loại rõ thì dùng `Thu` | `Chi`; nếu thiếu căn cứ Thu/Chi thì AI trả `Không rõ`, code tạm ghi `Chi` nhưng bắt buộc đặt trạng thái `CHECK` với lý do `thu/chi`.
-- Không khớp danh mục → `"Chưa phân loại"` (không dùng tùy tiện `"Khác"` nếu có thể tránh).
-- Quy ước tiền: `k`=nghìn, `m`=triệu (prompt cá nhân có thể bổ sung `tr`/`t`).
-- Trả JSON đúng schema `giao_dich[]`.
-- Alias / cấu trúc JSON do code lo.
+- Map đúng sổ tay: Ví / Đối tượng / Danh mục con
+- Phân loại rõ → `Thu` | `Chi`; thiếu căn cứ → AI trả `"Không rõ"` → code ép `Chi` + `status = CHECK`
+- Không khớp danh mục → `"Chưa phân loại"` (không dùng `"Khác"`)
+- Quy ước tiền: `k`=nghìn, `m/tr`=triệu, `t/tỷ`=tỷ
+- Trả JSON đúng schema `{ giao_dich: [...] }`
+- Alias / cấu trúc JSON do code lo
 
 **Trong UI prompt (chỉ thói quen nhà):** biệt danh, ai chuyển = thu/chi, đơn vị tiền nhà dùng.
 
-**Cảnh báo / CHECK:** `vi` / `danh_muc_con` / `doi_tuong` là `"Khác"` hoặc `"Chưa phân loại"`, hoặc số tiền = 0, hoặc thiếu căn cứ rõ xác định Thu/Chi (`thu/chi`) → `status = CHECK`.
-
-`scanMail` mặc định ghi là `Chi` và không áp rule CHECK này nếu các trường khác ổn định.
+**Cảnh báo / CHECK:** Sau `matchDict` sổ tay — `vi` / `doi_tuong` / `danh_muc_con` không khớp → ép `"Chưa phân loại"` + `CHECK:…`. `phan_loai` = `"Không rõ"` → ép Chi + `CHECK:thu_chi`. Status dạng `CHECK:thu_chi,vi,doi_tuong,danh_muc` (ghép lý do).
 
 ---
 
-## 5. Telegram
+## 5. Telegram (1_Telegram.gs)
 
-- Chống lặp: cache `LOCK_{update_id}` 300s.
-- Ảnh / text / **voice** → Gemini → `normalizeTransaction` + rule pass/fail.
-  - Voice: tải file Telegram → `transcribeVoiceGemini` → dùng như text.
-- **Pass hết** (số > 0, Thu/Chi hợp lệ, ví/ĐT/DM khớp sổ tay, ngày OK, không Khác/Chưa phân loại) → `commitDraft` ngay; tin `✅ Đã ghi sổ` + `[✏️ Sửa]` `[↩️ Hoàn tác]`; sau 24h trigger hourly gỡ nút (`runClearCommittedKeyboardInterval`).
-- **Trượt 1 điều kiện** → Preview `📋 Xem trước` + `[✅ Ghi]` `[✏️ Sửa]` `[❌ Hủy]` (draft `DRAFT_{txId}`, TTL 10 phút).
-- Format tin (`formatOneTx` / `buildTxMessage`): emoji gọn — `📅` / `🔵 Thu +…` hoặc `🔴 Chi −…` / `💳 · 📁` / `👤` / `📝` / `ID: TX_…`.
-- **Reply lệnh tắt** vào tin có `TX_…`: `ví MB`, `380k`, `dm Ăn uống`, `hủy` (hoặc `#2 ví MB`) → parse + lưu ngay như Lưu vào sổ.
-- `✏️` **Phiên sửa (nháp):**
-  - Mở `EDITSESS_{txId}_{idx}` = `{ base, draft, openedAt, sheetFingerprint }` — TTL **30 phút**; chưa đụng Sheet đến khi Lưu vào sổ.
-  - Nút 1 field / ⚡ sửa nhanh → gom vào nháp; `✍️ Lưu vào sổ` → lưu ngay (Sheet / nháp Preview); double-tap khi không còn diff → báo đã lưu.
-  - List ví/DM/ĐT: phân trang + `✍️ Nhập khác`; khớp sổ tay / alias `AI_Learning` → dùng mục chuẩn; mới → `➕ Thêm vào sổ tay` hoặc `Chỉ dùng lần này` (có thể `CHECK`).
-  - GD đã ghi: so fingerprint dòng lúc mở vs lúc Lưu vào sổ; khác → báo đã đổi, `🔄 Tải lại`, không `setValues` đè.
-  - Cập nhật **đúng dòng** (`uniqueKey` trên cả Master Log lẫn Sheet tháng); ghi `AI_Learning`.
-- `↩️ Hoàn tác`: xóa dòng theo `txId` trong TTL **24h** trên cả hai sheet Log tổng và Log tháng phát sinh.
-- Lệnh: `/start`, `/report` (rebuild rồi gửi hôm nay + nút `📆 Tháng này` / `📅 3 tháng gần nhất`), `/scan`.
-- Báo cáo:
-  - `rebuildBaoCao()` ghi `Bao Cao v2` từ Log tổng.
-  - `rebuildBaoCaoThang(monthKey)` ghi `Report_MM_YYYY` từ Log tháng.
-  - `send*Report` đọc dữ liệu, format số và gửi về Telegram qua HTML format.
-- Quét mail: regex trước; regex hụt → `extractMailWithGemini` (tối đa `AI_MAIL_MAX_CALLS`); tin báo `(AI xử lý X mail)`.
+- **Chống lặp**: cache `LOCK_{update_id}` 300s
+- **Bảo mật**: bắt buộc `webhook_secret` (URL `?secret=`) + `admin_id` (text & callback). Thiếu → từ chối.
+- **Đầu vào**: Text / Voice / Ảnh bill / Callback query
+  - Voice → `transcribeVoiceGemini` → text
+  - Ảnh → base64 → Gemini multimodal
+- **Flow ghi sổ**:
+  - Text/Voice/Ảnh → `callGeminiAPI` → `normalizeTransaction` → pass/fail check
+  - **Pass hết** → `commitDraft` ngay → tin `✅ Đã ghi sổ` + `[✏️ Sửa]` `[↩️ Hoàn tác]` (gỡ nút sau 24h)
+  - **Trượt 1+ điều kiện** → Preview `⚠️ Xác nhận` + `[✅ Ghi]` `[✏️ Sửa]` `[❌ Hủy]` (draft TTL 10 phút)
+- **Sửa**: Bấm ✏️ → menu field (Số tiền/Ví/DM/…) + pick list / AWAIT nhập đúng field → nháp `EDITSESS_` → ✍️ Lưu. `⚡ Sửa nhanh` / reply lệnh tắt vẫn dùng `parseQuickEdit` (không gọi Gemini để sửa)
+- **Hoàn tác**: `↩️` xóa dòng theo uniqueKey trong TTL 24h
+- **Lệnh**: `/start`, `/help`, `/report`, `/scan`
 
 ---
 
-## 6. Ghi Sheet (Cơ chế đồng bộ song song)
+## 6. Ghi Sheet (4_SheetStore.gs)
 
-Khi ghi một hoặc nhiều giao dịch mới (`saveBatchToSheet`):
-1. **Lock 15s**: Đảm bảo đồng nhất luồng ghi.
-2. **Ghi Master Log**:
-   - Tự động bù cột nếu sheet bị thiếu cột.
-   - Chèn dòng trên dummy, copy format từ dummy.
-   - Tách làm 2 phần `setValues` để nhảy cóc qua cột index 5 (Danh mục cha).
-3. **Ghi Monthly Shards**:
-   - Phân loại các giao dịch theo tháng (`MM_YYYY`).
-   - Gọi `getOrCreateMonthSheets` để đảm bảo sheet tháng `Log_MM_YYYY` và sheet báo cáo `Report_MM_YYYY` đã được khởi tạo.
-   - Append dòng giao dịch (9 cột) vào sheet tháng tương ứng.
-   - Gọi `rebuildBaoCaoThang(monthKey)` để làm mới số liệu tĩnh của tháng đó.
-   - Gọi `ensureMonthInMucLuc_(monthKey)` để ghi nhận/cập nhật link vào trang điều hướng `Mục Lục`.
-4. **Rebuild chung**: Gọi `rebuildBaoCao()` cập nhật lại dữ liệu tab `Bao Cao v2`.
+Khi ghi giao dịch mới (`saveBatchToMonthShards`):
+1. **Lock 15s** — `LockService.getScriptLock()`
+2. **Phân nhóm theo tháng** — parse `ngay_gd` → `MM_YYYY`
+3. **Đảm bảo sheet tồn tại** — `getOrCreateMonthSheets` clone Template nếu tháng mới
+4. **Ghi Dummy Row** — `appendRowsToMonthLog`: chèn dòng trên Dummy → copy format → ghi data
+5. **Cập nhật Mục Lục** — `ensureMonthInMucLuc_` thêm hyperlink nếu chưa có
+6. **Flush** — `SpreadsheetApp.flush()`
 
----
+**Sửa/Xóa giao dịch:**
+- `updateRowByUniqueKey(key, data)` — đoán tháng từ `TX_` / `YYYYMMDD_` → mở đúng `Log_MM_YYYY`; fallback quét các Log nếu không đoán được
+- `deleteRowsByUniqueKeys(keys)` — cùng chiến lược locate theo tháng + fallback
 
-## 7. UI cấu hình (`configui.html`)
-
-- Model + nhiều API key + nhãn key + prompt tùy chọn + chủ tài khoản + khoảng ngày quét mail.
-- **Key đã lưu phải che khi hiện** dạng `AIza••••xxxx` (4 ký tự đầu + 4 cuối).
-- Ô còn chứa `••••` khi Lưu → **giữ key cũ** cùng vị trí; chỉ ghi đè khi user nhập key mới đầy đủ.
-- Hint prompt: không bảo user paste Alias/JSON schema vào textarea.
+> **Không còn ghi Master Log** — chỉ ghi `Log_MM_YYYY` duy nhất.
 
 ---
 
-## 8. Nguyên tắc khi sửa code
+## 7. Báo cáo (Hybrid)
 
-- Không phá vỡ cấu trúc và thứ tự định vị `LOG_COL` (Master Log - 10 cột) và `MONTH_LOG_COL` (Sheet tháng - 9 cột).
-- Không ghi đè cột danh mục cha (index 5) của Master Log.
-- Khi sửa đổi dòng (`updateRowByUniqueKey`) hoặc xóa dòng (`deleteRowsByUniqueKeys`), bắt buộc phải thực hiện trên **cả hai sheet** (Master Log và Monthly Shard Log thích hợp).
-- Không để lộ API key thô ra UI sau khi đã lưu.
-- Giữ logic `onEdit` hoạt động chính xác trên cả hai mô hình (nhận diện qua tên sheet `Log_MM_YYYY`).
-- Đảm bảo cơ chế tự động tạo sheet tháng hoạt động hoàn toàn tự động, trơn tru.
+- **Log_MM_YYYY** = nhật ký (có CHECK / Chưa phân loại).
+- **Report_MM_YYYY** = sổ cái đã ghi nhận — script `rebuildReportMonth` ghi số tĩnh (loại `CHECK*` và dòng còn `Chưa phân loại`).
+- **Bao Cao v2**: dòng Hôm nay do script ghi; bảng tháng = công thức link `Report!B3:B6` (tự nhảy khi Report cập nhật).
+- **Dirty-set**: mọi ghi/sửa/xóa/undo/scan/`onEdit` Log → đánh dấu tháng; badge `⚠` trên Report!D1.
+- **Nấu lại**: ngay sau ghi bot/scan/undo; `/report` (rebuild-before-read); menu **Làm mới báo cáo**; trigger 15’ chỉ tháng dirty.
+- **Timestamp**: Report!D1 và Bao Cao!F1 = `Cập nhật đến dd/MM/yyyy HH:mm` (chỉ khi rebuild OK). Telegram `/report` hiện cùng mốc + nút **Tháng này** / **3 tháng gần nhất**.
+- Menu **cứu hộ** (submenu riêng, xác nhận YES/NO) chỉ khi hỏng cấu trúc — không dùng hàng ngày. Sau cứu hộ Bao Cao, script khôi phục ngay dòng Hôm nay (hybrid).
+
+---
+
+## 7b. Menu Làm mới (`9_Tools.gs`)
+
+```
+🔄 Làm mới (tháng đang mở)     → Chỉ format | Chỉ data | Format + data
+🔄 Làm mới (tất cả tháng)      → Chỉ format | Chỉ data | Format + data
+```
+
+- Đứng ở `Log_MM_YYYY` hoặc `Report_MM_YYYY` khi dùng nhóm “tháng đang mở”.
+- **format**: theme Log + Report từ Template (không đè giá trị).
+- **data**: dry-run xem trước → xác nhận; scope all phải gõ `ALL`. Cấp `MAN_`, chuyển lệch tháng, ghi `Log_Chuyen`.
+- **both**: data trước → format sau. Scope all: tái tạo Mục Lục sau data.
+- Không chạy tự động trong webhook / `onOpen`.
+
+---
+
+## 8. UI cấu hình (`configui.html`)
+
+- Model + nhiều API key + nhãn key + prompt tùy chọn + chủ tài khoản + khoảng ngày quét mail
+- Key đã lưu hiện dạng `AIza••••xxxx` (4 đầu + 4 cuối)
+- Ô còn `••••` khi Lưu → giữ key cũ; chỉ ghi đè khi nhập key mới đầy đủ
+- Hint prompt: không bảo user paste Alias/JSON schema
+
+---
+
+## 9. Nguyên tắc khi sửa code
+
+1. Không phá vỡ cấu trúc `MONTH_LOG_COL` (9 cột, index 0)
+2. Sửa/xóa dòng chỉ cần thao tác trên `Log_MM_YYYY` (không còn Master Log)
+3. Không để lộ API key thô ra UI sau khi đã lưu
+4. Giữ logic `onEdit` chính xác (nhận diện `Log_*`, auto ± số tiền theo phân loại)
+5. Đảm bảo cơ chế clone Template tự động hoạt động khi sang tháng mới
+6. Giữ nguyên vẹn tuyệt đối các **Sheet Cũ** (xem `.cursor/rules/sheet-cu-giuy-nguyen.mdc`)
+7. `archive/Code.legacy.txt` là **thư viện tham khảo** — không deploy, không đổi đuôi `.gs`
+8. Auth: không để trống `webhook_secret` / `admin_id` trên production
+9. `normalizeTransaction` phải khớp sổ tay (`matchDict`) và CHECK đủ `vi` / `doi_tuong` / `danh_muc` / `thu_chi` — đồng bộ với `isRowRecognized_`
