@@ -1,31 +1,53 @@
-# 📉 Context Compact — Phiên sửa Báo cáo (26/08/2026)
+# 📉 CONTEXT COMPACTED (Tóm tắt thu gọn Context)
+
+> **Phiên**: 08–09/09/2026 — UX View thay vì lộ nhiều tab Log/Report tháng  
+> **Mục tiêu**: Giữ logic/quyết định kỹ thuật; chưa implement code.
 
 ## 🎯 Current Status & Goal
-- **Mục tiêu**: Cải thiện lệnh báo cáo (`/report` → `rebuildBaoCao` + `send*Report`) trong `Code.gs`: (1) không ghi đè layout sheet `Bao Cao v2` (độ rộng cột, chiều cao hàng) nhưng dòng mới vẫn có định dạng đẹp; (2) giữ format số/màu nghiệp vụ; (3) làm đẹp tin nhắn báo cáo Telegram; (4) sửa logic kế toán: giao dịch CHECK **không** tính vào Thu/Chi/Lợi nhuận.
-- **Trạng thái hiện tại**: HOÀN TẤT toàn bộ sửa đổi trong `Code.gs`. Chưa chạy thử thực tế trên Apps Script / Telegram.
+- **Mục tiêu chính**: Giảm số tab người dùng thấy (mỗi tháng đẻ 2 sheet Log+Report → UX kém), vẫn giữ kiến trúc ghi shard phía sau.
+- **Trạng thái hiện tại**: Đã **chốt hướng kiến trúc** (thảo luận only). **Chưa viết code**.
 
 ## 🛠️ Key Decisions & Technical Context
-- **File quan trọng**: `Code.gs` (duy nhất bị sửa phiên này)
-  - `rebuildBaoCao()` ~dòng 2389: tính Log → ghi `Bao Cao v2!A1:E5`
-  - `addToBaoBucket()` dòng 2382–2391: phân bổ thu/chi/check
-  - `baoCaoCell()` + `buildBaoCaoDetail()` ~dòng 2524–2546: hàm phụ Telegram
-  - `sendTodayReport` / `sendMonthReport` / `send3MonthReport` ~dòng 2548–2627
-- **Kiến trúc/Giải pháp đã chốt**:
-  - Format sheet **động theo `lastRow`** thay vì cứng `A1:E5`; **BỎ** `autoResizeColumns` và `setRowHeights` (bảo toàn layout chỉnh tay); chỉ giữ `setRowHeight(1, 32)` cho header.
-  - Giữ format nghiệp vụ: số `#,##0;[Red]-#,##0;0` chỉ áp `B2:E{lastRow}`; cột A giữ `'@'` + căn giữa; B:E căn phải; header xanh `#1a73e8` chữ trắng; highlight dòng hôm nay `#fef7e0`; border giữ nguyên.
-  - Template Telegram: Hôm nay & Tháng này **giống nhau**, dùng chung `buildBaoCaoDetail` (📥 Thu nhập / 📤 Chi tiêu / ──── / 💰 Lợi nhuận, monospace căn cột qua `baoCaoCell(label, value, labelW=11, valueW=15)`); 3 tháng dùng **Phương án A** (liệt kê LN từng tháng → tổng cộng → gom ⏳ Chưa ghi nhận xuống cuối, ẩn khi =0). Icon ⏳ thay ⚠️, cụm từ thống nhất "Chưa ghi nhận".
-  - Kế toán (chuẩn Revenue Recognition): CHECK chỉ cộng `bucket.check`, **loại khỏi** `thu`/`chi` → LN sạch, chỉ giao dịch đã ghi nhận.
-- **Ràng buộc/Lưu ý**:
-  - Ask mode: chỉ thảo luận/phân tích, không viết code (user rule).
-  - Dữ liệu đọc từ Named Range `"Log"`; `LOG_COL.STATUS` chứa `"CHECK"` xác định bằng `indexOf("CHECK") >= 0`.
-  - `check` là số NET (+thu CHECK −chi CHECK), lưu dạng gốc dương/âm.
+
+### Kiến trúc đã chốt (Hybrid)
+- **Giữ** `Log_MM_YYYY` + `Report_MM_YYYY` làm nơi lưu/rebuild (bot Telegram, Mail, dirty rebuild như hiện tại).
+- **Ẩn** toàn bộ shard tháng mặc định → thanh sheet không phình.
+- Thêm lớp **View chỉ đọc**: chọn tháng → bấm **Xem** mới load snapshot → tiết kiệm tài nguyên.
+- Nút **Sửa**: unhide + activate sheet gốc (`Log_…` hoặc `Report_…`), **không** sửa 2 chiều trên View.
+- Đổi dropdown tháng **không** auto-load; chỉ load khi bấm Xem.
+- Sau sửa trên sheet gốc: View chỉ cập nhật khi bấm Xem lại; dirty/rebuild Report giữ flow cũ (`notifyLogMonthsChanged_` / `rebuildReportMonth`).
+
+### Không làm (đã loại)
+- Bỏ shard / chỉ 1 Master + dropdown thay lưu trữ → rủi ro lock, quota, đụng mail/unique key.
+- Template trống + chọn tháng “tự ra dữ liệu” → không khả thi với flow ghi hiện tại.
+- Auto-load khi đổi tháng; sửa trực tiếp trên View (phase 1).
+
+### Flow View (phase 1)
+```
+Chọn tháng → [Xem] nạp Log/Report vào View → [Sửa] mở sheet gốc ẩn
+```
+
+### File / module liên quan (tham chiếu, chưa sửa phiên này)
+- `4_SheetStore.gs` — `getOrCreateMonthSheets`, `saveBatchToMonthShards`, Mục Lục
+- `5_ReportRebuild.gs` — dirty-set, `rebuildReportMonth`, `notifyLogMonthsChanged_`
+- `9_Tools.gs` — sync theme Template_Log / Template_Report → shard tháng
+- `0_Config.gs` — `GID.TEMPLATE_LOG`, `GID.TEMPLATE_REPORT`
+- Sheet Mới: `Template_Log`, `Template_Report`, `Log_MM_YYYY`, `Report_MM_YYYY`, Mục Lục
+- **Sheet Cũ**: không đụng (`Giao dịch_v2`, `Bao cao_v2`, `Tóm tắt_v2`, Alias, AI_Learning, Quet Mail)
+
+### Ràng buộc / lưu ý
+- Rule flow-discussion: phiên này chỉ bàn logic; code khi user yêu cầu implement.
+- Rule sheet-cũ: tuyệt đối không sửa sheet/flow Cũ.
+- Ẩn tab ≠ giảm dung lượng file; shard vẫn tồn tại phía sau.
+- Chưa chốt UI: **2 sheet View** (`View_Log` + `View_Report`) vs **1 sheet 2 vùng**; nút = **menu Apps Script** vs **nút vẽ trên sheet**.
 
 ## 📝 Completed Work
-- [x] `rebuildBaoCao()`: format động theo `lastRow`, bỏ `autoResizeColumns`/`setRowHeights`; sửa lỗi numberFormat đè lên cột A (khôi phục `'@'` cho `A2:A{lastRow}`).
-- [x] Thêm `baoCaoCell()` (ô monospace căn trái/phải) + `buildBaoCaoDetail()` (khối Thu/Chi/LN dùng chung, kèm dòng ⏳ nếu ≠ 0).
-- [x] Viết lại `sendTodayReport` (giữ nút REPORT_MONTH/REPORT_3MONTH), `sendMonthReport`, `send3MonthReport` (Phương án A).
-- [x] Sửa `addToBaoBucket()`: `if (isCheck) { bucket.check += soTien; return; }` trước phần cộng thu/chi.
+- [x] Phân tích ý tưởng “Excel: template + chọn tháng” vs shard hiện tại.
+- [x] Chốt hybrid: shard ẩn + View đọc + Xem mới load + Sửa → gốc.
+- [x] Làm rõ pain UX: N tháng → 2N tab → cần ẩn + View.
 
 ## ⏳ Next Steps & Open Questions
-- [ ] Deploy `Code.gs` lên Apps Script, chạy `/report` kiểm tra: sheet giữ layout, dòng mới có format; tin Telegram đúng mẫu; LN không còn gồm CHECK (số LN sẽ giảm phần CHECK ở lần rebuild đầu — hành vi đúng).
-- [ ] (Tuỳ chọn) Cập nhật `Structure.md` / `rule.md` phản ánh logic CHECK-mới và template Telegram.
+- [ ] User chốt: 1 hay 2 sheet View; nút menu hay drawing button.
+- [ ] Implement phase 1 (khi được yêu cầu): hide sau `getOrCreateMonthSheets` + tool ẩn hàng loạt; View + dropdown + Xem + Sửa; bảo vệ range View chỉ đọc.
+- [ ] (Sau) Mục Lục link “Xem tháng”; badge dirty trên View; menu ẩn lại sheet sau khi sửa.
+- [ ] Không xóa shard; không đổi Sheet Cũ.

@@ -17,8 +17,26 @@
     .btn-add { background: #e8f0fe; color: #1a73e8; width: 100%; margin-bottom: 5px;}
     .btn-del { background: #fce8e6; color: #d93025; padding: 8px 12px;}
     .btn-save { background: #1a73e8; color: white; width: 100%; padding: 12px; font-size: 16px; margin-top: 10px;}
+    .btn-secondary { background: #e8f0fe; color: #1a73e8; padding: 8px 12px; font-size: 13px; }
+    .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
     #status { text-align: center; color: #1e8e3e; font-weight: bold; margin-top: 10px; display: none;}
+    #meta-check-status { font-size: 12px; white-space: pre-wrap; margin-top: 8px; line-height: 1.4; display: none; }
     .loading { opacity: 0.5; pointer-events: none; }
+    .modal-backdrop {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+      z-index: 1000; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal-card {
+      background: #fff; border-radius: 10px; max-width: 520px; width: 100%; max-height: 85vh;
+      overflow: auto; padding: 18px 18px 14px; box-shadow: 0 8px 28px rgba(0,0,0,0.25);
+    }
+    .modal-card h3 { margin: 0 0 10px; color: #1a73e8; font-size: 15px; border: none; padding: 0; }
+    .modal-card ol { margin: 0 0 12px; padding-left: 20px; font-size: 13px; line-height: 1.55; color: #333; }
+    .modal-card li { margin-bottom: 6px; }
+    .modal-card a { color: #1a73e8; }
+    .modal-card .note { font-size: 12px; color: #5f6368; background: #f8f9fa; padding: 8px 10px; border-radius: 6px; margin-bottom: 12px; }
+    .modal-actions { text-align: right; }
   </style>
 </head>
 <body>
@@ -64,9 +82,48 @@
     <p id="mail-warn" class="warn">⚠️ Khoảng quét lớn (>7 ngày hoặc >30 ngày theo khoảng) — chậm hơn, dễ vượt quota Gmail/Apps Script.</p>
   </div>
 
+  <div class="group">
+    <h3>6. META ADS BILLING</h3>
+    <p class="hint">Đối soát charge Ads khi mail không về. Dùng <b>System User token</b> (long-lived) + quyền <code>ads_read</code>. Token đã lưu hiện dạng che; muốn đổi thì gõ đè token mới rồi Lưu.</p>
+    <label style="font-size:12px;color:#5f6368;">Meta Access Token</label>
+    <input type="password" id="meta-access-token" placeholder="Dán System User token..." autocomplete="off">
+    <label style="font-size:12px;color:#5f6368;">Ad Account ID(s)</label>
+    <input type="text" id="meta-ad-account-ids" placeholder="act_123456789 hoặc nhiều id cách nhau bởi dấu phẩy" autocomplete="off">
+    <label style="font-size:12px;color:#5f6368;">Business ID (nếu account thuộc Business Manager — thường BẮT BUỘC để thấy billing)</label>
+    <input type="text" id="meta-business-id" placeholder="VD: 123456789012345" autocomplete="off">
+    <label style="font-size:12px;color:#5f6368;">Lookback (ngày)</label>
+    <input type="number" id="meta-billing-lookback" min="1" step="1" placeholder="60">
+    <div class="btn-row">
+      <button type="button" class="btn btn-secondary" onclick="openMetaTokenGuide()">📖 Hướng dẫn lấy token</button>
+      <button type="button" class="btn btn-secondary" id="btn-meta-check" onclick="checkMetaLive()">🔌 Check live</button>
+    </div>
+    <div id="meta-check-status"></div>
+  </div>
+
   <input type="hidden" id="cfg-token" value="<?= token ?>">
   <button class="btn btn-save" id="btn-save" onclick="saveData()">💾 LƯU CẤU HÌNH</button>
   <div id="status">Đã lưu thành công! Đang đóng...</div>
+
+  <div id="meta-guide-modal" class="modal-backdrop" onclick="backdropCloseMetaGuide(event)">
+    <div class="modal-card" role="dialog" aria-labelledby="meta-guide-title">
+      <h3 id="meta-guide-title">Cách lấy Meta Access Token (System User)</h3>
+      <div class="note">Nên dùng <b>System User</b> trong Business Manager — ổn định cho job GAS định kỳ. Không dùng token login Facebook thường ngày.</div>
+      <ol>
+        <li>Mở <a href="https://business.facebook.com/settings" target="_blank" rel="noopener">Meta Business Settings</a> → <b>Users → System users</b>.</li>
+        <li>Tạo System User (hoặc chọn sẵn) → <b>Add assets</b> → chọn Ad account cần đối soát → quyền xem/đọc ads (View performance).</li>
+        <li>Bấm <b>Generate token</b> → chọn Meta App → tick quyền <b><code>ads_read</code></b> → Generate.</li>
+        <li>Copy token → dán vào ô <b>Meta Access Token</b> bên dưới.</li>
+        <li>Ad Account ID: Ads Manager → chọn account → URL có <code>act=123…</code> → điền <code>act_123…</code>.</li>
+        <li>Nếu account thuộc Business Manager: Business Settings → lấy <b>Business ID</b> → ô Business ID (thường cần để API trả billing).</li>
+        <li>Lookback nên ≥ 30–60 ngày nếu đang đối soát bill sót.</li>
+        <li>Bấm <b>Check live</b> → thấy API OK → <b>Lưu cấu hình</b>. Nếu charges=0: chạy <code>debugMetaBillingActivities</code> trên Editor.</li>
+      </ol>
+      <div class="note">Token coi như mật khẩu. Hết hạn / bị revoke → Generate lại và dán đè. Chi tiết API: activities <code>ad_account_billing_charge</code>.</div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" onclick="closeMetaTokenGuide()">Đóng</button>
+      </div>
+    </div>
+  </div>
 
 <script>
     function getCfgToken() {
@@ -92,6 +149,27 @@
       if (data && data.quet_tu_ngay) document.getElementById('quet-tu-ngay').value = data.quet_tu_ngay;
       if (data && data.quet_den_ngay) document.getElementById('quet-den-ngay').value = data.quet_den_ngay;
       checkMailWarn();
+
+      var metaTok = document.getElementById('meta-access-token');
+      if (data && data.meta_access_token) {
+        metaTok.type = 'text';
+        metaTok.value = data.meta_access_token;
+        metaTok.setAttribute('data-masked', '1');
+      } else {
+        metaTok.type = 'password';
+        metaTok.value = '';
+        metaTok.setAttribute('data-masked', '0');
+      }
+      metaTok.oninput = function() {
+        if (metaTok.getAttribute('data-masked') === '1' && metaTok.value.indexOf('••••') === -1) {
+          metaTok.setAttribute('data-masked', '0');
+          metaTok.type = 'password';
+        }
+      };
+      document.getElementById('meta-ad-account-ids').value = (data && data.meta_ad_account_ids) ? data.meta_ad_account_ids : '';
+      document.getElementById('meta-business-id').value = (data && data.meta_business_id) ? data.meta_business_id : '';
+      document.getElementById('meta-billing-lookback').value =
+        (data && data.meta_billing_lookback_days) ? data.meta_billing_lookback_days : 60;
 
       var keysContainer = document.getElementById('keys-container');
       keysContainer.innerHTML = '';
@@ -167,6 +245,62 @@
       warn.style.display = show ? 'block' : 'none';
     }
 
+    function openMetaTokenGuide() {
+      document.getElementById('meta-guide-modal').classList.add('open');
+    }
+    function closeMetaTokenGuide() {
+      document.getElementById('meta-guide-modal').classList.remove('open');
+    }
+    function backdropCloseMetaGuide(ev) {
+      if (ev.target && ev.target.id === 'meta-guide-modal') closeMetaTokenGuide();
+    }
+
+    function getMetaDraft() {
+      // Không gửi full token dài qua google.script.run nếu đã mask (đã lưu).
+      // Token mới (chưa mask): chỉ gửi khi user vừa dán — server sẽ lưu props.
+      var tokEl = document.getElementById('meta-access-token');
+      var tok = tokEl ? tokEl.value : '';
+      var sendTok = '';
+      if (tok && tok.indexOf('••••') === -1) {
+        sendTok = tok;
+      }
+      return {
+        meta_access_token: sendTok,
+        meta_ad_account_ids: document.getElementById('meta-ad-account-ids').value,
+        meta_business_id: document.getElementById('meta-business-id').value,
+        meta_billing_lookback_days: document.getElementById('meta-billing-lookback').value
+      };
+    }
+
+    function checkMetaLive() {
+      var btn = document.getElementById('btn-meta-check');
+      var status = document.getElementById('meta-check-status');
+      btn.disabled = true;
+      btn.innerText = 'Dang check...';
+      status.style.display = 'block';
+      status.style.color = '#5f6368';
+      status.innerText = 'Dang goi Meta API...';
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          btn.disabled = false;
+          btn.innerText = 'Check live';
+          var text = (typeof res === 'string') ? res : (res && res.message ? res.message : String(res || ''));
+          var ok = text.indexOf('OK:') === 0;
+          status.style.color = ok ? '#1e8e3e' : '#d93025';
+          status.innerText = text || 'Khong co phan hoi.';
+        })
+        .withFailureHandler(function(err) {
+          btn.disabled = false;
+          btn.innerText = 'Check live';
+          status.style.color = '#d93025';
+          var m = (err && err.message) ? err.message : String(err || '');
+          status.innerText = 'Loi RPC: ' + m
+            + '\nThu: bam Luu cau hinh truoc, roi Check live lai (khong gui token dai qua dialog).';
+        })
+        .checkMetaBillingFromUI(getCfgToken(), getMetaDraft());
+    }
+
     function saveData() {
       var btnSave = document.getElementById('btn-save');
       btnSave.innerText = "⏳ Đang lưu...";
@@ -200,7 +334,11 @@
         owner_names: document.getElementById('owner-names').value,
         so_ngay_quet: document.getElementById('so-ngay-quet').value,
         quet_tu_ngay: tu,
-        quet_den_ngay: den
+        quet_den_ngay: den,
+        meta_access_token: document.getElementById('meta-access-token').value,
+        meta_ad_account_ids: document.getElementById('meta-ad-account-ids').value,
+        meta_business_id: document.getElementById('meta-business-id').value,
+        meta_billing_lookback_days: document.getElementById('meta-billing-lookback').value
       };
 
       google.script.run

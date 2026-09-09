@@ -157,6 +157,10 @@ function scanMail(chatId) {
     : `✅ <b>QUÉT XONG!</b> Không có hóa đơn mới nào khớp Keyword trong ${dateFilter.label}.${aiNote}`;
 
   if (chatId) sendMessage(chatId, finalStr);
+
+  // Đối soát Meta Billing Sync (nếu đã setup) — không gọi API Meta, chỉ khớp + cảnh báo
+  try { runMatchBillingAfterMail_(chatId); } catch (e) {}
+
   return finalStr;
 }
 

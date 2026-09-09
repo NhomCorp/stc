@@ -7,9 +7,30 @@ let cachedSpreadsheet_ = null;
 
 function getSpreadsheet_() {
   if (!cachedSpreadsheet_) {
+    // Ưu tiên spreadsheet đang mở (menu / container-bound) — tránh openById lỗi quyền
+    try {
+      const active = SpreadsheetApp.getActiveSpreadsheet();
+      if (active) {
+        cachedSpreadsheet_ = active;
+        try { PROP.setProperty('spreadsheet_id', active.getId()); } catch (e0) {}
+        return cachedSpreadsheet_;
+      }
+    } catch (eActive) {
+      Logger.log('getSpreadsheet_ active: ' + eActive.message);
+    }
+
     const id = PROP.getProperty('spreadsheet_id');
-    if (!id) throw new Error('Chưa cấu hình spreadsheet_id trong Script Properties.');
-    cachedSpreadsheet_ = SpreadsheetApp.openById(id);
+    if (id) {
+      try {
+        cachedSpreadsheet_ = SpreadsheetApp.openById(id);
+      } catch (e) {
+        Logger.log('getSpreadsheet_ openById fail: ' + e.message);
+        cachedSpreadsheet_ = null;
+      }
+    }
+    if (!cachedSpreadsheet_) {
+      throw new Error('Khong mo duoc Spreadsheet. Mo file Sheet → Extensions → Apps Script, chay setupEnvironment.');
+    }
   }
   return cachedSpreadsheet_;
 }
@@ -465,7 +486,10 @@ function repairTamperedB1_(ss) {
 function ensureMonthInMucLuc_(monthKey, logSheet, rptSheet) {
   const ss = getSpreadsheet_();
   let mucLuc = ss.getSheetByName(SHEET_NAMES.MUC_LUC);
-  if (!mucLuc) return;
+  if (!mucLuc) {
+    rebuildMucLuc();
+    return;
+  }
 
   const data = mucLuc.getDataRange().getValues();
   const label = monthKey.replace('_', '/');
@@ -473,9 +497,16 @@ function ensureMonthInMucLuc_(monthKey, logSheet, rptSheet) {
     if (String(data[i][0]).trim() === label) return;
   }
 
-  const logLink = `=HYPERLINK("#gid=${logSheet.getSheetId()}", "${logSheet.getName()}")`;
-  const rptLink = rptSheet ? `=HYPERLINK("#gid=${rptSheet.getSheetId()}", "${rptSheet.getName()}")` : "";
-  mucLuc.appendRow([label, logLink, rptLink]);
+  const startRow = Math.max(mucLuc.getLastRow() + 1, MUC_LUC_DATA_START_ROW);
+  mucLuc.getRange(startRow, 1).setNumberFormat('@').setValue(label);
+  mucLuc.getRange(startRow, 2).setFormula(
+    '=HYPERLINK("#gid=' + logSheet.getSheetId() + '"; "' + logSheet.getName() + '")'
+  );
+  if (rptSheet) {
+    mucLuc.getRange(startRow, 3).setFormula(
+      '=HYPERLINK("#gid=' + rptSheet.getSheetId() + '"; "' + rptSheet.getName() + '")'
+    );
+  }
 }
 
 /** Tái tạo toàn bộ sheet Mục Lục từ các Log tháng hiện có */
@@ -489,22 +520,26 @@ function rebuildMucLuc() {
   mucLuc.getRange('A2:C2').setValues([['Tháng', 'Log', 'Report']]);
 
   const sheets = ss.getSheets();
-  const rows = [];
+  const labels = [];
+  const formulas = [];
 
   sheets.forEach(sh => {
     const m = sh.getName().match(/^Log_(\d{2}_\d{4})$/);
     if (m) {
       const mKey = m[1];
-      const label = mKey.replace('_', '/');
-      const logLink = `=HYPERLINK("#gid=${sh.getSheetId()}", "${sh.getName()}")`;
+      labels.push([mKey.replace('_', '/')]);
+      const logLink = '=HYPERLINK("#gid=' + sh.getSheetId() + '"; "' + sh.getName() + '")';
       const rpt = ss.getSheetByName('Report_' + mKey);
-      const rptLink = rpt ? `=HYPERLINK("#gid=${rpt.getSheetId()}", "${rpt.getName()}")` : "";
-      rows.push([label, logLink, rptLink]);
+      const rptLink = rpt
+        ? '=HYPERLINK("#gid=' + rpt.getSheetId() + '"; "' + rpt.getName() + '")'
+        : '';
+      formulas.push([logLink, rptLink]);
     }
   });
 
-  if (rows.length > 0) {
-    mucLuc.getRange(3, 1, rows.length, 3).setFormulas(rows);
+  if (labels.length > 0) {
+    mucLuc.getRange(3, 1, labels.length, 1).setNumberFormat('@').setValues(labels);
+    mucLuc.getRange(3, 2, formulas.length, 2).setFormulas(formulas);
   }
 }
 
@@ -517,6 +552,7 @@ function onOpen() {
   ui.createMenu('💎 Sổ Thu Chi AI v2')
     .addItem('⚙️ Cấu hình AI & Bot', 'showConfigDialog')
     .addItem('📧 Quét Mail thủ công', 'triggerScanMailUI')
+    .addItem('💳 Sync Meta Billing', 'triggerSyncMetaBillingUI')
     .addItem('📑 Tái tạo Mục Lục', 'rebuildMucLuc')
     .addSeparator()
     .addSubMenu(
@@ -525,6 +561,7 @@ function onOpen() {
         .addItem('Các tháng chờ cập nhật (dirty)', 'menuRebuildAllDirtyReports')
         .addItem('Tất cả tháng (gõ ALL)', 'menuRebuildAllMonthReports')
         .addItem('Bật trigger dirty 15 phút', 'setReportDirtyTriggerManual')
+        .addItem('Bật trigger Meta Billing 6 giờ', 'setMetaBillingTriggerManual')
     )
     .addSubMenu(
       ui.createMenu('🔄 Làm mới format/data Log')
@@ -555,7 +592,7 @@ function onOpen() {
 function showConfigDialog() {
   const tpl = HtmlService.createTemplateFromFile('configui');
   tpl.token = getConfigToken();
-  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(600).setHeight(820), '⚙️ Cấu hình Sổ Thu Chi AI v2');
+  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(620).setHeight(920), '⚙️ Cấu hình Sổ Thu Chi AI v2');
 }
 
 function guardAllMonthLogB1UI() {

@@ -99,6 +99,12 @@ function handleTelegramUpdate_(contents) {
       deleteMessage(chatId, loadId);
       return;
     }
+    if (text === '/metabilling' || text.indexOf('/metabilling') === 0) {
+      const loadId = sendMessage(chatId, "⏳ Đang sync Meta Billing...");
+      syncMetaBilling(chatId);
+      deleteMessage(chatId, loadId);
+      return;
+    }
   }
 
   // Reply Keyboard cũ (Tháng này / 3 tháng) còn dính trên mobile
@@ -152,6 +158,7 @@ function helpMessageHtml_() {
     "• Gửi text / ảnh bill / voice để ghi sổ.\n" +
     "• <code>/report</code> — báo cáo hôm nay (+ nút Tháng này / 3 tháng).\n" +
     "• <code>/scan</code> — quét mail ngân hàng.\n" +
+    "• <code>/metabilling</code> — đối soát Meta Ads billing ↔ mail.\n" +
     "• <code>/help</code> — hiện hướng dẫn này.\n\n" +
     "<b>Sửa</b> — bấm ✏️ → chọn field (Số tiền / Ví / DM / …) hoặc ⚡ sửa nhanh.\n" +
     "• Reply tin GD: <code>ví MB</code> · <code>50k</code> · <code>dm Cafe</code> · <code>hủy</code>\n" +
