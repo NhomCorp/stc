@@ -14,15 +14,19 @@ Nguồn sự thật khi sửa code. Kiến trúc **Modular** (7 file .gs + 1 htm
 | `3_MailScanner.gs` | Quét Gmail theo Rule/Regex & AI Fallback, chống trùng UNIQUE_KEY |
 | `4_SheetStore.gs` | CRUD Log_MM_YYYY, clone Template, Mục Lục, Dummy Row, onEdit/onOpen |
 | `5_ReportRebuild.gs` | Hybrid báo cáo: dirty-set, rebuild Report tháng (lọc CHECK/Chưa phân loại), timestamp, trigger dirty, Hôm nay trên Bao Cao |
+| `7_MonthView.gs` | View_Log / View_Report chỉ đọc; ẩn shard tháng; onOpen nạp tháng hiện tại; API cho sidebar |
+| `8_OpsSidebar.gs` | Sidebar Quét Mail / Meta Billing: lưu khoảng ngày + token, chạy scan/sync |
 | `9_Tools.gs` | Theme Log/Report tháng + menu Làm mới format/data Log |
-| `configui.html` | Dialog/WebApp cấu hình: model, API keys, prompt, chủ TK, quét mail |
+| `configui.html` | Dialog/WebApp cấu hình: model, API keys, prompt, chủ TK (mail/Meta cũng có ở opsui) |
+| `viewui.html` | Sidebar View tháng: dropdown tháng + nút Xem / Sửa / Ẩn sheet tháng |
+| `opsui.html` | Sidebar Quét Mail / Meta: khoảng ngày, token, Check live, quét, ghi Log |
 | `archive/Code.legacy.txt` | **THƯ VIỆN THAM KHẢO** — monolith cũ. Không deploy, không đổi đuôi `.gs` |
 | `rule.md` | Rule nghiệp vụ + kỹ thuật (file này) |
 | `Structure.md` | Kiến trúc, sơ đồ luồng, bản đồ Sheet |
 | `note.md` | Gom việc / backlog |
 | `feedback v2.txt` | Ghi chú migrate v1 → v2 (lịch sử) |
 
-Trong Apps Script: HTML file name phải là `configui` (khớp `createTemplateFromFile('configui')`).
+Trong Apps Script: HTML file name phải là `configui`, `viewui`, `opsui` (khớp `createTemplateFromFile` / `createHtmlOutputFromFile`).
 
 ---
 
@@ -54,8 +58,9 @@ Không còn Master Log, không ghi song song.
 | Nhóm | Sheet | GID | Vai trò |
 |------|-------|-----|---------|
 | Điều hướng | `Mục Lục` | Tự động | Link nhanh tới Log & Report từng tháng |
-| Dữ liệu | `Log_MM_YYYY` | Clone từ Template | **Nguồn gốc duy nhất** — script chỉ append |
-| Báo cáo tháng | `Report_MM_YYYY` | Clone từ Template | Script `rebuildReportMonth` ghi số tĩnh (lọc CHECK / Chưa phân loại) |
+| View (UX) | `View_Log` / `View_Report` | Tự động | Snapshot chỉ đọc; hàng 1 banner, nội dung từ hàng 2; chọn tháng ở sidebar |
+| Dữ liệu | `Log_MM_YYYY` | Clone từ Template | **Nguồn gốc duy nhất** — script chỉ append; **ẩn mặc định** |
+| Báo cáo tháng | `Report_MM_YYYY` | Clone từ Template | Script `rebuildReportMonth` ghi số tĩnh; **ẩn mặc định** |
 | Báo cáo tổng | `Bao Cao v2` | `1475474497` | Hôm nay = script A2:E2; bảng tháng = link `Report!B3:B6`; F1 timestamp |
 | Báo cáo trọn đời | `Tóm tắt_v2` | `129580313` | Lifetime: VSTACK/QUERY/SUMIFS toàn bộ Log tháng |
 | Template | `Template_Log` | `192263148` | Khuôn mẫu clone Log tháng mới |
@@ -77,7 +82,13 @@ Không còn Master Log, không ghi song song.
 
 Mail quét mặc định = **Chi**, không áp CHECK nếu các trường đầy đủ.
 
-> **Nguyên tắc bảo vệ Sheet cũ**: Giữ nguyên vẹn tuyệt đối các sheet cũ (`Giao dịch_v2`, `Bao cao_v2`, `Tóm tắt_v2`, `Alias`, `AI_Learning`, `Quet Mail`). Xem chi tiết tại `.cursor/rules/sheet-cu-giuy-nguyen.mdc`.
+> **Nguyên tắc bảo vệ Sheet cũ**: Giữ nguyên vẹn tuyệt đối các sheet cũ (`Giao dịch_v2`, `Alias`, `AI_Learning`, `Quet Mail`). Xem chi tiết tại `.cursor/rules/sheet-cu-giuy-nguyen.mdc`.
+>
+> **Ngoại lệ phiên bản mới**: 
+> 1. Báo cáo v2 (`1475474497`) **không còn thuộc danh sách bảo vệ**, được phép cập nhật toàn bộ. 
+> 2. Tóm tắt_v2 (`129580313`) được phép **ghi đè phần số liệu**, chỉ bảo vệ nghiêm ngặt cột danh mục (master data).
+>
+> **Luồng báo cáo dùng chung**: BDK và menu phải dùng `rebuildMonthsNow_()` trong `5_ReportRebuild.gs` cho cả một tháng và toàn bộ tháng. Danh sách toàn bộ lấy từ `listReportLogMonths_()`. Không lặp lời gọi tổng hợp riêng từng tháng từ giao diện; Tóm tắt được cập nhật một lần cuối khi cả lượt không có lỗi. Giao diện chỉ chọn phạm vi, xác nhận, hiển thị kết quả và nạp lại View.
 
 ---
 
@@ -96,6 +107,8 @@ Mail quét mặc định = **Chi**, không áp CHECK nếu các trường đầy
 | `owner_names` | Tên chủ tài khoản ngân hàng (suy đoán Thu/Chi) |
 | `so_ngay_quet` | Số ngày quét mail (mặc định 1) |
 | `quet_tu_ngay` / `quet_den_ngay` | Khoảng ngày quét Gmail tùy chọn |
+| `MAIL_SCAN_TRIGGER_ON` / `_HOUR` / `_MINUTE` | Lịch quét mail hằng ngày (sidebar) |
+| `META_BILLING_TRIGGER_ON` / `_HOUR` / `_MINUTE` | Lịch quét Meta hằng ngày (sidebar) |
 | `config_token` | Token bảo mật URL WebApp cấu hình |
 | `webhook_secret` | Secret token chống spam webhook |
 
@@ -159,7 +172,7 @@ Khi ghi giao dịch mới (`saveBatchToMonthShards`):
 - **Report_MM_YYYY** = sổ cái đã ghi nhận — script `rebuildReportMonth` ghi số tĩnh (loại `CHECK*` và dòng còn `Chưa phân loại`).
 - **Bao Cao v2**: dòng Hôm nay do script ghi; bảng tháng = công thức link `Report!B3:B6` (tự nhảy khi Report cập nhật).
 - **Dirty-set**: mọi ghi/sửa/xóa/undo/scan/`onEdit` Log → đánh dấu tháng; badge `⚠` trên Report!D1.
-- **Nấu lại**: ngay sau ghi bot/scan/undo; `/report` (rebuild-before-read); menu **Làm mới báo cáo**; trigger 15’ chỉ tháng dirty.
+- **Nấu lại**: ngay sau ghi bot/undo; `/report` (rebuild-before-read); menu **Làm mới báo cáo**; trigger 15’ chỉ tháng dirty. `scanMail` chỉ ghi Log + dirty — không nấu Report, không khớp Meta.
 - **Timestamp**: Report!D1 và Bao Cao!F1 = `Cập nhật đến dd/MM/yyyy HH:mm` (chỉ khi rebuild OK). Telegram `/report` hiện cùng mốc + nút **Tháng này** / **3 tháng gần nhất**.
 - Menu **cứu hộ** (submenu riêng, xác nhận YES/NO) chỉ khi hỏng cấu trúc — không dùng hàng ngày. Sau cứu hộ Bao Cao, script khôi phục ngay dòng Hôm nay (hybrid).
 
@@ -180,12 +193,22 @@ Khi ghi giao dịch mới (`saveBatchToMonthShards`):
 
 ---
 
-## 8. UI cấu hình (`configui.html`)
+## 8. UI cấu hình
 
-- Model + nhiều API key + nhãn key + prompt tùy chọn + chủ tài khoản + khoảng ngày quét mail
-- Key đã lưu hiện dạng `AIza••••xxxx` (4 đầu + 4 cuối)
-- Ô còn `••••` khi Lưu → giữ key cũ; chỉ ghi đè khi nhập key mới đầy đủ
-- Hint prompt: không bảo user paste Alias/JSON schema
+**`configui.html`** (dialog / Web App): model, API key, prompt, chủ TK. Key đã lưu dạng `AIza••••xxxx`; ô còn `••••` khi Lưu → giữ key cũ.
+
+**`opsui.html`** (sidebar, cùng kiểu `viewui`): cấu hình + chạy Quét Mail và Meta Billing.
+- Mail: số ngày hoặc Từ–Đến (ưu tiên khoảng ngày) → Lưu / Quét ngay
+- Meta: token (che), Business ID, lookback → Lưu / Check live / **Upload Invoice CSV** (dò ID trên Log rồi ghi thẳng dòng chưa có) / Quét API / Ghi thiếu mail → Log / Sync lại toàn bộ. Ad Account = cột A sheet `Quet Mail` (ID trong CSV phải khớp keyword)
+- Lịch tự động: checkbox + giờ/phút (0/15/30/45) cho quét mail và/hoặc Meta, mỗi ngày theo timezone Apps Script → Lưu lịch
+- Keyword / ví / danh mục / ID TK Ads vẫn ở sheet `Quet Mail`
+- Menu **📧 Bảng điều khiển Quét Mail / Meta**; submenu **📧 Quét (không cần sidebar)** giữ alert cũ
+- Chỉ một sidebar tại một thời điểm — nút chuyển qua lại với View tháng
+
+## 8b. UI View tháng (`viewui.html`)
+
+- Dropdown tháng + Xem Log / Xem Report / Sửa / Ẩn sheet tháng
+- `onOpen` mở sidebar View; F5 ẩn shard tháng
 
 ---
 

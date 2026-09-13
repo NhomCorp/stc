@@ -2,7 +2,7 @@
 // 🧠 2_GEMINIAI.GS — GEMINI AI PARSER & DATA NORMALIZATION
 // ============================================================================
 
-const LIVE_DATA_CACHE_KEY_ = "CACHED_LIVE_DATA_V2";
+const LIVE_DATA_CACHE_KEY_ = "CACHED_LIVE_DATA_V3";
 
 function getShuffledKeys() {
   const raw = PROP.getProperty('ai_keys');
@@ -271,7 +271,72 @@ function normalizeTransaction(raw, liveData) {
   };
 }
 
-/** Đọc danh bạ LiveData từ các sheet cấu hình theo GID & Data Validation của Template_Log */
+/**
+ * Gom nhãn sổ tay từ mảng 2D (cột valueCol), bỏ trống / "Tổng" / trùng.
+ * DV kiểu RANGE hoặc named range nhiều cột phải lấy đúng 1 cột tên.
+ */
+function uniqueNotebookLabels_(rows, valueCol) {
+  const col = valueCol || 0;
+  const out = [];
+  const seen = {};
+  (rows || []).forEach(function (row) {
+    const cell = row && row[col];
+    const v = String(cell == null ? '' : cell).trim();
+    const key = v.toLowerCase();
+    if (!v || v === 'Tổng' || seen[key]) return;
+    seen[key] = true;
+    out.push(v);
+  });
+  return out;
+}
+
+/**
+ * Category = dải danh mục con.
+ * 1 cột (B13:B…) → con ở index 0; 2+ cột (layout cũ A:B) → con ở index 1.
+ */
+function categoryNamedRangeLayout_(ss) {
+  try {
+    const range = ss ? ss.getRangeByName('Category') : null;
+    if (!range) return { range: null, conCol: 0, isConOnly: true };
+    const isConOnly = range.getNumColumns() < 2;
+    return { range: range, conCol: isConOnly ? 0 : 1, isConOnly: isConOnly };
+  } catch (e) {
+    return { range: null, conCol: 0, isConOnly: true };
+  }
+}
+
+/** Đọc named range sổ tay: Wallet / userr / Category (cột valueCol). */
+function notebookListFromNamedRange_(ss, rangeName, valueCol) {
+  try {
+    const range = ss.getRangeByName(rangeName);
+    if (!range) return [];
+    return uniqueNotebookLabels_(range.getValues(), valueCol);
+  } catch (e) {
+    return [];
+  }
+}
+
+/**
+ * Bóc list từ Data Validation.
+ * VALUE_IN_LIST → mảng string; VALUE_IN_RANGE → Range (getCriteriaValues không ra mảng tên).
+ */
+function listFromDataValidation_(dv, valueCol) {
+  if (!dv) return [];
+  try {
+    const raw = dv.getCriteriaValues()[0];
+    if (!raw) return [];
+    if (typeof raw.getValues === 'function') {
+      return uniqueNotebookLabels_(raw.getValues(), valueCol);
+    }
+    if (Array.isArray(raw)) {
+      const rows = raw.map(function (x) { return Array.isArray(x) ? x : [x]; });
+      return uniqueNotebookLabels_(rows, valueCol);
+    }
+  } catch (e) {}
+  return [];
+}
+
+/** Đọc danh bạ LiveData: named range Wallet / userr / Category là nguồn chính; DV Template_Log chỉ bổ sung khi range trống. */
 function getLiveData() {
   const cacheKey = LIVE_DATA_CACHE_KEY_;
   const cached = CacheService.getScriptCache().get(cacheKey);
@@ -281,46 +346,43 @@ function getLiveData() {
     } catch (e) {}
   }
 
-  // Danh mục mặc định (fallback an toàn khi sheet chưa có Data Validation)
+  // Danh mục mặc định (fallback an toàn khi sheet chưa có sổ tay)
   let wallets = ["Cash", "Bank", "Credit"];
   let users = ["Bản thân", "Couple", "Gia đình", "Bạn bè", "Khách lẻ"];
   let categories = ["Ăn sáng", "Ăn trưa", "Ăn tối", "Cafe", "Xăng xe", "Mua sắm", "ADS", "Giải trí", "Điện nước"];
 
   try {
     const ss = getSpreadsheet_();
-    const tplLog = getSheetByGid(GID.TEMPLATE_LOG) || (ss ? ss.getSheetByName('Template_Log') : null);
+    const fromWallet = notebookListFromNamedRange_(ss, 'Wallet', 0);
+    const fromUsers = notebookListFromNamedRange_(ss, 'userr', 0);
+    const catLayout = categoryNamedRangeLayout_(ss);
+    const fromCat = catLayout.range
+      ? uniqueNotebookLabels_(catLayout.range.getValues(), catLayout.conCol)
+      : [];
+    if (fromWallet.length) wallets = fromWallet;
+    if (fromUsers.length) users = fromUsers;
+    if (fromCat.length) categories = fromCat;
 
-    if (tplLog) {
-      // Đọc Data Validation từ dòng mẫu (dòng 3) của Template_Log
-      const sampleRow = tplLog.getRange(3, 1, 1, 9);
-      const validations = sampleRow.getDataValidations()[0];
-
-      // Cột D (index 3): Ví
-      if (validations[MONTH_LOG_COL.VI]) {
-        const criteria = validations[MONTH_LOG_COL.VI].getCriteriaValues()[0];
-        if (Array.isArray(criteria) && criteria.length > 0) {
-          wallets = criteria.map(String).filter(Boolean);
+    if (!fromWallet.length || !fromUsers.length || !fromCat.length) {
+      const tplLog = getSheetByGid(GID.TEMPLATE_LOG);
+      if (tplLog) {
+        const validations = tplLog.getRange(3, 1, 1, 9).getDataValidations()[0];
+        if (!fromWallet.length) {
+          const dvW = listFromDataValidation_(validations[MONTH_LOG_COL.VI], 0);
+          if (dvW.length) wallets = dvW;
         }
-      }
-
-      // Cột E (index 4): Đối tượng
-      if (validations[MONTH_LOG_COL.DOI_TUONG]) {
-        const criteria = validations[MONTH_LOG_COL.DOI_TUONG].getCriteriaValues()[0];
-        if (Array.isArray(criteria) && criteria.length > 0) {
-          users = criteria.map(String).filter(Boolean);
+        if (!fromUsers.length) {
+          const dvU = listFromDataValidation_(validations[MONTH_LOG_COL.DOI_TUONG], 0);
+          if (dvU.length) users = dvU;
         }
-      }
-
-      // Cột F (index 5): Danh mục con
-      if (validations[MONTH_LOG_COL.DANH_MUC_CON]) {
-        const criteria = validations[MONTH_LOG_COL.DANH_MUC_CON].getCriteriaValues()[0];
-        if (Array.isArray(criteria) && criteria.length > 0) {
-          categories = criteria.map(String).filter(Boolean);
+        if (!fromCat.length) {
+          const dvC = listFromDataValidation_(validations[MONTH_LOG_COL.DANH_MUC_CON], 0);
+          if (dvC.length) categories = dvC;
         }
       }
     }
   } catch (e) {
-    Logger.log("Lỗi khi đọc Data Validation từ Template_Log: " + e.message);
+    Logger.log("Lỗi khi đọc sổ tay LiveData: " + e.message);
   }
 
   // Đọc sheet Alias theo GID

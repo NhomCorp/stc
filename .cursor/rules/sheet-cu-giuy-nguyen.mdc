@@ -16,8 +16,7 @@ Khi nào có bug ở bộ máy cũ thì sửa sau — hiện tại vẫn đang h
 | Sheet | GID | Trạng thái |
 |-------|-----|-----------|
 | Giao dịch_v2 | `2063390740` | Code cũ đang dùng — không động vào |
-| Bao cao_v2 | `1475474497` | Code cũ đang dùng — không động vào |
-| Tóm tắt_v2 | `129580313` | Code cũ đang dùng — không động vào |
+| Tóm tắt_v2 | `129580313` | Chỉ bảo vệ master data; số liệu được ghi đè theo ngoại lệ bên dưới |
 
 ### Sheet phụ (bổ trợ cho code cũ)
 
@@ -28,7 +27,22 @@ Khi nào có bug ở bộ máy cũ thì sửa sau — hiện tại vẫn đang h
 | Quet Mail | `2033507127` | Code cũ đang đọc — không động vào |
 | Nháp | `352148465` | Không quan tâm |
 
+## Tóm tắt v2 (GID 129580313) — bảo vệ danh mục master, ghi đè số liệu
+
+- Master data gồm danh sách nhãn/danh mục tại các cột A, B, G, L: **bảo vệ tuyệt đối**, không tự thêm/xóa/đổi tên danh mục.
+- Phần số liệu tổng hợp (các cột số tiền B:D, C:E, H:J, M:O và dòng tổng) **được phép ghi đè** bằng script khi tổng hợp lại từ Report các tháng.
+- Luồng hợp lệ: hàm `refreshTomTatFromReports_()` kiểm tra khớp master data rồi ghi đè số liệu; nếu thiếu master data thì hủy ghi và giữ nguyên bản cũ.
+
+## Báo cáo v2 — thuộc phiên bản mới, không thuộc diện bảo vệ Sheet Cũ
+
+- Sheet GID `1475474497` (`Bao cao_v2` / `Bao Cao v2`, gọi chung là baocao v2) được phiên bản mới sử dụng làm báo cáo tổng.
+- Được phép sửa/phát triển code đọc/ghi sheet này theo yêu cầu; không coi việc cập nhật nó là vi phạm bảo vệ Sheet Cũ.
+- Flow hợp lệ: thêm link Report tháng, cập nhật số liệu Hôm nay và timestamp qua `ensureMonthLinkedOnBaoCao_`, `refreshBaoCaoToday_`, `writeBaoCaoTimestamp_`.
+- Xác định sheet bằng GID để tránh nhầm do cách viết tên. Ngoại lệ này chỉ áp dụng cho GID `1475474497`; các Sheet Cũ còn lại vẫn được bảo vệ nguyên trạng.
+
 ## Sheet Mới (tự do phát triển)
+
+- Báo cáo tổng v2 — GID `1475474497` (quy định ở trên)
 
 - `Mục Lục`, `Template_Log`, `Template_Report`
 - `Log_MM_YYYY`, `Report_MM_YYYY` (nhân bản từ template)
@@ -36,6 +50,8 @@ Khi nào có bug ở bộ máy cũ thì sửa sau — hiện tại vẫn đang h
 - Quy ước đặt tên: dùng `Template_Report` (không dùng `Template_BaoCao`)
 
 ## Quy tắc bắt buộc
+
+Các giới hạn dưới đây áp dụng cho Sheet Cũ được bảo vệ tuyệt đối và master data của Tóm tắt_v2; không cấm cập nhật số liệu Tóm tắt_v2 theo ngoại lệ ở trên.
 
 1. **Không được** sửa code/flow đang ghi hoặc đọc các Sheet Cũ.
 2. **Không được** thay đổi cấu trúc (cột, header, định dạng, Named Range, công thức).

@@ -6,50 +6,89 @@ const PROP = PropertiesService.getScriptProperties();
 
 // 🆔 BẢN ĐỒ GID CỦA CÁC SHEET HỆ THỐNG CỐ ĐỊNH (Không sợ đổi tên tab)
 const GID = {
-  BAO_CAO: 1475474497,       // Sheet 'Bao Cao v2'
-  TOM_TAT: 129580313,        // Sheet 'Tóm tắt_v2'
-  ALIAS: 1498755942,         // Sheet 'Alias'
-  AI_LEARNING: 203251644,    // Sheet 'AI_Learning'
-  QUET_MAIL: 2033507127,     // Sheet 'Quet Mail'
-  TEMPLATE_LOG: 192263148,   // Sheet 'Template_Log'
-  TEMPLATE_REPORT: 56513848  // Sheet 'Template_Report'
+  BAO_CAO: 1475474497,       // Sheet 'Bao Cao v2' (cố định, không đổi tên)
+  TOM_TAT: 129580313,        // Sheet 'Tóm tắt_v2' (cố định, không đổi tên)
+  ALIAS: 1498755942,         // Sheet 'Alias' (cố định, không đổi tên)
+  AI_LEARNING: 203251644,    // Sheet 'AI_Learning' (cố định, không đổi tên)
+  QUET_MAIL: 2033507127,     // Sheet 'Quet Mail' (cố định, không đổi tên)
+  TEMPLATE_LOG: 192263148,   // Sheet 'Template_Log' (cố định, không đổi tên)
+  TEMPLATE_REPORT: 56513848, // Sheet 'Template_Report' (cố định, không đổi tên)
+  // MUC_LUC / LOG_CHUYEN / VIEW_* là sheet động (được tạo tự động) — GID lưu vào Script Properties khi tạo.
+  // Đọc qua getDynamicSheetGid_(name) để không sợ đổi tên tab.
 };
+
+/** Lấy GID đã ghi nhận (Script Properties) cho các sheet động: Mục Lục, Log_Chuyen, View_Log, View_Report…
+ * @param {string} propKey Tên property (VD 'muc_luc_gid')
+ * @returns {number|null}
+ */
+function getDynamicGid_(propKey) {
+  const raw = PROP.getProperty(propKey);
+  const n = Number(raw);
+  return raw && !isNaN(n) ? n : null;
+}
 
 // 📌 TÊN SHEET QUY ƯỚC ĐẶC BIỆT
 const SHEET_NAMES = {
   MUC_LUC: 'Mục Lục',
   LOG_CHUYEN: 'Log_Chuyen',
   AI_LEARNING: 'AI_Learning',
-  ADS_BILLING_SYNC: 'Ads_Billing_Sync'
+  ADS_BILLING_SYNC: 'Ads_Billing_Sync',
+  VIEW_LOG: 'View_Log',
+  VIEW_REPORT: 'View_Report'
 };
 
+// View_Log / View_Report: hàng 1 = banner, nội dung từ hàng 2.
+// Điều khiển (chọn tháng, Xem, Sửa) nằm ở sidebar `viewui.html` — xem 7_MonthView.gs.
+// Quét Mail / Invoice CSV: sidebar `opsui.html` — xem 8_OpsSidebar.gs.
+// Meta Billing API (Graph): false = tắt sync/check/lịch/telegram. Quét mail + upload CSV vẫn chạy.
+// Bật lại: đổi thành true — code không bị xóa.
+const META_BILLING_ENABLED = false;
+
 // 🗺️ CỘT Ads_Billing_Sync (INDEX 0) — đối soát Meta ↔ Mail
+// Unique Key = Meta txn id (= UNIQUE_KEY khi ghi Log)
 const ADS_BILLING_COL = {
-  META_TXN_ID: 0,
+  META_TXN_ID: 0,  // Unique Key
   AD_ACCOUNT: 1,
   NGAY: 2,
   SO_TIEN: 3,
   CURRENCY: 4,
-  STATUS: 5,       // SEEN | MATCHED_MAIL | MISSING_MAIL | ALERTED
-  MAIL_KEY: 6,
-  UPDATED_AT: 7,
-  GHI_CHU: 8,
-  EVENT_TIME: 9
+  STATUS: 5,       // SEEN | MATCHED_MAIL | MISSING_MAIL | ALERTED | LOGGED_META
+  UPDATED_AT: 6,
+  GHI_CHU: 7,
+  EVENT_TIME: 8
 };
 const ADS_BILLING_HEADERS = [
-  'Meta Txn ID', 'Ad Account', 'Ngày', 'Số tiền', 'Currency',
-  'Trạng thái', 'Mail Unique Key', 'Cập nhật', 'Ghi chú', 'Event Time'
+  'Unique Key', 'Ad Account', 'Ngày', 'Số tiền', 'Currency',
+  'Trạng thái', 'Cập nhật', 'Ghi chú', 'Event Time'
 ];
+const ADS_BILLING_MONEY_FMT = '#,##0;[Red]-#,##0;0';
+const ADS_BILLING_TS_FMT = '@'; // Cập nhật / Event Time giữ chuỗi dd/MM/yyyy HH:mm:ss
 const ADS_BILLING_STATUS = {
   SEEN: 'SEEN',
   MATCHED_MAIL: 'MATCHED_MAIL',
   MISSING_MAIL: 'MISSING_MAIL',
-  ALERTED: 'ALERTED'
+  ALERTED: 'ALERTED',
+  LOGGED_META: 'LOGGED_META' // đã ghi Log tháng từ Meta (UNIQUE_KEY = Meta txn)
 };
 const META_GRAPH_API_VERSION = 'v26.0';
 const META_BILLING_AMOUNT_TOLERANCE = 1; // ±đ khi khớp ngày+tiền
 const META_BILLING_LOOKBACK_DAYS_DEFAULT = 60;
-const META_BILLING_TRIGGER_HOURS = 6;
+// Sync định kỳ chỉ quét từ (watermark − buffer) thay vì full lookback
+const META_BILLING_WATERMARK_BUFFER_HOURS = 48;
+const META_BILLING_DATE_TOLERANCE_DAYS = 1; // lệch múi giờ UTC ↔ GMT+7
+
+// Lịch trigger (menu Set Trigger / opsui mode=trigger) — giờ theo timezone Apps Script
+const MAIL_SCAN_TRIGGER_HANDLER_ = 'runScheduledScanMail';
+const MAIL_SCAN_TRIGGER_INTERVAL_HOURS_DEFAULT = 2;  // chế độ "Mỗi N giờ"
+const MAIL_SCAN_TRIGGER_HOUR_DEFAULT = 8;            // chế độ "Mỗi ngày"
+const MAIL_SCAN_TRIGGER_MINUTE_DEFAULT = 0;
+const MAIL_SCAN_REBUILD_AFTER_PROP_ = 'MAIL_SCAN_REBUILD_AFTER'; // switch "nấu báo cáo sau quét"
+const REPORT_TRIGGER_INTERVAL_HOURS_DEFAULT = 3;     // trigger báo cáo tự nấu
+const REPORT_AUTO_TRIGGER_OFF_PROP_ = 'REPORT_AUTO_TRIGGER_OFF'; // đã tắt trigger báo cáo từ sidebar
+const META_BILLING_TRIGGER_HOUR_DEFAULT = 8;
+const META_BILLING_TRIGGER_MINUTE_DEFAULT = 30;
+// Giá trị giờ hợp lệ cho everyHours() của Apps Script (ngoài ra sẽ báo lỗi / round khác)
+const TRIGGER_HOURS_ALLOWED = [1, 2, 3, 4, 5, 6, 8, 12, 24];
 
 // 🧹 CHUẨN HOÁ THÁNG / LOG CHUYỂN
 const LOG_CHUYEN_HEADERS = ['Thời gian', 'UNIQUE_KEY', 'Ngày GD', 'Từ sheet', 'Sang sheet', 'Trạng thái', 'Ghi chú'];
@@ -84,6 +123,194 @@ const EDIT_SESS_TTL = 86400;  // 24 giờ (đồng bộ phiên sửa nháp)
 const OPTS_PAGE_SIZE = 6;     // Số nút mỗi trang khi chọn phân loại
 const SO_NGAY_QUET_DEFAULT = 1;
 const AI_MAIL_MAX_CALLS = 15;
+
+// Hộp thư: Gmail (tài khoản script) + Hotmail (Graph, cred email|password|refresh_token|client_id)
+const MAILBOX_ID_GMAIL = 'gmail-default';
+const MAIL_HOTMAIL_MAX_PAGES = 6; // 6 × 50 = 300 mail / lần
+const MAIL_HOTMAIL_PAGE_SIZE = 50;
+const MAIL_ACCOUNTS_PROP_ = 'MAIL_ACCOUNTS_JSON';
+
+function parseHotmailCredLine_(raw) {
+  var s = String(raw || '').replace(/^\uFEFF/, '').replace(/\r/g, '').trim();
+  if (!s) return null;
+  if (s.charAt(0) === '"' && s.charAt(s.length - 1) === '"') s = s.slice(1, -1).trim();
+  s = s.replace(/\n+/g, '').replace(/\s*\|\s*/g, '|').trim();
+  var parts = s.split('|');
+  var email = '';
+  var password = '';
+  var refreshToken = '';
+  var clientId = '';
+  if (parts.length === 3) {
+    email = String(parts[0] || '').trim();
+    refreshToken = String(parts[1] || '').trim();
+    clientId = String(parts[2] || '').trim();
+  } else if (parts.length >= 4) {
+    email = String(parts[0] || '').trim();
+    password = String(parts[1] || '');
+    clientId = String(parts[parts.length - 1] || '').trim();
+    refreshToken = parts.slice(2, parts.length - 1).join('|').trim();
+  } else {
+    return null;
+  }
+  if (!email || !refreshToken || !clientId) return null;
+  if (email.indexOf('@') < 1) return null;
+  return { email: email, password: password, refreshToken: refreshToken, clientId: clientId };
+}
+
+function maskHotmailCredLine_(raw) {
+  const p = parseHotmailCredLine_(raw);
+  if (!p) return raw ? '••••' : '';
+  return p.email + '|••••|' + maskApiKey(p.refreshToken) + '|' + p.clientId;
+}
+
+function isMaskedHotmailCred_(raw) {
+  return String(raw || '').indexOf('••••') !== -1;
+}
+
+function rebuildHotmailCredLine_(cred) {
+  return [cred.email, cred.password || '', cred.refreshToken, cred.clientId].join('|');
+}
+
+function defaultGmailAccount_() {
+  return {
+    id: MAILBOX_ID_GMAIL,
+    type: 'gmail',
+    label: 'Gmail chính',
+    email: '',
+    enabled: true,
+    priority: 1
+  };
+}
+
+function mailAccountEmailOf_(a, parsed) {
+  if (parsed && parsed.email) return parsed.email;
+  return String((a && a.email) || '').trim();
+}
+
+function mailAccountLabelOf_(a, fallback) {
+  const custom = String((a && a.label) || '').trim();
+  if (custom) return custom;
+  return fallback;
+}
+
+function normalizeMailAccountList_(arr) {
+  const out = [];
+  let hasGmail = false;
+  const src = arr && arr.length ? arr : [];
+  for (let i = 0; i < src.length; i++) {
+    const a = src[i] || {};
+    if (a.type === 'gmail' || a.id === MAILBOX_ID_GMAIL) {
+      if (hasGmail) continue;
+      hasGmail = true;
+      out.push({
+        id: MAILBOX_ID_GMAIL,
+        type: 'gmail',
+        label: mailAccountLabelOf_(a, 'Gmail chính'),
+        email: String(a.email || '').trim(),
+        enabled: a.enabled !== false && a.enabled !== '0',
+        priority: 1
+      });
+      continue;
+    }
+    if (a.type !== 'hotmail') continue;
+    const cred = String(a.cred || '').trim();
+    if (!cred) continue;
+    const p = parseHotmailCredLine_(cred);
+    const email = mailAccountEmailOf_(a, p);
+    out.push({
+      id: String(a.id || ('hm-' + (i + 1))),
+      type: 'hotmail',
+      label: mailAccountLabelOf_(a, email || 'Hotmail'),
+      email: email,
+      enabled: a.enabled === true || a.enabled === 1 || a.enabled === '1' || a.enabled === 'true',
+      priority: 10 + out.length,
+      cred: cred
+    });
+  }
+  if (!hasGmail) out.unshift(defaultGmailAccount_());
+  for (let i = 0; i < out.length; i++) out[i].priority = i + 1;
+  return out;
+}
+
+/** Danh sách hộp đồng bộ — Script Properties. Có migrate 1 Hotmail cũ. */
+function loadMailAccountList_() {
+  const raw = String(PROP.getProperty(MAIL_ACCOUNTS_PROP_) || '').trim();
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Object.prototype.toString.call(parsed) === '[object Array]') {
+        return normalizeMailAccountList_(parsed);
+      }
+    } catch (e) {}
+  }
+  const gmailOn = PROP.getProperty('MAIL_GMAIL_ENABLED') !== '0';
+  const list = [defaultGmailAccount_()];
+  list[0].enabled = gmailOn;
+  const oldCred = String(PROP.getProperty('MAIL_HOTMAIL_CRED') || '').trim();
+  if (oldCred) {
+    const p = parseHotmailCredLine_(oldCred);
+    list.push({
+      id: 'hotmail-1',
+      type: 'hotmail',
+      label: p ? p.email : 'Hotmail',
+      enabled: PROP.getProperty('MAIL_HOTMAIL_ENABLED') === '1',
+      priority: 2,
+      cred: oldCred
+    });
+  }
+  return normalizeMailAccountList_(list);
+}
+
+function saveMailAccountList_(list) {
+  const norm = normalizeMailAccountList_(list);
+  PROP.setProperty(MAIL_ACCOUNTS_PROP_, JSON.stringify(norm.map(function (a) {
+    const row = { id: a.id, type: a.type, label: a.label, email: a.email || '', enabled: !!a.enabled, priority: a.priority };
+    if (a.type === 'hotmail') row.cred = a.cred || '';
+    return row;
+  })));
+  const gmail = norm.filter(function (a) { return a.type === 'gmail'; })[0];
+  PROP.setProperty('MAIL_GMAIL_ENABLED', gmail && gmail.enabled ? '1' : '0');
+  return norm;
+}
+
+function persistHotmailCred_(cred, newRefreshToken) {
+  const rt = String(newRefreshToken || cred.refreshToken).trim();
+  cred.refreshToken = rt;
+  const line = rebuildHotmailCredLine_(cred);
+  const list = loadMailAccountList_();
+  let hit = false;
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].type !== 'hotmail') continue;
+    const p = parseHotmailCredLine_(list[i].cred);
+    if (p && p.email.toLowerCase() === String(cred.email).toLowerCase()
+      && p.clientId === cred.clientId) {
+      list[i].cred = line;
+      if (!list[i].label) list[i].label = cred.email;
+      list[i].email = cred.email;
+      hit = true;
+    }
+  }
+  if (hit) saveMailAccountList_(list);
+  else PROP.setProperty('MAIL_HOTMAIL_CRED', line);
+}
+
+function mailAccountsForUi_(list) {
+  const src = list || loadMailAccountList_();
+  const out = [];
+  for (let i = 0; i < src.length; i++) {
+    const a = src[i] || {};
+    out.push({
+      id: String(a.id || ''),
+      type: String(a.type || ''),
+      label: String(a.label || a.type || ''),
+      email: String(a.email || ''),
+      enabled: !!a.enabled,
+      priority: Number(a.priority) || (i + 1),
+      cred_masked: a.type === 'hotmail' ? String(maskHotmailCredLine_(a.cred || '') || '') : ''
+    });
+  }
+  return out;
+}
 
 // ============================================================================
 // 🛠️ HÀM CẤU HÌNH & CHẠY TRỰC TIẾP TRÊN GAS EDITOR
@@ -271,14 +498,7 @@ function getConfigToUI(token) {
     keys: maskedList,
     key_labels: labels,
     owner_names: props.owner_names || '',
-    prompt: props.ai_prompt || '',
-    so_ngay_quet: props.so_ngay_quet || String(SO_NGAY_QUET_DEFAULT),
-    quet_tu_ngay: props.quet_tu_ngay || '',
-    quet_den_ngay: props.quet_den_ngay || '',
-    meta_access_token: maskApiKey(props.META_ACCESS_TOKEN || ''),
-    meta_ad_account_ids: props.META_AD_ACCOUNT_IDS || '',
-    meta_business_id: props.META_BUSINESS_ID || '',
-    meta_billing_lookback_days: props.META_BILLING_LOOKBACK_DAYS || String(META_BILLING_LOOKBACK_DAYS_DEFAULT)
+    prompt: props.ai_prompt || ''
   };
 }
 
@@ -292,11 +512,6 @@ function saveConfigFromUI(form, token) {
   if (form.model) props.setProperty('ai_model', String(form.model).trim());
   if (form.owner_names !== undefined) props.setProperty('owner_names', String(form.owner_names).trim());
   if (form.prompt !== undefined) props.setProperty('ai_prompt', String(form.prompt).trim());
-
-  const soNgay = Math.max(1, parseInt(form.so_ngay_quet, 10) || SO_NGAY_QUET_DEFAULT);
-  props.setProperty('so_ngay_quet', String(soNgay));
-  props.setProperty('quet_tu_ngay', String(form.quet_tu_ngay || '').trim());
-  props.setProperty('quet_den_ngay', String(form.quet_den_ngay || '').trim());
 
   const keysArr = form.keys || [];
   const labelsArr = form.key_labels || [];
@@ -327,29 +542,6 @@ function saveConfigFromUI(form, token) {
   props.setProperty('ai_keys', JSON.stringify(merged));
   props.setProperty('ai_key_labels', JSON.stringify(mergedLabels));
 
-  // Meta Billing — token mask giống AI keys
-  if (form.meta_ad_account_ids !== undefined) {
-    props.setProperty('META_AD_ACCOUNT_IDS', String(form.meta_ad_account_ids || '').trim());
-  }
-  if (form.meta_business_id !== undefined) {
-    const bid = String(form.meta_business_id || '').trim();
-    if (bid) props.setProperty('META_BUSINESS_ID', bid);
-    else props.deleteProperty('META_BUSINESS_ID');
-  }
-  if (form.meta_billing_lookback_days !== undefined) {
-    const lb = Math.max(1, parseInt(form.meta_billing_lookback_days, 10) || META_BILLING_LOOKBACK_DAYS_DEFAULT);
-    props.setProperty('META_BILLING_LOOKBACK_DAYS', String(lb));
-  }
-  if (form.meta_access_token !== undefined) {
-    const metaTok = String(form.meta_access_token || '').trim();
-    if (!metaTok) {
-      props.deleteProperty('META_ACCESS_TOKEN');
-    } else if (metaTok.indexOf('••••') === -1) {
-      props.setProperty('META_ACCESS_TOKEN', metaTok);
-    }
-    // còn •••• → giữ token cũ
-  }
-
   return '✅ Đã lưu cấu hình thành công!';
 }
 
@@ -360,6 +552,7 @@ function saveConfigFromUI(form, token) {
  */
 function checkMetaBillingFromUI(cfgToken, draft) {
   try {
+    if (!META_BILLING_ENABLED) return 'ERR:' + metaBillingOffMsg_();
     if (cfgToken !== getConfigToken()) {
       return 'ERR:Token cấu hình không hợp lệ — đóng dialog, mở lại menu Cấu hình.';
     }
@@ -373,26 +566,15 @@ function checkMetaBillingFromUI(cfgToken, draft) {
       PROP.setProperty('META_ACCESS_TOKEN', accessToken);
     }
 
-    let accountsRaw = String(draft.meta_ad_account_ids || '').trim();
-    if (!accountsRaw) {
-      accountsRaw = String(PROP.getProperty('META_AD_ACCOUNT_IDS') || '').trim();
-    } else {
-      PROP.setProperty('META_AD_ACCOUNT_IDS', accountsRaw);
-    }
     const bidDraft = String(draft.meta_business_id || '').trim();
     if (bidDraft) PROP.setProperty('META_BUSINESS_ID', bidDraft);
-
-    const accounts = accountsRaw.split(/[,;\s]+/).map(function (s) {
-      s = String(s || '').trim();
-      if (!s) return '';
-      return s.indexOf('act_') === 0 ? s : ('act_' + s.replace(/^act_/, ''));
-    }).filter(Boolean);
 
     if (draft.meta_billing_lookback_days !== undefined && String(draft.meta_billing_lookback_days).trim() !== '') {
       const lb = Math.max(1, parseInt(draft.meta_billing_lookback_days, 10) || META_BILLING_LOOKBACK_DAYS_DEFAULT);
       PROP.setProperty('META_BILLING_LOOKBACK_DAYS', String(lb));
     }
 
+    const accounts = getMetaAdAccountIds_();
     Logger.log('checkMetaBillingFromUI: tokenLen=' + (accessToken ? accessToken.length : 0)
       + ' accounts=' + accounts.join(','));
 
@@ -400,7 +582,7 @@ function checkMetaBillingFromUI(cfgToken, draft) {
       return 'ERR:Chua co Meta Access Token. Dan token roi bam Check (hoac Luu truoc).';
     }
     if (!accounts.length) {
-      return 'ERR:Chua co Ad Account ID (vd: act_123456789).';
+      return 'ERR:Chua co Ad Account — them ID TK (act_… / so) vao cot A sheet Quet Mail.';
     }
 
     // 1) Ping nhẹ — xác nhận token + quyền account

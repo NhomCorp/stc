@@ -1,0 +1,403 @@
+<mxfile host="65bd71144e">
+    <diagram id="menu_overview" name="1. Bản Đồ Các Việc Trên Sheet">
+        <mxGraphModel dx="862" dy="709" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="900" background="#f1f5f9" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="m1_title" value="⚡ BẢN ĐỒ PHÂN CHIA TỪNG VIỆC TRÊN GOOGLE SHEETS&#10;(Bấm vào từng Tab bên dưới để xem luồng chi tiết từng việc theo phong cách Node n8n)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontStyle=1;fontSize=17;fontColor=#0f172a;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="25" width="850" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="m1_root" value="💎 Google Sheets Engine&#10;&lt;b style=&quot;font-size:14px;color:#0f172a;&quot;&gt;Menu &amp; Sheet Triggers&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;onOpen() / CRUD / Quét Mail / Menu Bar&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="360" width="240" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="m1_g0" value="🌱 VIỆC 1: KHỞI TẠO THÁNG &amp; MỤC LỤC&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;• Clone Template_Log &amp; Template_Report&lt;br&gt;• Khóa ô B1 &amp; Cấu trúc bảng Mục Lục&lt;br&gt;• Gắn link Bao Cao v2 &amp; Ẩn Shard&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#10b981;&quot;&gt;👉 Xem chi tiết tại Tab 2&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10b981;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="90" width="290" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="m1_g1" value="👁️ VIỆC 2: VIEW THÁNG (UX GỌN NHẸ)&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;• Xem nhanh chỉ đọc: View_Log / View_Report&lt;br&gt;• Mở sửa Shard gốc khi cần sửa tay&lt;br&gt;• Ẩn Shard giữ bảng tính luôn gọn gàng&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#0288d1;&quot;&gt;👉 Xem chi tiết tại Tab 3&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="210" width="290" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="m1_g2" value="📊 VIỆC 3: LÀM MỚI BÁO CÁO (REBUILD)&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;• Tháng đang mở / Các tháng Dirty&lt;br&gt;• Tất cả tháng (gõ xác nhận ALL)&lt;br&gt;• Lọc sạch CHECK → Link Bao Cao v2&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#ec4899;&quot;&gt;👉 Xem chi tiết tại Tab 4&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ec4899;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="330" width="290" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="m1_g3" value="🔄 VIỆC 4: FORMAT &amp; DATA LOG&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;• Đồng bộ Format từ Template_Log&lt;br&gt;• Dò lệch tháng &amp; Cấp mã MAN_&lt;br&gt;• Di chuyển dòng &amp; Ghi vết Log_Chuyen&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#f59e0b;&quot;&gt;👉 Xem chi tiết tại Tab 5&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#f59e0b;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="450" width="290" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="m1_g4" value="📧 VIỆC 5: QUÉT MAIL &amp; META ADS&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;• Quét Mail ngân hàng thủ công&lt;br&gt;• Quét Meta Billing &amp; bù charge thiếu mail&lt;br&gt;• Sidebar cài đặt lịch Cron hằng ngày&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#06b6d4;&quot;&gt;👉 Xem chi tiết tại Tab 6&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#06b6d4;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="570" width="290" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="m1_g5" value="⚙️ VIỆC 6: CẤU HÌNH &amp; CỨU HỘ&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;• Dialog cấu hình AI Keys, Model, Prompt&lt;br&gt;• Cứu hộ công thức chuẩn Bao Cao v2&lt;br&gt;• Cứu hộ công thức Tóm tắt_v2 (VSTACK)&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#8b5cf6;&quot;&gt;👉 Xem chi tiết tại Tab 7&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#8b5cf6;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="380" y="690" width="290" height="100" as="geometry"/>
+                </mxCell>
+                <mxCell id="m1_e0" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m1_root" target="m1_g0" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="320" y="410"/>
+                            <mxPoint x="320" y="140"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="m1_e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m1_root" target="m1_g1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="330" y="410"/>
+                            <mxPoint x="330" y="260"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="m1_e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m1_root" target="m1_g2" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="340" y="410"/>
+                            <mxPoint x="340" y="380"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="m1_e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m1_root" target="m1_g3" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="340" y="410"/>
+                            <mxPoint x="340" y="500"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="m1_e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m1_root" target="m1_g4" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="330" y="410"/>
+                            <mxPoint x="330" y="620"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="m1_e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m1_root" target="m1_g5" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="320" y="410"/>
+                            <mxPoint x="320" y="740"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="month_creation_toc" name="2. Việc 1 - Tạo Tháng &amp; Mục Lục">
+        <mxGraphModel dx="862" dy="709" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1600" pageHeight="950" background="#f1f5f9" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="toc_title" value="⚡ VIỆC 1: QUY TRÌNH KHỞI TẠO THÁNG MỚI &amp; THIẾT KẾ BẢNG MỤC LỤC&#10;(Tự động clone từ Template, bảo vệ ô B1, liên kết Hyperlink và giấu Shard gọn gàng)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontStyle=1;fontSize=17;fontColor=#0f172a;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="25" width="950" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="n_detect" value="⚡ Detection Trigger&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Phát hiện ngày GD mới&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Từ Bot Telegram / Quét Mail / Meta / Sửa tay&lt;br&gt;Parse thành mã tháng: MM_YYYY&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="110" width="240" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="n_check_exist" value="🔀 Router Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;getOrCreateMonthSheets()&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Đã có Log_MM_YYYY &amp; Report_MM_YYYY?&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="110" width="250" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="n_clone_log" value="📄 Template Cloner Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;1. Khởi tạo Log_MM_YYYY&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;• Copy từ 'Template_Log' (GID: 192263148)&lt;br&gt;• Điền A1:B1 = ['Thu Chi tháng', 'MM/yyyy']&lt;br&gt;• protectMonthLogB1_(): Khóa cứng ô B1&lt;br&gt;• Chứa sẵn Dummy Row ở cuối bảng&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10b981;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="60" width="280" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="n_clone_rpt" value="📄 Template Cloner Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;2. Khởi tạo Report_MM_YYYY&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;• Copy từ 'Template_Report' (GID: 56513848)&lt;br&gt;• Điền A1:B1 = ['Báo cáo tháng:', 'MM/yyyy']&lt;br&gt;• Gán D1 = '⚠ Chưa nấu báo cáo lần đầu'&lt;br&gt;• Đánh dấu tháng vào Dirty-set&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ec4899;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="680" y="190" width="280" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="n_update_toc" value="📑 TOC Engine Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;ensureMonthInMucLuc_()&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Kiểm tra nếu tháng chưa có trong tab Mục Lục:&lt;br&gt;• Ghi dòng mới: Cột A = 'MM/yyyy' (Text @)&lt;br&gt;• Cột B = =HYPERLINK(&quot;#gid=...&quot;, &quot;Log_MM_YYYY&quot;)&lt;br&gt;• Cột C = =HYPERLINK(&quot;#gid=...&quot;, &quot;Report_MM_YYYY&quot;)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#f59e0b;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="1030" y="60" width="300" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="n_link_baocao" value="📊 Live Link Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;ensureMonthLinkedOnBaoCao_()&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Gắn dòng liên kết tháng vào tab 'Bao Cao v2'&lt;br&gt;Công thức: ='Report_MM_YYYY'!B3:B6&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="1030" y="190" width="300" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="n_hide_pair" value="🙈 UX Hide Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;hideMonthShardPair_()&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Tự động ẩn Log_MM_YYYY &amp; Report_MM_YYYY&lt;br&gt;để thanh tab phía dưới không bị tràn ngập!&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#64748b;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="1030" y="290" width="300" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_mucluc_spec" value="BẢNG CẤU TRÚC SHEET 'MỤC LỤC' (SHEET_NAMES.MUC_LUC)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#e8f5e9;strokeColor=#2e7d32;fontStyle=1;fontSize=13;startSize=30;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="420" width="680" height="350" as="geometry"/>
+                </mxCell>
+                <mxCell id="spec_r1" value="Dòng 1: [A1:C1 Merge] '📑 MỤC LỤC — Log &amp; Report theo tháng' (Title màu đậm)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#2e7d32;" parent="box_mucluc_spec" vertex="1">
+                    <mxGeometry x="20" y="45" width="640" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="spec_r2" value="Dòng 2: Header 3 cột: Cột A: 'Tháng' | Cột B: 'Log' | Cột C: 'Report'" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#2e7d32;fontStyle=1;" parent="box_mucluc_spec" vertex="1">
+                    <mxGeometry x="20" y="95" width="640" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="spec_r3" value="Dòng 3+: Dữ liệu tháng tự động điền (MUC_LUC_DATA_START_ROW = 3):&#10;• Cột A (0): Định dạng chuỗi @: '08/2026', '09/2026' ...&#10;• Cột B (1): Công thức =HYPERLINK(&quot;#gid=2063...&quot;; &quot;Log_09_2026&quot;)&#10;• Cột C (2): Công thức =HYPERLINK(&quot;#gid=1475...&quot;; &quot;Report_09_2026&quot;)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#2e7d32;align=left;spacingLeft=15;" parent="box_mucluc_spec" vertex="1">
+                    <mxGeometry x="20" y="145" width="640" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="spec_action" value="TÁC VỤ TÁI TẠO MỤC LỤC: rebuildMucLuc()&#10;Khi người dùng bấm Menu '📑 Tái tạo Mục Lục':&#10;1. Xoá sạch nội dung cũ trong tab Mục Lục&#10;2. Quét lại toàn bộ sheet trong Spreadsheet khớp mẫu Log_(\d\d_\d\d\d\d)&#10;3. Tái lập toàn bộ danh sách tháng và nạp lại công thức Hyperlink theo mảng setFormulas()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#2e7d32;align=left;spacingLeft=15;" parent="box_mucluc_spec" vertex="1">
+                    <mxGeometry x="20" y="240" width="640" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="box_template_spec" value="BẢNG CẤU TRÚC TEMPLATE_LOG (9 CỘT DUY NHẤT)" style="swimlane;whiteSpace=wrap;html=1;fillColor=#e1f5fe;strokeColor=#0288d1;fontStyle=1;fontSize=13;startSize=30;" parent="1" vertex="1">
+                    <mxGeometry x="770" y="420" width="760" height="350" as="geometry"/>
+                </mxCell>
+                <mxCell id="tpl_r1" value="Ô A1:B1: 'Thu Chi tháng' | [Ô B1: MM/yyyy] 👉 Được khóa bảo vệ bằng protectMonthLogB1_()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;" parent="box_template_spec" vertex="1">
+                    <mxGeometry x="20" y="45" width="720" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="tpl_r2" value="Dòng 2: Header 9 cột (MONTH_LOG_COL):&#10;A: Ngày (dd/MM/yyyy) | B: Phân loại (Thu/Chi) | C: Số tiền (+Thu, -Chi)&#10;D: Nguồn tiền (Ví) | E: Đối tượng | F: Danh mục con | G: Ghi chú&#10;H: Unique Key (TX_...) | I: Status (CHECK:reason,... / Rỗng khi OK)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;align=left;spacingLeft=15;" parent="box_template_spec" vertex="1">
+                    <mxGeometry x="20" y="95" width="720" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="tpl_dummy" value="Dòng 3 (Dummy Row mẫu sẵn có):&#10;Chứa trọn vẹn Format tiền tệ, Căn lề, Font chữ, và Data Validation Dropdown:&#10;• Cột B Dropdown: Thu / Chi&#10;• Cột D Dropdown: Master Ví&#10;• Cột E Dropdown: Master Đối tượng&#10;• Cột F Dropdown: Master Danh mục con&#10;👉 Mọi dòng mới khi append sẽ chèn TRƯỚC Dummy Row và copy 100% thuộc tính này!" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;align=left;spacingLeft=15;" parent="box_template_spec" vertex="1">
+                    <mxGeometry x="20" y="175" width="720" height="110" as="geometry"/>
+                </mxCell>
+                <mxCell id="tpl_report" value="Template_Report: Chứa bảng tóm tắt Thu/Chi/Ròng tĩnh sẵn sàng chờ script rebuildReportMonth() nạp số" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;" parent="box_template_spec" vertex="1">
+                    <mxGeometry x="20" y="295" width="720" height="40" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="n_detect" target="n_check_exist" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec2" value="Chưa có" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#10b981;strokeWidth=2;fontStyle=1;" parent="1" source="n_check_exist" target="n_clone_log" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="640" y="140"/>
+                            <mxPoint x="640" y="115"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="ec3" value="Chưa có" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#ec4899;strokeWidth=2;fontStyle=1;" parent="1" source="n_check_exist" target="n_clone_rpt" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="640" y="170"/>
+                            <mxPoint x="640" y="245"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="ec4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#f59e0b;strokeWidth=2;" parent="1" source="n_clone_log" target="n_update_toc" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0288d1;strokeWidth=2;" parent="1" source="n_clone_rpt" target="n_link_baocao" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="ec6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="n_clone_rpt" target="n_hide_pair" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <Array as="points">
+                            <mxPoint x="990" y="260"/>
+                            <mxPoint x="990" y="330"/>
+                        </Array>
+                    </mxGeometry>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="menu_view" name="3. Việc 2 - View Tháng">
+        <mxGraphModel dx="862" dy="709" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="850" background="#f1f5f9" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="m2_title" value="⚡ VIỆC 2: TIỆN ÍCH VIEW THÁNG (7_MonthView.gs + viewui.html)&#10;(Xem dữ liệu an toàn ở chế độ chỉ đọc, mở sửa shard gốc khi cần và ẩn lại)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontStyle=1;fontSize=17;fontColor=#0f172a;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="25" width="800" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2_b_trig" value="⚡ Menu / Sidebar View&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;📒 Xem sổ GD / 📊 Xem báo cáo&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;menuViewLoadLog() / Report()&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="140" width="240" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2_b_load" value="⚙️ Data Snapshot Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;loadMonthIntoView_()&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Đọc shard tháng gốc → Copy sang View&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="140" width="240" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2_b_view" value="👁️ View Sheet (Chỉ đọc)&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Tab 'View_Log' / 'View_Report'&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Hiện banner hướng dẫn + Focus xem an toàn&lt;br&gt;Không lo người dùng vô tình bấm xóa cell&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10b981;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="670" y="140" width="280" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2_eb1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m2_b_trig" target="m2_b_load" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2_eb2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#10b981;strokeWidth=2;" parent="1" source="m2_b_load" target="m2_b_view" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2_c_trig" value="⚡ Menu / Sidebar Action&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;✏️ Sửa sổ / 🙈 Ẩn Shard&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;openMonthShardForEdit_() / hideAll()&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="310" width="240" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2_c_action" value="🔀 Action Switcher Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Hiện để sửa HOẶC Ẩn gọn&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;sheet.showSheet() / sheet.hideSheet()&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#f59e0b;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="310" width="240" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2_c_sheet" value="📁 Shard Sheet Gốc&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Log_MM_YYYY / Report_MM_YYYY&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Chỉ hiện ra khi người dùng chủ động muốn sửa tay&lt;br&gt;Sửa xong có thể bấm nút Ẩn để giấu đi&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="670" y="310" width="280" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2_ec1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m2_c_trig" target="m2_c_action" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m2_ec2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0288d1;strokeWidth=2;" parent="1" source="m2_c_action" target="m2_c_sheet" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="menu_report" name="4. Việc 3 - Làm Mới Báo Cáo">
+        <mxGraphModel dx="862" dy="709" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="850" background="#f1f5f9" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="m3_title" value="⚡ VIỆC 3: TÁI TẠO BÁO CÁO (REBUILD HYBRID REPORT)&#10;(Lọc sạch giao dịch có cờ CHECK / Chưa phân loại, ghi số tĩnh lên Report và link lên Bao Cao v2)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontStyle=1;fontSize=17;fontColor=#0f172a;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="25" width="850" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_tr1" value="⚡ Menu: Tháng đang mở&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;menuRebuildReportActiveMonth&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Chỉ nấu tháng của sheet đang chọn&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="120" width="240" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_tr2" value="⚡ Menu: Các tháng Dirty&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;menuRebuildAllDirtyReports&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Chỉ nấu các tháng có cờ phát sinh&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="240" width="240" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_tr3" value="⚡ Menu: Tất cả tháng&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;menuRebuildAllMonthReports&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Nấu toàn bộ (Popup yêu cầu gõ ALL)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="360" width="240" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_resolve" value="🔀 Month Resolver Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Xác định danh sách tháng&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Lấy 1 tháng HOẶC mảng [MM_YYYY]&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#f59e0b;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="370" y="240" width="220" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_engine" value="🍳 Rebuild Engine Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;rebuildReportMonth(monthKey)&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;1. Đọc Log_MM_YYYY&lt;br&gt;2. LỌC: Bỏ dòng có CHECK hoặc Chưa phân loại&lt;br&gt;3. Tổng hợp Thu / Chi / Ròng Ví, Đối tượng, DM&lt;br&gt;4. Ghi số tĩnh vào Report_MM_YYYY&lt;br&gt;5. Đóng dấu D1: 'Cập nhật đến dd/MM/yyyy HH:mm'&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ec4899;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="670" y="180" width="350" height="150" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_baocao" value="📊 Master Dashboard Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Bao Cao v2 (Live Formula Link)&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Công thức ='Report_MM_YYYY'!B3:B6 tự nhảy&lt;br&gt;F1 ghi dấu thời gian cập nhật tổng&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="1100" y="160" width="280" height="90" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_clean" value="🧹 Clean State Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;clearMonthsDirty_()&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Gỡ cờ Dirty, tắt cảnh báo ⚠ tại D1&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10b981;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="1100" y="275" width="280" height="75" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m3_tr1" target="m3_resolve" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m3_tr2" target="m3_resolve" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m3_tr3" target="m3_resolve" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#ec4899;strokeWidth=3;" parent="1" source="m3_resolve" target="m3_engine" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#0288d1;strokeWidth=2;" parent="1" source="m3_engine" target="m3_baocao" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m3_e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#10b981;strokeWidth=2;" parent="1" source="m3_engine" target="m3_clean" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="menu_format" name="5. Việc 4 - Format &amp; Data">
+        <mxGraphModel dx="862" dy="709" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="850" background="#f1f5f9" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="m4_title" value="⚡ VIỆC 4: LÀM MỚI FORMAT &amp; CHUẨN HOÁ LOG VÀ REPORT (9_Tools.gs)&#10;(Đồng bộ giao diện Log từ Template_Log · thêm viền &amp; in đậm KPI cho Report tháng · hoặc chuẩn hoá dữ liệu nhập tay)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontStyle=1;fontSize=17;fontColor=#0f172a;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="25" width="850" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_tr_fmt" value="⚡ Menu: Làm mới Format&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;menuRefresh...Format&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Tháng đang mở HOẶC Tất cả&lt;br&gt;→ Chuẩn hoá CẢ Log và Report&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="130" width="240" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_tr_data" value="⚡ Menu: Làm mới Data&#10;&lt;b style=&quot;font-size:12px;color:#0f172a;&quot;&gt;menuRefresh...Data / Both&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Tháng đang mở HOẶC Tất cả&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="320" width="240" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_fmt_spec" value="📋 Read Spec Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;readTemplateLogSpec_()&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Đọc Font, Màu, Viền, Dropdown từ Template_Log&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="130" width="260" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_ef1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m4_tr_fmt" target="m4_fmt_spec" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_fmt_apply" value="🎨 Apply Log Theme Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;syncOneMonthLogTheme(mk)&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Đồng bộ format Log tháng từ Template_Log (KHÔNG ĐÈ DATA)&lt;br&gt;Viền bảng + màu sọc ngựa vằn&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10b981;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="125" width="280" height="95" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_fmt_apply_rpt" value="📊 Apply Report Theme Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;syncOneMonthReportTheme(mk)&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;• syncReportBoldBlock_(): In đậm KPI A3:B7&lt;br&gt;• autoBorderReportTables_(): Viền các bảng KLQ&lt;br&gt;• Đồng bộ format Report tháng từ Template_Report&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ec4899;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="1030" y="125" width="300" height="95" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_ef2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#10b981;strokeWidth=2;" parent="1" source="m4_fmt_spec" target="m4_fmt_apply" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_ef3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#ec4899;strokeWidth=2;" parent="1" source="m4_fmt_spec" target="m4_fmt_apply_rpt" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_data_dry" value="🔍 Dry-run Scan Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Kiểm tra toàn bộ dòng Log&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;1. Thiếu Unique Key? Cần cấp MAN_&lt;br&gt;2. Ngày GD không khớp tháng sheet? Lệch tháng!&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#f59e0b;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="315" width="260" height="95" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_data_popup" value="💬 Confirm Dialog Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Hiện Popup xem trước kết quả&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Báo số dòng cần cấp key, số dòng cần chuyển&lt;br&gt;Chờ người dùng bấm YES (hoặc gõ ALL)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ea580c;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="315" width="280" height="95" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_data_move" value="🚚 Move &amp; Audit Log Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Chuyển dòng sang đúng tháng&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;• Di dời dòng sang Log_MM_YYYY đích&lt;br&gt;• Ghi vết vào sheet 'Log_Chuyen'&lt;br&gt;• Đánh dấu dirty các tháng bị ảnh hưởng&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10b981;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="1040" y="315" width="280" height="95" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_ed1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m4_tr_data" target="m4_data_dry" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_ed2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m4_data_dry" target="m4_data_popup" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m4_ed3" value="Người dùng bấm YES" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#10b981;strokeWidth=2;" parent="1" source="m4_data_popup" target="m4_data_move" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="menu_ops" name="6. Việc 5 - Quét Mail &amp; Meta">
+        <mxGraphModel dx="862" dy="709" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="850" background="#f1f5f9" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="m5_title" value="⚡ VIỆC 5: QUÉT MAIL VÀ ĐỐI SOÁT META ADS TỪ MENU / SIDEBAR (8_OpsSidebar.gs)&#10;(Quét thủ công hoặc mở Sidebar cài đặt hẹn giờ tự động hằng ngày)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontStyle=1;fontSize=17;fontColor=#0f172a;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="25" width="850" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="m5_tr_quick" value="⚡ Menu: Quét Mail thủ công&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;triggerScanMailUI&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Quét theo số ngày trong Properties&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="130" width="240" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m5_scan_mail" value="📧 Mail Scanner Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;scanMail(chatId, mailboxId)&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Dò Gmail + Hotmail theo tab 'Quet Mail'&lt;br&gt;Lấy mã giao dịch làm UNIQUE_KEY&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#0288d1;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="130" width="260" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m5_scan_append" value="📊 Google Sheets Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Append vào Log_MM_YYYY&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Bảo toàn format bằng Dummy Row&lt;br&gt;Đánh dấu tháng phát sinh vào Dirty-set&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10b981;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="130" width="280" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m5_eq1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m5_tr_quick" target="m5_scan_mail" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m5_eq2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#10b981;strokeWidth=2;" parent="1" source="m5_scan_mail" target="m5_scan_append" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m5_tr_side" value="⚡ Menu: Bảng điều khiển Quét&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;showOpsSidebar()&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Mở sidebar 'opsui.html' bên phải&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="300" width="240" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m5_side_ui" value="🖥️ Sidebar Ops Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Giao diện opsui.html&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;• Chọn khoảng ngày Quét Mail (Từ... Đến...)&lt;br&gt;• Check live kết nối Hotmail / Meta Ads Token&lt;br&gt;• Upload file Meta Invoice CSV để đối soát&lt;br&gt;• Cài đặt hẹn giờ Cron Trigger hằng ngày&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#06b6d4;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="280" width="300" height="125" as="geometry"/>
+                </mxCell>
+                <mxCell id="m5_side_cron" value="⏰ Schedule Trigger Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Lưu lịch quét tự động&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Tạo trigger hàng ngày trong Google Apps Script&lt;br&gt;(Ví dụ: Mail lúc 8:00 AM, Meta lúc 8:30 AM)&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10b981;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="720" y="300" width="300" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m5_es1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m5_tr_side" target="m5_side_ui" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m5_es2" value="Bấm [Lưu lịch]" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#10b981;strokeWidth=2;" parent="1" source="m5_side_ui" target="m5_side_cron" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+    <diagram id="menu_config_rescue" name="7. Việc 6 - Cấu Hình &amp; Cứu Hộ">
+        <mxGraphModel dx="862" dy="709" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="850" background="#f1f5f9" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="m6_title" value="⚡ VIỆC 6: CẤU HÌNH HỆ THỐNG VÀ CỨU HỘ SHEET CŨ (0_Config.gs + 4_SheetStore.gs)&#10;(Dialog cài đặt API Key/Prompt và quy trình khôi phục an toàn nếu bị hỏng công thức)" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;fontStyle=1;fontSize=17;fontColor=#0f172a;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="25" width="850" height="45" as="geometry"/>
+                </mxCell>
+                <mxCell id="m6_tr_cfg" value="⚡ Menu: Cấu hình AI &amp; Bot&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;showConfigDialog()&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Mở Dialog configui.html&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="120" width="240" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m6_dlg_sec" value="🔒 Security Mask Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Che mặt nạ API Keys&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Hiển thị dạng AIza••••xxxx&lt;br&gt;Không lộ Secret Token thô ra trình duyệt&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#8b5cf6;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="120" width="260" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m6_dlg_save" value="💾 Properties Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;saveConfigFromUI()&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Lưu Prompt, Mảng Keys, Chủ tài khoản&lt;br&gt;vào PropertiesService an toàn&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10b981;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="120" width="280" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m6_ec1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m6_tr_cfg" target="m6_dlg_sec" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m6_ec2" value="Bấm [Lưu]" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#10b981;strokeWidth=2;" parent="1" source="m6_dlg_sec" target="m6_dlg_save" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m6_tr_rec" value="⚡ Menu: Cứu hộ Sheet Cũ&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;updateBaoCaoV2Manual() / TomTat&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Chỉ dùng khi vô tình xoá mất công thức&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ff6d5a;strokeWidth=2;arcSize=15;align=center;spacing=8;" parent="1" vertex="1">
+                    <mxGeometry x="50" y="290" width="240" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m6_rec_warn" value="⚠️ Safety Confirmation Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Cảnh báo ghi đè công thức&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;Bắt buộc xác nhận YES / NO trên Popup&lt;br&gt;Tuân thủ quy tắc bảo vệ Sheet Cũ&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#ea580c;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="360" y="285" width="260" height="95" as="geometry"/>
+                </mxCell>
+                <mxCell id="m6_rec_restore" value="🛡️ Restore Formulas Node&#10;&lt;b style=&quot;font-size:13px;color:#0f172a;&quot;&gt;Khôi phục công thức chuẩn&lt;/b&gt;&#10;&lt;span style=&quot;font-size:10px;color:#64748b;&quot;&gt;• Tái lập VSTACK/QUERY trên Tóm tắt_v2&lt;br&gt;• Tái lập dòng Hôm nay &amp; link trên Bao Cao v2&lt;/span&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#10b981;strokeWidth=2;arcSize=15;align=left;spacingLeft=15;" parent="1" vertex="1">
+                    <mxGeometry x="690" y="290" width="280" height="85" as="geometry"/>
+                </mxCell>
+                <mxCell id="m6_er1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#64748b;strokeWidth=2;" parent="1" source="m6_tr_rec" target="m6_rec_warn" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="m6_er2" value="Bấm YES" style="edgeStyle=orthogonalEdgeStyle;rounded=1;strokeColor=#10b981;strokeWidth=2;" parent="1" source="m6_rec_warn" target="m6_rec_restore" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>

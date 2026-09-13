@@ -65,13 +65,16 @@ function clearMonthsDirty_(monthKeys) {
 }
 
 /**
- * Sau khi Log đổi: dirty + rebuild ngay các tháng đụng (P0).
+ * Sau khi Log đổi: đánh dirty. Rebuild ngay trừ khi opts.skipRebuild.
  * Gọi SAU khi đã nhả LockService ghi Log.
+ * @param {string[]} monthKeys
+ * @param {{skipRebuild?: boolean}=} opts
  */
-function notifyLogMonthsChanged_(monthKeys) {
+function notifyLogMonthsChanged_(monthKeys, opts) {
   const keys = (monthKeys || []).filter(Boolean);
   if (!keys.length) return { rebuilt: [], errors: [] };
   markMonthsDirty_(keys);
+  if (opts && opts.skipRebuild) return { rebuilt: [], errors: [], skipped: true };
   return rebuildMonthsNow_(keys);
 }
 
@@ -136,7 +139,15 @@ function getCategoryParentMap_() {
     const ss = getSpreadsheet_();
     const range = ss.getRangeByName('Category');
     if (!range) return map;
-    const values = range.getValues();
+    // 2+ cột: Cha|Con như cũ. 1 cột (chỉ con): cha = cột liền trái trên Tóm tắt_v2.
+    let values;
+    if (range.getNumColumns() >= 2) {
+      values = range.getValues();
+    } else {
+      const sh = range.getSheet();
+      const startCol = Math.max(1, range.getColumn() - 1);
+      values = sh.getRange(range.getRow(), startCol, range.getNumRows(), 2).getValues();
+    }
     for (let i = 0; i < values.length; i++) {
       const parent = normalizeReportLabel_(values[i][0]);
       const child = normalizeReportLabel_(values[i][1]);
@@ -163,7 +174,7 @@ function formatReportTimestamp_(date) {
  * Nấu lại số liệu Report_MM_YYYY từ Log cùng tháng.
  * @return {{ok:boolean, monthKey:string, message:string, ts?:string}}
  */
-function rebuildReportMonth(monthKey) {
+function rebuildReportMonth(monthKey, deferSummary) {
   const key = String(monthKey || getCurrentMonthKey_()).trim();
   const lock = LockService.getScriptLock();
   try {
@@ -252,6 +263,7 @@ function rebuildReportMonth(monthKey) {
     clearMonthsDirty_([key]);
     writeBaoCaoTimestamp_(ts);
     SpreadsheetApp.flush();
+    if (!deferSummary) refreshTomTatFromReports_();
 
     return { ok: true, monthKey: key, message: 'OK', ts: ts };
   } catch (err) {
@@ -262,6 +274,93 @@ function rebuildReportMonth(monthKey) {
     };
   } finally {
     try { lock.releaseLock(); } catch (e2) {}
+  }
+}
+
+/** Tổng trọn đời từ Report tháng; caller giữ ScriptLock. Không đọc lại Log thô. */
+function refreshTomTatFromReports_() {
+  const ss = getSpreadsheet_();
+  const target = getSheetByGid(GID.TOM_TAT);
+  if (!target) throw new Error('Không tìm thấy Tóm tắt_v2.');
+  const logs = ss.getSheets().filter(s => /^Log_\d{2}_\d{4}$/.test(s.getName()));
+  if (!logs.length) throw new Error('Chưa có Log tháng để tổng hợp.');
+  const dirty = getDirtyMonths_();
+  const groups = [new Map(), new Map(), new Map(), new Map()];
+  const total = [0, 0];
+  const number = function (v) {
+    if (typeof v !== 'number' || !isFinite(v)) throw new Error('Report có số liệu không hợp lệ; chạy lại tất cả báo cáo.');
+    return v;
+  };
+  logs.forEach(function (log) {
+    const key = log.getName().slice(4);
+    const rpt = ss.getSheetByName(monthReportSheetName_(key));
+    if (dirty.indexOf(key) >= 0 || !rpt ||
+        String(rpt.getRange(REPORT_TS_A1_).getValue()).indexOf('Cập nhật đến ') !== 0) {
+      throw new Error('Tháng ' + key + ' chưa có báo cáo cập nhật.');
+    }
+    const sums = rpt.getRange('B3:B5').getValues().map(r => number(r[0]));
+    if (Math.abs(sums[0] + sums[1] - sums[2]) > 0.01) throw new Error('Tổng Report không khớp: ' + key);
+    total[0] += sums[0]; total[1] += sums[1];
+    [1, 6, 11, 16].forEach(function (col, i) {
+      const rows = rpt.getLastRow() >= 10 ? rpt.getRange(10, col, rpt.getLastRow() - 9, 4).getValues() : [];
+      const check = [0, 0];
+      rows.forEach(function (row) {
+        const label = normalizeReportLabel_(row[0]);
+        if (!label) return;
+        const thu = number(row[1]), chi = number(row[2]);
+        if (Math.abs(thu + chi - number(row[3])) > 0.01) throw new Error('Nhóm Report không khớp: ' + key);
+        const bucket = groups[i].get(label) || [0, 0];
+        bucket[0] += thu; bucket[1] += chi;
+        groups[i].set(label, bucket);
+        check[0] += thu; check[1] += chi;
+      });
+      if (Math.abs(check[0] - sums[0]) > 0.01 || Math.abs(check[1] - sums[1]) > 0.01) {
+        throw new Error('Chi tiết Report không khớp tổng: ' + key);
+      }
+    });
+  });
+
+  // Chỉ đọc danh sách master A/B/G/L; không thêm, xóa hoặc đổi tên danh mục.
+  const bottom = Math.max(target.getLastRow(), 13);
+  const plans = [];
+  const triple = b => [b[0] + b[1], b[0], b[1]];
+  [[4, 10, 1, 2, 0], [13, bottom, 2, 3, 3],
+   [13, bottom, 7, 8, 1], [13, bottom, 12, 13, 2]].forEach(function (spec) {
+    const labels = target.getRange(spec[0], spec[2], spec[1] - spec[0] + 1, 1).getValues();
+    const covered = new Set();
+    labels.forEach(function (row, i) {
+      const label = normalizeReportLabel_(row[0]);
+      if (!label || label === 'Tổng') return;
+      covered.add(label);
+      plans.push({ range: target.getRange(spec[0] + i, spec[3], 1, 3), values: [triple(groups[spec[4]].get(label) || [0, 0])] });
+    });
+    groups[spec[4]].forEach(function (value, label) {
+      if (!covered.has(label)) throw new Error('Master Tóm tắt thiếu nhãn: ' + label + '. Giữ nguyên bản tổng hợp cũ.');
+    });
+  });
+  ['B3:D3', 'C12:E12', 'H12:J12', 'M12:O12'].forEach(function (a1) {
+    plans.push({ range: target.getRange(a1), values: [triple(total)] });
+  });
+  // Chuẩn bị toàn bộ trước khi ghi; lưu bản cũ để hoàn tác nếu ghi lỗi.
+  plans.forEach(function (p) {
+    const values = p.range.getValues(), formulas = p.range.getFormulas();
+    p.before = values.map((row, r) => row.map((v, c) => formulas[r][c] || v));
+  });
+  const source = target.getRange('AA2');
+  const oldSource = source.getFormula() || source.getValue();
+  const stamp = target.getRange('A1');
+  const oldNote = stamp.getNote();
+  try {
+    plans.forEach(p => p.range.setValues(p.values));
+    SpreadsheetApp.flush();
+    source.clearContent(); // Chỉ bỏ công thức gom; không xóa cả vùng AA:AI.
+    stamp.setNote('Tổng hợp từ ' + logs.length + ' Report tháng. Cập nhật đến ' + formatReportTimestamp_());
+    SpreadsheetApp.flush();
+  } catch (e) {
+    plans.forEach(p => p.range.setValues(p.before));
+    source.setValue(oldSource);
+    stamp.setNote(oldNote);
+    throw e;
   }
 }
 
@@ -281,7 +380,7 @@ function rebuildMonthsNow_(monthKeys) {
   let lastTs = '';
 
   uniq.forEach(function (mk) {
-    const res = rebuildReportMonth(mk);
+    const res = rebuildReportMonth(mk, true);
     if (res.ok) {
       rebuilt.push(mk);
       if (res.ts) lastTs = res.ts;
@@ -295,6 +394,17 @@ function rebuildMonthsNow_(monthKeys) {
   }
 
   if (lastTs) writeBaoCaoTimestamp_(lastTs);
+  if (!errors.length) {
+    const lock = LockService.getScriptLock();
+    try {
+      lock.waitLock(15000);
+      refreshTomTatFromReports_();
+    } catch (e) {
+      errors.push('Tóm tắt chưa cập nhật: ' + e.message);
+    } finally {
+      if (lock.hasLock()) lock.releaseLock();
+    }
+  }
   return { rebuilt: rebuilt, errors: errors, ts: lastTs };
 }
 
@@ -396,6 +506,8 @@ function refreshReportsForView_() {
 
 function ensureReportDirtyTrigger_() {
   try {
+    // Sidebar đã tắt "báo cáo tự nấu" → không tự tái tạo trigger nữa.
+    if (PROP.getProperty(REPORT_AUTO_TRIGGER_OFF_PROP_) === '1') return;
     if (PROP.getProperty('REPORT_DIRTY_TRIGGER_OK') === '1') return;
     const triggers = ScriptApp.getProjectTriggers();
     let found = false;
@@ -417,20 +529,41 @@ function ensureReportDirtyTrigger_() {
   }
 }
 
+/**
+ * Xóa trigger báo cáo tự nấu (15'/theo giờ cũ) + khóa tái tạo.
+ * Gọi khi sidebar lưu "Báo cáo tự nấu = tắt".
+ */
+function disableReportAutoTrigger_() {
+  try {
+    PROP.setProperty(REPORT_AUTO_TRIGGER_OFF_PROP_, '1');
+    PROP.deleteProperty('REPORT_DIRTY_TRIGGER_OK');
+    const triggers = ScriptApp.getProjectTriggers();
+    for (let i = 0; i < triggers.length; i++) {
+      if (triggers[i].getHandlerFunction() === REPORT_REFRESH_TRIGGER_HANDLER_) {
+        ScriptApp.deleteTrigger(triggers[i]);
+      }
+    }
+  } catch (e) {
+    Logger.log('disableReportAutoTrigger_: ' + e.message);
+  }
+}
+
+function setReportDirtyTriggerManual() {
+  PROP.deleteProperty('REPORT_DIRTY_TRIGGER_OK');
+  PROP.deleteProperty(REPORT_AUTO_TRIGGER_OFF_PROP_);
+  ensureReportDirtyTrigger_();
+  const msg = 'Đã bật tự cập nhật Report dirty mỗi ' + REPORT_REFRESH_INTERVAL_MINUTES_ + ' phút.';
+  try { SpreadsheetApp.getActive().toast(msg, 'Báo cáo', 5); } catch (e) {}
+  return msg;
+}
+
+/** Handler trigger báo cáo tự nấu — chỉ nấu các tháng dirty. */
 function runScheduledDirtyReportRefresh() {
   const dirty = getDirtyMonths_();
   if (!dirty.length) {
     return { rebuilt: [], skipped: true };
   }
   return rebuildMonthsNow_(dirty);
-}
-
-function setReportDirtyTriggerManual() {
-  PROP.deleteProperty('REPORT_DIRTY_TRIGGER_OK');
-  ensureReportDirtyTrigger_();
-  const msg = 'Đã bật tự cập nhật Report dirty mỗi ' + REPORT_REFRESH_INTERVAL_MINUTES_ + ' phút.';
-  try { SpreadsheetApp.getActive().toast(msg, 'Báo cáo', 5); } catch (e) {}
-  return msg;
 }
 
 // ---------------------------------------------------------------------------
@@ -472,6 +605,14 @@ function menuRebuildAllDirtyReports() {
   );
 }
 
+/** Danh sách tháng dùng chung cho menu và sidebar làm mới tất cả. */
+function listReportLogMonths_() {
+  return getSpreadsheet_().getSheets().map(function (sheet) {
+    const match = sheet.getName().match(/^Log_(\d{2}_\d{4})$/);
+    return match ? match[1] : null;
+  }).filter(Boolean);
+}
+
 function menuRebuildAllMonthReports() {
   const ui = SpreadsheetApp.getUi();
   const confirm = ui.prompt(
@@ -485,14 +626,7 @@ function menuRebuildAllMonthReports() {
     return;
   }
 
-  const ss = getSpreadsheet_();
-  const keys = ss.getSheets()
-    .map(function (s) { return s.getName(); })
-    .map(function (n) {
-      const m = n.match(/^Log_(\d{2}_\d{4})$/);
-      return m ? m[1] : null;
-    })
-    .filter(Boolean);
+  const keys = listReportLogMonths_();
 
   const res = rebuildMonthsNow_(keys);
   ui.alert(

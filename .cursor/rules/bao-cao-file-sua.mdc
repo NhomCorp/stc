@@ -1,0 +1,17 @@
+---
+description: Cuối mỗi phiên làm việc, liệt kê file đã sửa trong câu trả lời
+alwaysApply: true
+---
+
+# Rule: Báo file đã sửa
+
+Cuối mỗi câu trả lời sau khi làm việc (sửa/thêm/xóa file), luôn thêm mục:
+
+**File đã sửa:**
+- `đường/dẫn/file` — ngắn gọn việc đã làm
+
+Quy tắc:
+- Chỉ liệt kê file thực sự thay đổi trong phiên đó
+- Không sửa file nào → ghi rõ "Không sửa file nào"
+- Không liệt kê file chỉ đọc/tham khảo
+- Đặt mục này ở cuối câu trả lời, sau nội dung chính

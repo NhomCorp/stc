@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      margin: 0; padding: 10px;
+      color: #0f172a; background: #eef2f7;
+    }
+    #app {
+      background: #fff;
+      border-radius: 16px;
+      padding: 14px 14px 16px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    }
+    #app.busy { opacity: .55; pointer-events: none; }
+
+    .nav-row { display: flex; flex-wrap: wrap; gap: 12px; margin: 0 0 10px; }
+    .nav-back {
+      display: inline-flex; align-items: center; gap: 4px;
+      border: none; background: none; padding: 0; margin: 0;
+      font-size: 12px; font-weight: 600; color: #2563eb; cursor: pointer;
+    }
+    .nav-back:hover { text-decoration: underline; }
+
+    .page-head h1 { margin: 0; font-size: 19px; letter-spacing: -0.02em; }
+    .page-head p { margin: 4px 0 0; font-size: 13px; color: #64748b; line-height: 1.45; }
+
+    .period { margin-top: 14px; padding-bottom: 4px; border-bottom: 1px solid #eef2f6; margin-bottom: 14px; }
+    .period label { display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 8px; }
+    .month-row { display: flex; align-items: stretch; gap: 6px; }
+    .month-nav {
+      flex-shrink: 0; width: 38px; border: 1px solid #e2e8f0; background: #fff;
+      border-radius: 10px; cursor: pointer; color: #334155;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .month-nav:disabled { opacity: .35; cursor: not-allowed; }
+    .month-nav:not(:disabled):hover { background: #f8fafc; }
+    #month {
+      flex: 1; min-width: 0; padding: 9px 10px; font-size: 14px; font-weight: 600;
+      border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; color: #0f172a;
+    }
+    #month:disabled { color: #94a3b8; font-weight: 500; }
+    .period-msg { font-size: 12px; margin-top: 8px; min-height: 18px; color: #64748b; }
+    .period-msg.wait { color: #1d4ed8; }
+    .period-msg.err { color: #b91c1c; }
+
+    .block {
+      border: 1px solid #e2e8f0; border-radius: 14px;
+      padding: 12px 12px 10px; margin-bottom: 10px; background: #fff;
+    }
+    .block-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+    .block-ico {
+      width: 32px; height: 32px; border-radius: 9px; background: #eff6ff; color: #2563eb;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .block-head h2 { margin: 0; font-size: 15px; font-weight: 700; }
+    .block-desc { margin: 0 0 10px; font-size: 13px; color: #64748b; line-height: 1.45; padding-left: 40px; }
+
+    .btn {
+      width: 100%; border: none; border-radius: 12px; cursor: pointer;
+      padding: 11px 12px; font-size: 14px; font-weight: 700;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-primary:disabled { background: #cbd5e1; cursor: not-allowed; }
+    .btn-primary:not(:disabled):hover { opacity: 0.92; }
+
+    .link-edit {
+      display: inline-flex; align-items: center; gap: 5px;
+      margin: 10px 0 0 40px; padding: 0; border: none; background: none;
+      font-size: 12px; font-weight: 600; color: #2563eb; cursor: pointer;
+    }
+    .link-edit:disabled { color: #94a3b8; cursor: not-allowed; }
+    .link-edit:not(:disabled):hover { text-decoration: underline; }
+    .link-foot { margin: 4px 0 0 40px; font-size: 11px; color: #94a3b8; line-height: 1.4; }
+
+    .block-status {
+      font-size: 12px; line-height: 1.45; margin-top: 8px; padding: 8px 10px;
+      border-radius: 8px; display: none;
+    }
+    .block-status.ok { display: block; background: #ecfdf5; color: #047857; }
+    .block-status.err { display: block; background: #fef2f2; color: #b91c1c; }
+    .block-status.wait { display: block; background: #eff6ff; color: #1d4ed8; }
+
+    .how {
+      margin: 12px 0 14px; border: 1px solid #e2e8f0; border-radius: 12px;
+      padding: 0 12px; background: #f8fafc;
+    }
+    .how summary {
+      cursor: pointer; font-size: 13px; font-weight: 600; color: #334155;
+      padding: 10px 0; list-style: none; display: flex; align-items: center; justify-content: space-between;
+    }
+    .how summary::-webkit-details-marker { display: none; }
+    .how summary::after {
+      content: ""; width: 8px; height: 8px; border-right: 2px solid #94a3b8;
+      border-bottom: 2px solid #94a3b8; transform: rotate(45deg); margin-right: 4px;
+      transition: transform .15s;
+    }
+    .how[open] summary::after { transform: rotate(-135deg); margin-top: 4px; }
+    .how-body { font-size: 12px; color: #64748b; line-height: 1.5; padding: 0 0 12px; margin: 0; }
+
+    .footer-actions { margin-top: 4px; }
+    .btn-outline {
+      width: 100%; border: 1px solid #e2e8f0; background: #fff; color: #334155;
+      border-radius: 12px; padding: 11px; font-size: 13px; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .btn-outline:hover { background: #f8fafc; }
+    .footer-hint { margin: 6px 0 0; font-size: 11px; color: #94a3b8; text-align: center; line-height: 1.4; }
+
+    .footer-status {
+      font-size: 12px; line-height: 1.45; margin-top: 10px; padding: 8px 10px;
+      border-radius: 8px; display: none;
+    }
+    .footer-status.ok { display: block; background: #ecfdf5; color: #047857; }
+    .footer-status.err { display: block; background: #fef2f2; color: #b91c1c; }
+    .footer-status.wait { display: block; background: #eff6ff; color: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="nav-row">
+      <button type="button" class="nav-back" onclick="run('ops')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg>
+        Quét Mail
+      </button>
+      <button type="button" class="nav-back" onclick="run('trigger')">⏰ Set Trigger</button>
+    </div>
+
+    <header class="page-head">
+      <h1>Sổ &amp; báo cáo</h1>
+      <p>Chọn tháng để xem hoặc chỉnh sửa dữ liệu.</p>
+    </header>
+
+    <section class="period">
+      <label for="month">Kỳ dữ liệu</label>
+      <div class="month-row">
+        <button type="button" class="month-nav" id="prev" title="Tháng trước" aria-label="Tháng trước" onclick="shiftMonth(-1)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
+        <select id="month" onchange="onMonthChange()"></select>
+        <button type="button" class="month-nav" id="next" title="Tháng sau" aria-label="Tháng sau" onclick="shiftMonth(1)">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M9 18l6-6-6-6"/></svg>
+        </button>
+      </div>
+      <div class="period-msg wait" id="period-msg">Đang tải kỳ dữ liệu…</div>
+    </section>
+
+    <section class="block" id="block-log">
+      <div class="block-head">
+        <span class="block-ico" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8M8 9h2"/></svg>
+        </span>
+        <h2>Sổ giao dịch</h2>
+      </div>
+      <p class="block-desc">Xem dữ liệu giao dịch của tháng đã chọn.</p>
+      <button type="button" class="btn btn-primary" id="btn-view-log" disabled onclick="run('load','log')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        Xem sổ giao dịch
+      </button>
+      <button type="button" class="link-edit" id="btn-edit-log" disabled onclick="run('edit','log')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+        Mở bản gốc để sửa
+      </button>
+      <p class="link-foot">Chỉnh sửa trực tiếp trên sheet gốc.</p>
+      <div class="block-status" id="status-log"></div>
+    </section>
+
+    <section class="block" id="block-rpt">
+      <div class="block-head">
+        <span class="block-ico" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+        </span>
+        <h2>Báo cáo</h2>
+      </div>
+      <p class="block-desc">Xem báo cáo của tháng đã chọn.</p>
+      <button type="button" class="btn btn-primary" id="btn-view-rpt" disabled onclick="run('load','report')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/></svg>
+        Xem báo cáo
+      </button>
+      <button type="button" class="link-edit" id="btn-edit-rpt" disabled onclick="run('edit','report')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+        Mở bản gốc để sửa
+      </button>
+      <p class="link-foot">Chỉnh sửa trực tiếp trên sheet gốc.</p>
+      <button type="button" class="btn-outline" id="btn-refresh-rpt" style="margin-top:10px" disabled onclick="refreshReports(false)">Làm mới báo cáo tháng đang chọn</button>
+      <button type="button" class="btn-outline" id="btn-refresh-all" style="margin-top:8px" disabled onclick="refreshReports(true)">Làm mới toàn bộ báo cáo</button>
+      <p class="footer-hint">Tính lại từ sổ giao dịch. Toàn bộ áp dụng cho mọi tháng có Log.</p>
+      <div class="block-status" id="status-rpt" role="status" aria-live="polite"></div>
+    </section>
+
+    <details class="how">
+      <summary>Cách hoạt động</summary>
+      <p class="how-body">
+        Sheet <strong>Log</strong> và <strong>Report</strong> từng tháng thường được ẩn để thanh tab gọn.
+        Bấm <strong>Xem</strong> để nạp dữ liệu tháng đã chọn vào <strong>View_Log</strong> / <strong>View_Report</strong> (chỉ đọc trên tab View).
+        <strong>Mở bản gốc để sửa</strong> hiện sheet tháng gốc trên tab để chỉnh trực tiếp.
+        Nút cuối trang ẩn lại <em>mọi</em> sheet Log/Report tháng đang hiện trên tab (không chỉ tháng đang chọn).
+      </p>
+    </details>
+
+    <div class="footer-actions">
+      <button type="button" class="btn-outline" onclick="run('hide')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+        Ẩn lại sheet tháng
+      </button>
+      <p class="footer-hint">Thu gọn các tab sheet tháng đã mở (toàn bộ tháng đang hiện)</p>
+      <div class="footer-status" id="status-footer"></div>
+    </div>
+  </div>
+
+  <script>
+    var app = document.getElementById('app');
+    var monthSel = document.getElementById('month');
+    var periodMsg = document.getElementById('period-msg');
+    var btnPrev = document.getElementById('prev');
+    var btnNext = document.getElementById('next');
+    var monthKeys = [];
+
+    var actionBtns = [
+      document.getElementById('btn-view-log'),
+      document.getElementById('btn-edit-log'),
+      document.getElementById('btn-view-rpt'),
+      document.getElementById('btn-edit-rpt'),
+      document.getElementById('btn-refresh-rpt'),
+      document.getElementById('btn-refresh-all')
+    ];
+
+    function formatMonthDisplay(key) {
+      var parts = String(key || '').split('_');
+      if (parts.length === 2) return 'Tháng ' + parts[0] + ' / ' + parts[1];
+      return String(key || '');
+    }
+
+    function sayPeriod(cls, msg) {
+      periodMsg.className = 'period-msg' + (cls ? ' ' + cls : '');
+      periodMsg.textContent = msg || '';
+    }
+
+    function sayBlock(kind, cls, msg) {
+      var el = document.getElementById(kind === 'report' ? 'status-rpt' : 'status-log');
+      el.className = 'block-status' + (cls ? ' ' + cls : '');
+      el.textContent = msg || '';
+    }
+
+    function sayFooter(cls, msg) {
+      var el = document.getElementById('status-footer');
+      el.className = 'footer-status' + (cls ? ' ' + cls : '');
+      el.textContent = msg || '';
+    }
+
+    function clearBlockStatus() {
+      sayBlock('log', '', '');
+      sayBlock('report', '', '');
+    }
+
+    var isBusy = false;
+    function busy(on) {
+      isBusy = on;
+      app.className = on ? 'busy' : '';
+      app.querySelectorAll('button, select').forEach(function (el) {
+        if (on) {
+          el.dataset.wasDisabled = el.disabled ? '1' : '0';
+          el.disabled = true;
+        } else {
+          el.disabled = el.dataset.wasDisabled === '1';
+        }
+      });
+    }
+
+    function refreshReports(all) {
+      if (isBusy || !monthSel.value) return;
+      if (!(window.google && google.script && google.script.run)) return;
+      if (all && !window.confirm('Tính lại báo cáo của tất cả tháng có Log? Có thể mất vài phút.')) return;
+      var selected = monthSel.value;
+      busy(true);
+      clearBlockStatus();
+      sayFooter('', '');
+      sayBlock('report', 'wait', all ? 'Đang làm mới toàn bộ báo cáo…' : 'Đang làm mới báo cáo tháng đang chọn…');
+
+      function finish(r) {
+        var cls = (r && r.ok) ? 'ok' : 'err';
+        var msg = (r && r.message) || (r && r.ok ? 'Hoàn tất.' : 'Không thực hiện được.');
+        sayBlock('report', cls, msg);
+        // Nạp lại View_Report nếu tháng đang xem vừa được làm mới
+        var rebuilt = r && r.rebuilt ? r.rebuilt : (r && r.ok && !all ? [selected] : []);
+        if (rebuilt.indexOf(selected) >= 0) {
+          sayBlock('report', 'wait', msg + ' — Đang cập nhật trang xem…');
+          google.script.run
+            .withSuccessHandler(function (vr) {
+              busy(false);
+              sayBlock('report', vr && vr.ok ? cls : 'err', msg + (vr && vr.ok ? '' : ' (cập nhật View thất bại)'));
+            })
+            .withFailureHandler(function (err) {
+              busy(false);
+              sayBlock('report', 'err', msg + ' — Lỗi cập nhật View: ' + ((err && err.message) || String(err)));
+            })
+            .viewSidebarLoad(selected, 'report');
+        } else {
+          busy(false);
+        }
+      }
+
+      if (all) {
+        google.script.run
+          .withSuccessHandler(finish)
+          .withFailureHandler(function (err) { busy(false); sayBlock('report', 'err', (err && err.message) || String(err)); })
+          .viewSidebarRebuildAllReports();
+      } else {
+        google.script.run
+          .withSuccessHandler(finish)
+          .withFailureHandler(function (err) { busy(false); sayBlock('report', 'err', (err && err.message) || String(err)); })
+          .viewSidebarRebuildReport(selected);
+      }
+    }
+
+    function setActionsEnabled(on) {
+      actionBtns.forEach(function (b) { b.disabled = !on; });
+      monthSel.disabled = !on;
+      syncMonthNav();
+    }
+
+    function syncMonthNav() {
+      var idx = monthSel.selectedIndex;
+      var n = monthKeys.length;
+      // Danh sách tháng: mới nhất trước → lùi tháng = index + 1, tiến = index - 1
+      btnPrev.disabled = !n || idx < 0 || idx >= n - 1;
+      btnNext.disabled = !n || idx <= 0;
+    }
+
+    function onMonthChange() {
+      syncMonthNav();
+      clearBlockStatus();
+      sayFooter('', '');
+    }
+
+    function shiftMonth(calendarDir) {
+      if (!monthKeys.length) return;
+      var idx = monthSel.selectedIndex;
+      var next = idx - calendarDir;
+      if (next < 0 || next >= monthKeys.length) return;
+      monthSel.selectedIndex = next;
+      onMonthChange();
+    }
+
+    function initState(state) {
+      monthKeys = (state && state.months) ? state.months.map(function (m) { return m.key; }) : [];
+      monthSel.innerHTML = '';
+
+      if (!monthKeys.length) {
+        var empty = document.createElement('option');
+        empty.value = '';
+        empty.textContent = 'Chưa có dữ liệu theo tháng';
+        monthSel.appendChild(empty);
+        setActionsEnabled(false);
+        sayPeriod('', 'Chưa có dữ liệu theo tháng');
+        return;
+      }
+
+      state.months.forEach(function (m) {
+        var opt = document.createElement('option');
+        opt.value = m.key;
+        opt.textContent = formatMonthDisplay(m.key);
+        if (m.key === state.selected) opt.selected = true;
+        monthSel.appendChild(opt);
+      });
+      setActionsEnabled(true);
+      sayPeriod('', '');
+      syncMonthNav();
+    }
+
+    function waitMessage(action, kind) {
+      var label = formatMonthDisplay(monthSel.value);
+      if (action === 'load') {
+        return kind === 'report'
+          ? ('Đang mở báo cáo ' + label + '…')
+          : ('Đang mở sổ giao dịch ' + label + '…');
+      }
+      if (action === 'edit') {
+        return kind === 'report'
+          ? ('Đang mở sheet gốc báo cáo ' + label + '…')
+          : ('Đang mở sheet gốc sổ ' + label + '…');
+      }
+      if (action === 'hide') return 'Đang ẩn sheet tháng đang hiện…';
+      return 'Đang xử lý…';
+    }
+
+    function statusTarget(action, kind) {
+      if (action === 'hide') return 'footer';
+      if (action === 'load' || action === 'edit') return kind === 'report' ? 'report' : 'log';
+      return null;
+    }
+
+    function run(action, kind) {
+      if (isBusy) return;
+      if (action !== 'ops' && action !== 'trigger' && action !== 'hide' && !monthSel.value) return;
+      if (!(window.google && google.script && google.script.run)) return;
+
+      busy(true);
+      clearBlockStatus();
+      sayFooter('', '');
+
+      var target = statusTarget(action, kind);
+      if (target === 'footer') sayFooter('wait', waitMessage(action, kind));
+      else if (target) sayBlock(target, 'wait', waitMessage(action, kind));
+
+      var ok = function (r) {
+        busy(false);
+        if (action === 'ops' || action === 'trigger') return;
+        var msg = (r && r.message) || (r && r.ok ? 'Hoàn tất.' : 'Không thực hiện được.');
+        var cls = r && r.ok ? 'ok' : 'err';
+        if (target === 'footer') sayFooter(cls, msg);
+        else if (target) sayBlock(target, cls, msg);
+      };
+      var fail = function (err) {
+        busy(false);
+        var msg = (err && err.message) || String(err);
+        if (target === 'footer') sayFooter('err', msg);
+        else if (target) sayBlock(target, 'err', msg);
+      };
+      var runner = google.script.run.withSuccessHandler(ok).withFailureHandler(fail);
+
+      if (action === 'load') runner.viewSidebarLoad(monthSel.value, kind);
+      else if (action === 'edit') runner.viewSidebarEdit(monthSel.value, kind);
+      else if (action === 'ops') runner.showOpsSidebar();
+      else if (action === 'trigger') runner.showOpsTriggerSidebar();
+      else runner.viewSidebarHideShards();
+    }
+
+    if (window.google && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(initState)
+        .withFailureHandler(function (err) {
+          sayPeriod('err', (err && err.message) || String(err));
+          setActionsEnabled(false);
+        })
+        .viewSidebarState();
+    }
+  </script>
+</body>
+</html>

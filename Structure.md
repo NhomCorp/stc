@@ -14,8 +14,12 @@ Dự án được phân tách thành các module chuyên biệt:
 ├── 3_MailScanner.gs    # Quét Gmail ngân hàng tự động theo Rule/Regex & AI Fallback
 ├── 4_SheetStore.gs     # Quản lý Sheet Shard tháng (Log_MM_YYYY, Report_MM_YYYY), Mục Lục, Dummy Row, CRUD data
 ├── 5_ReportRebuild.gs  # Hybrid báo cáo: dirty-set, rebuild Report tháng, timestamp, trigger dirty, /report
+├── 7_MonthView.gs      # View_Log / View_Report, ẩn shard tháng, API sidebar viewui
+├── 8_OpsSidebar.gs     # Sidebar Quét Mail / Meta Billing (opsui.html)
 ├── 9_Tools.gs          # Tiện ích tạm: Đồng bộ giao diện, theme, format, viền cho Log & Report tháng từ Template
-├── configui.html       # Web App HTML giao diện cấu hình (Model AI, API Keys, Chủ TK, Prompt, Quét Mail)
+├── configui.html       # Dialog/WebApp: Model AI, API Keys, Chủ TK, Prompt
+├── viewui.html         # Sidebar View tháng
+├── opsui.html          # Sidebar Quét Mail / Meta: khoảng ngày, token, chạy scan/sync
 ├── archive/Code.legacy.txt  # [THAM KHẢO] Monolith cũ — KHÔNG deploy (không dùng đuôi .gs)
 └── Structure.md        # Tài liệu kiến trúc chuẩn của dự án
 ```
@@ -152,7 +156,7 @@ Cột I: Trạng thái (`CHECK:reason,…` / rỗng khi OK)
 * `F1`: timestamp lần nấu thành công gần nhất.
 
 ### 5.3 Khi nào nấu Report
-* Sau ghi / sửa / xóa / undo / scanMail (tháng đụng).
+* Sau ghi / sửa / xóa / undo (tháng đụng). `scanMail` chỉ ghi Log + dirty, không nấu ngay.
 * `/report` (ép tháng hiện tại rồi gửi Telegram + timestamp; nút Tháng này / 3 tháng đọc Bao Cao A3:A5).
 * Menu **Làm mới báo cáo**; trigger 15’ chỉ tháng dirty.
 * `onEdit` Log chỉ đánh dirty (không nấu trong simple trigger).

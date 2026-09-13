@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: "Segoe UI", Arial, sans-serif;
+      margin: 0; padding: 10px;
+      color: #0f172a; background: #eef2f7;
+    }
+    #app {
+      background: #fff;
+      border-radius: 16px;
+      padding: 14px 14px 16px;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    }
+    #app.busy { opacity: .55; pointer-events: none; }
+
+    .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+    .top h1 { margin: 0; font-size: 18px; letter-spacing: -0.02em; }
+    .top p { margin: 2px 0 0; font-size: 12px; color: #64748b; }
+    .btn-view {
+      flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px;
+      border: 1px solid #e2e8f0; background: #fff; color: #334155;
+      border-radius: 10px; padding: 6px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
+    }
+
+    .tabs {
+      display: flex; gap: 2px; margin: 12px 0 14px;
+      border-bottom: 1px solid #eef2f6;
+    }
+    .tab {
+      flex: 1; border: none; background: none; cursor: pointer;
+      padding: 8px 2px 10px; font-size: 12px; font-weight: 600; color: #94a3b8;
+    }
+    .tab.on { color: #2563eb; box-shadow: inset 0 -2px 0 #2563eb; }
+
+    .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; }
+    .sec-head h2 { margin: 0; font-size: 16px; }
+    .sec-head .sub { margin: 2px 0 0; font-size: 12px; color: #64748b; font-weight: 400; }
+    .count { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #64748b; white-space: nowrap; }
+    .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+
+    .box {
+      background: #f8fafc; border: 1px solid #eef2f6;
+      border-radius: 14px; padding: 12px; margin-bottom: 12px;
+    }
+    .box h3 { margin: 0 0 10px; font-size: 13px; }
+    .hint { font-size: 11px; color: #64748b; line-height: 1.45; margin: 8px 0 0; }
+    .warn { font-size: 11px; color: #b45309; margin: 8px 0 0; display: none; }
+
+    label { display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; }
+    input[type="text"], input[type="password"], input[type="number"], input[type="date"], select, textarea {
+      width: 100%; padding: 9px 10px; font-size: 13px;
+      border: 1px solid #e2e8f0; border-radius: 10px;
+      background: #fff; margin-bottom: 8px; color: #0f172a;
+    }
+    input[type="file"] {
+      width: 100%; font-size: 12px; margin-bottom: 8px; color: #334155;
+    }
+    textarea { min-height: 72px; font-family: Consolas, "Courier New", monospace; font-size: 11px; resize: vertical; }
+    .row-2 { display: flex; gap: 8px; align-items: center; }
+    .row-2 > label { flex: 1; }
+    .row-2 input, .row-2 select { margin-bottom: 0; }
+    .row-2 select { flex: 1; }
+    .colon { font-weight: 700; color: #94a3b8; flex: 0; }
+
+    .seg { display: flex; background: #eef2f7; border-radius: 10px; padding: 3px; margin-bottom: 10px; }
+    .seg button {
+      flex: 1; border: none; background: transparent; cursor: pointer;
+      padding: 8px 6px; border-radius: 8px; font-size: 12px; font-weight: 700; color: #64748b;
+    }
+    .seg button.on { background: #2563eb; color: #fff; }
+
+    .btn {
+      width: 100%; border: none; border-radius: 12px; cursor: pointer;
+      padding: 12px; font-size: 14px; font-weight: 700;
+    }
+    .btn-primary { background: #2563eb; color: #fff; }
+    .btn-outline { background: #fff; color: #0f172a; border: 1px solid #e2e8f0; }
+    .btn-ghost { background: #f1f5f9; color: #334155; }
+    .btn-save { background: #fff; color: #334155; border: 1px solid #e2e8f0; margin-top: 4px; }
+    .btn-warn { background: #fff7ed; color: #9a3412; }
+    .btn:hover { opacity: 0.92; }
+
+    .acct-head { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 8px; }
+    .acct-head h3 { margin: 0; font-size: 13px; }
+    .btn-add {
+      border: none; background: none; color: #2563eb; font-size: 12px; font-weight: 700; cursor: pointer;
+    }
+
+    .acct {
+      position: relative;
+      border: 1px solid #eef2f6; border-radius: 14px;
+      padding: 10px; margin-bottom: 8px; background: #fff;
+    }
+    .acct-top { display: flex; align-items: flex-start; gap: 8px; }
+    .ico {
+      width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: #fff; font-size: 12px; font-weight: 800; margin-top: 2px;
+    }
+    .ico.gm { background: linear-gradient(135deg, #ea4335 0%, #fbbc05 42%, #34a853 68%, #4285f4 100%); }
+    .ico.hm { background: #0078d4; }
+    .acct-body { flex: 1; min-width: 0; }
+    .acct-r1, .acct-r2 { display: flex; align-items: center; gap: 6px; }
+    .acct-r2 { margin-top: 4px; }
+    .acct-label {
+      flex: 1; min-width: 0; margin: 0; padding: 0; border: none; background: transparent;
+      font-size: 13px; font-weight: 700; color: #0f172a;
+    }
+    .acct-label:focus { outline: none; box-shadow: inset 0 -1px 0 #2563eb; }
+    .acct-email { flex: 1; min-width: 0; font-size: 11px; color: #94a3b8; word-break: break-all; line-height: 1.3; }
+    .badge {
+      display: inline-block; font-size: 10px; font-weight: 700;
+      padding: 2px 7px; border-radius: 999px;
+    }
+    .badge.gm { background: #ffe4e6; color: #e11d48; }
+    .badge.hm { background: #dbeafe; color: #2563eb; }
+
+    .sw { position: relative; width: 40px; height: 22px; display: inline-block; }
+    .sw input { opacity: 0; width: 0; height: 0; position: absolute; }
+    .sw i {
+      position: absolute; inset: 0; background: #d1d5db; border-radius: 999px;
+      transition: background .15s;
+    }
+    .sw i:before {
+      content: ""; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px;
+      background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,.2);
+      transition: transform .15s;
+    }
+    .sw input:checked + i { background: #22c55e; }
+    .sw input:checked + i:before { transform: translateX(18px); }
+
+    .acct-acts { display: flex; align-items: center; gap: 4px; }
+    .btn-mini {
+      display: inline-flex; align-items: center; gap: 4px;
+      border: 1px solid #e2e8f0; background: #fff; color: #334155;
+      border-radius: 8px; padding: 4px 8px; font-size: 11px; font-weight: 700; cursor: pointer;
+    }
+    .btn-more {
+      width: 26px; height: 26px; border: none; background: none; color: #94a3b8;
+      border-radius: 8px; font-size: 16px; line-height: 1; cursor: pointer;
+    }
+    .menu {
+      display: none; position: absolute; right: 8px; top: 44px; z-index: 6;
+      min-width: 148px; background: #fff; border: 1px solid #e2e8f0;
+      border-radius: 10px; box-shadow: 0 10px 24px rgba(15,23,42,.12); overflow: hidden;
+    }
+    .acct.open .menu { display: block; }
+    .menu button {
+      display: block; width: 100%; text-align: left; border: none; background: #fff;
+      padding: 8px 12px; font-size: 12px; cursor: pointer; color: #0f172a;
+    }
+    .menu button:hover { background: #f8fafc; }
+    .menu button.danger { color: #b91c1c; }
+    .acct-cred-wrap { display: none; margin-top: 8px; }
+    .acct-cred-wrap.on { display: block; }
+
+    .row-link {
+      width: 100%; display: flex; align-items: center; gap: 10px;
+      border: 1px solid #eef2f6; background: #fff; border-radius: 14px;
+      padding: 12px; margin-bottom: 8px; cursor: pointer; text-align: left;
+    }
+    .row-link.open { border-color: #dbeafe; background: #f8fbff; }
+    .row-ico {
+      width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: #f1f5f9; color: #475569; font-size: 14px;
+    }
+    .row-txt { flex: 1; min-width: 0; }
+    .row-txt b { display: block; font-size: 13px; }
+    .row-txt small { display: block; font-size: 11px; color: #94a3b8; margin-top: 1px; }
+    .chev { color: #94a3b8; font-size: 16px; transition: transform .15s; }
+    .row-link.open .chev { transform: rotate(90deg); }
+    .fold { display: none; padding: 0 2px 10px; }
+    .fold.on { display: block; }
+
+    .ready {
+      display: flex; align-items: center; gap: 8px;
+      background: #ecfdf5; color: #047857; border-radius: 12px;
+      padding: 10px 12px; font-size: 13px; font-weight: 600; margin-top: 4px;
+    }
+    .ready-ico {
+      width: 18px; height: 18px; border-radius: 50%; background: #22c55e; color: #fff;
+      display: flex; align-items: center; justify-content: center; font-size: 11px;
+    }
+
+    .note {
+      display: flex; gap: 8px; align-items: flex-start;
+      font-size: 11px; color: #64748b; line-height: 1.45; margin: 8px 0 12px;
+    }
+    .note-i {
+      width: 16px; height: 16px; border-radius: 50%; border: 1px solid #94a3b8;
+      color: #64748b; font-size: 10px; font-weight: 700;
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
+    }
+
+    #status {
+      font-size: 12px; line-height: 1.45; padding: 10px 12px; border-radius: 12px;
+      display: none; margin-top: 12px; white-space: pre-wrap;
+    }
+    #status.ok { display: block; background: #ecfdf5; color: #047857; }
+    #status.err { display: block; background: #fef2f2; color: #b91c1c; }
+    #status.wait { display: block; background: #eff6ff; color: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <script>
+    // 'ops' = Quét Mail/Meta; 'trigger' = chỉ Set Trigger (menu riêng, 1 chỗ)
+    // In thô JSON (force-print) để tránh escape HTML làm hỏng chuỗi mode.
+    var OPS_MODE = <?!= JSON.stringify(opsMode || 'ops') ?>;
+  </script>
+  <div id="app">
+    <div class="top">
+      <div>
+        <h1 id="ops-title">Quét Mail</h1>
+        <p id="ops-sub">Bảng điều khiển</p>
+      </div>
+      <button type="button" class="btn-view" id="btn-trigger" onclick="openTrigger()" style="display:none;">
+        ⏰ Trigger
+      </button>
+      <button type="button" class="btn-view" id="btn-view" onclick="run('view')">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+        View tháng
+      </button>
+    </div>
+
+    <nav class="tabs" id="ops-tabs">
+      <button type="button" class="tab on" data-tab="mail" onclick="showTab('mail')">Quét Mail</button>
+      <button type="button" class="tab" data-tab="meta" onclick="showTab('meta')">Invoice CSV</button>
+    </nav>
+
+    <section id="tab-mail">
+      <div class="sec-head">
+        <h2>Quét Mail</h2>
+        <div class="count"><span class="dot"></span><span id="acct-count">0 / 0 tài khoản đang bật</span></div>
+      </div>
+
+      <div class="box">
+        <h3>Thời gian quét</h3>
+        <div class="seg">
+          <button type="button" id="mode-recent" class="on" onclick="setMailMode('recent')">Gần đây</button>
+          <button type="button" id="mode-range" onclick="setMailMode('range')">Khoảng ngày</button>
+        </div>
+        <div id="block-recent">
+          <label for="so-ngay">Số ngày</label>
+          <input type="number" id="so-ngay" min="1" step="1" oninput="checkMailWarn()">
+        </div>
+        <div id="block-range" style="display:none;">
+          <div class="row-2">
+            <label>Từ ngày
+              <input type="date" id="quet-tu" onchange="checkMailWarn()">
+            </label>
+            <label>Đến ngày
+              <input type="date" id="quet-den" onchange="checkMailWarn()">
+            </label>
+          </div>
+        </div>
+        <p id="mail-warn" class="warn">Khoảng quét lớn — chậm, dễ vượt quota.</p>
+        <p class="hint" id="mail-mode"></p>
+        <p class="hint">Quét mail chỉ ghi Log. Báo cáo nấu sau (menu / lịch dirty). Invoice CSV ở tab Invoice CSV.</p>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button type="button" class="btn btn-primary" style="flex:1;" onclick="run('scanMail')">Quét tài khoản đang bật</button>
+          <button type="button" class="btn btn-outline" style="flex:0 0 auto; width:auto; padding:10px 14px;" onclick="run('saveMail')">💾 Lưu thời gian</button>
+        </div>
+      </div>
+
+      <div class="acct-head">
+        <h3>Tài khoản</h3>
+        <button type="button" class="btn-add" onclick="toggleAdd()">+ Thêm</button>
+      </div>
+      <div id="acct-list"></div>
+
+      <div class="box" id="acct-add" style="display:none;">
+        <h3>Thêm Hotmail</h3>
+        <label for="new-hotmail-label">Nhãn</label>
+        <input type="text" id="new-hotmail-label" placeholder="VD: Ads HN, Bank MB…">
+        <label for="new-hotmail-cred">Cred</label>
+        <textarea id="new-hotmail-cred" placeholder="email|password|refresh_token|client_id" autocomplete="off" spellcheck="false"></textarea>
+        <p class="hint" style="margin:0 0 8px;">Format 4 khúc hoặc 3 khúc (không password). Graph API, password không dùng.</p>
+        <button type="button" class="btn btn-ghost" onclick="run('checkHotmailNew')">Check cred này</button>
+        <button type="button" class="btn btn-primary" style="margin-top:8px;" onclick="run('saveMail')">Thêm vào bảng</button>
+      </div>
+
+      <button type="button" class="btn btn-save" onclick="run('saveMail')">Lưu thay đổi</button>
+    </section>
+
+    <section id="tab-meta" style="display:none;">
+      <div class="sec-head">
+        <div>
+          <h2>Invoice CSV</h2>
+          <div class="sub">Ghi Log từ file Invoice Summary</div>
+        </div>
+      </div>
+
+      <div class="meta-api-only" id="meta-api-cfg" style="display:none;">
+      <button type="button" class="row-link" data-fold="meta-cfg" onclick="toggleFold('meta-cfg')">
+        <span class="row-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.92l-.36-2.54a.49.49 0 00-.48-.41h-3.84a.49.49 0 00-.48.41l-.36 2.54c-.59.22-1.13.54-1.62.92l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87a.49.49 0 00.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.3.59.22l2.39-.96c.5.38 1.03.7 1.62.92l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.48-.41l.36-2.54c.59-.22 1.13-.54 1.62-.92l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.03-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg></span>
+        <span class="row-txt">
+          <b>Cấu hình kết nối</b>
+          <small>Access Token · Business ID</small>
+        </span>
+        <span class="chev">›</span>
+      </button>
+      <div id="meta-cfg" class="fold">
+        <label for="meta-token">Access Token</label>
+        <input type="password" id="meta-token" placeholder="System User token…" autocomplete="off">
+        <label for="meta-bid">Business ID</label>
+        <input type="text" id="meta-bid" placeholder="ID Business Manager">
+        <button type="button" class="btn btn-ghost" onclick="run('saveMeta')">Lưu Meta</button>
+        <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="run('checkMeta')">Check live</button>
+      </div>
+      </div>
+
+      <div class="box">
+        <h3>Upload Invoice CSV</h3>
+        <p class="hint" style="margin:0 0 10px;">Xuất Invoice Summary từ Facebook. ID tài khoản phải trùng keyword cột A Quet Mail. Upload → dò ID trên Log → ghi thẳng dòng chưa có (ví / ĐT / DM từ Quet Mail, ghi chú = PTTT). ID đã có thì bỏ qua, không ghi đè.</p>
+        <input type="file" id="meta-csv" accept=".csv,text/csv,text/plain">
+        <p class="hint" id="meta-csv-name" style="margin:0 0 8px;"></p>
+        <button type="button" class="btn btn-primary" onclick="run('uploadCsv')">Upload &amp; ghi Log</button>
+      </div>
+
+      <div class="meta-api-only" id="meta-api-sync" style="display:none;">
+      <div class="box">
+        <h3>Đồng bộ API</h3>
+        <p class="hint" style="margin:0 0 10px;">Lấy giao dịch từ Meta về file tạm</p>
+        <button type="button" class="btn btn-outline" onclick="run('syncMeta')">Quét Meta</button>
+        <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="run('writeLog')">Ghi giao dịch thiếu mail vào Log</button>
+      </div>
+
+      <button type="button" class="row-link" data-fold="meta-adv" onclick="toggleFold('meta-adv')">
+        <span class="row-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg></span>
+        <span class="row-txt">
+          <b>Đồng bộ nâng cao</b>
+          <small>Quét lại toàn bộ theo số ngày đã chọn</small>
+        </span>
+        <span class="chev">›</span>
+      </button>
+      <div id="meta-adv" class="fold">
+        <label for="meta-lb">Lookback (ngày) — chỉ khi sync toàn bộ</label>
+        <input type="number" id="meta-lb" min="1" step="1">
+        <p class="hint" style="margin:0 0 8px;">Job hằng ngày chỉ lấy charge mới (~48 giờ), không quét đủ lookback.</p>
+        <button type="button" class="btn btn-ghost" onclick="run('syncFull')">Sync lại toàn bộ</button>
+      </div>
+
+      <div class="ready" id="meta-ready"><span class="ready-ico">✓</span> Sẵn sàng thao tác</div>
+      </div>
+    </section>
+
+    <section id="tab-sched" style="display:none;">
+      <div class="sec-head">
+        <div>
+          <h2>Lịch tự động</h2>
+          <div class="sub" id="trig-tz">Múi giờ: GMT+7</div>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="sec-head" style="margin:0 0 10px;">
+          <h3 style="margin:0;font-size:13px;">&#x1F4E7; Quét Mail tự động</h3>
+          <label class="sw"><input type="checkbox" id="mail-trig-on"><i></i></label>
+        </div>
+        <label>Chế độ</label>
+        <select id="mail-trig-mode" onchange="onMailModeChange()">
+          <option value="hours">Mỗi N giờ</option>
+          <option value="day">Mỗi ngày (giờ:phút)</option>
+        </select>
+        <div id="mail-interval-row" style="margin-top:8px;">
+          <label>Tần suất</label>
+          <select id="mail-trig-interval"></select>
+        </div>
+        <div id="mail-daily-row" style="display:none; margin-top:8px;">
+          <label>Thời gian</label>
+          <div class="row-2">
+            <select id="mail-trig-h"></select>
+            <span class="colon">:</span>
+            <select id="mail-trig-m"></select>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px;">
+          <span style="font-size:12px;font-weight:600;color:#334155;">Nấu báo cáo ngay sau khi quét</span>
+          <label class="sw"><input type="checkbox" id="mail-rebuild-after"><i></i></label>
+        </div>
+        <p class="hint" style="margin:6px 0 0;">Bật → sau mỗi lần quét mail có GD mới sẽ nấu lại báo cáo các tháng đó.</p>
+      </div>
+
+      <div class="box">
+        <div class="sec-head" style="margin:0 0 10px;">
+          <h3 style="margin:0;font-size:13px;">&#x1F4CA; Báo cáo tự nấu</h3>
+          <label class="sw"><input type="checkbox" id="report-trig-on"><i></i></label>
+        </div>
+        <label>Tần suất</label>
+        <select id="report-trig-interval"></select>
+        <p class="hint" style="margin:6px 0 0;">Tự nấu các tháng đang dirty. Tắt = chỉ nấu khi bấm Làm mới / /report.</p>
+      </div>
+
+      <div class="box meta-api-only" id="meta-sched-box" style="display:none;">
+        <div class="sec-head" style="margin:0 0 10px;">
+          <h3 style="margin:0;font-size:13px;">Quét Meta mỗi ngày</h3>
+          <label class="sw"><input type="checkbox" id="meta-trig-on"><i></i></label>
+        </div>
+        <label>Thời gian</label>
+        <div class="row-2">
+          <select id="meta-trig-h"></select>
+          <span class="colon">:</span>
+          <select id="meta-trig-m"></select>
+        </div>
+      </div>
+
+      <div class="note">
+        <span class="note-i">i</span>
+        <span>Thời gian chạy có thể dao động. Trigger mỗi N giờ chạy theo mốc chẵn; mỗi ngày chạy theo giờ đã chọn.</span>
+      </div>
+      <p class="hint" id="trig-now" style="margin:0 0 10px;"></p>
+      <button type="button" class="btn btn-primary" onclick="run('saveSchedule')">Lưu lịch</button>
+    </section>
+
+    <div id="status"></div>
+  </div>
+
+  <script>
+    var app = document.getElementById('app');
+    var statusBox = document.getElementById('status');
+    var tokEl = document.getElementById('meta-token');
+    var acctListEl = document.getElementById('acct-list');
+    var mailMode = 'recent';
+    var metaBillingOn = false;
+
+    function applyMetaBillingUi(on) {
+      metaBillingOn = !!on;
+      var nodes = document.querySelectorAll('.meta-api-only');
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].style.display = metaBillingOn ? 'block' : 'none';
+      }
+      if (OPS_MODE === 'trigger') return;
+      var h1 = document.getElementById('ops-title');
+      if (h1) h1.textContent = metaBillingOn ? 'Mail & Meta' : 'Quét Mail';
+      var tab = document.querySelector('.tab[data-tab="meta"]');
+      if (tab) tab.textContent = metaBillingOn ? 'Meta Billing' : 'Invoice CSV';
+      var h2 = document.querySelector('#tab-meta .sec-head h2');
+      var sub = document.querySelector('#tab-meta .sec-head .sub');
+      if (h2) h2.textContent = metaBillingOn ? 'Meta Billing' : 'Invoice CSV';
+      if (sub) sub.textContent = metaBillingOn ? 'Quản lý đồng bộ giao dịch' : 'Ghi Log từ file Invoice Summary';
+    }
+
+    function applyOpsMode() {
+      var isTrigger = OPS_MODE === 'trigger';
+      var tabs = document.getElementById('ops-tabs');
+      var btnView = document.getElementById('btn-view');
+      var btnTrig = document.getElementById('btn-trigger');
+      var title = document.getElementById('ops-title');
+      var sub = document.getElementById('ops-sub');
+      if (isTrigger) {
+        if (tabs) tabs.style.display = 'none';
+        if (btnView) btnView.style.display = 'none';
+        if (btnTrig) btnTrig.style.display = 'none';
+        if (title) title.textContent = 'Set Trigger';
+        if (sub) sub.textContent = 'Lịch tự động — Mail / Báo cáo / Meta';
+        showTab('sched');
+      } else {
+        if (tabs) tabs.style.display = 'flex';
+        if (btnTrig) btnTrig.style.display = 'inline-flex';
+        showTab('mail');
+      }
+    }
+
+    function openTrigger() {
+      busy(true);
+      say('wait', 'Đang mở Set Trigger…');
+      google.script.run
+        .withSuccessHandler(function () { busy(false); })
+        .withFailureHandler(function (err) {
+          busy(false);
+          say('err', (err && err.message) || String(err));
+        })
+        .showOpsTriggerSidebar();
+    }
+
+    function esc(s) {
+      return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    }
+
+    function showTab(id) {
+      var tabs = ['mail', 'meta', 'sched'];
+      for (var i = 0; i < tabs.length; i++) {
+        var sec = document.getElementById('tab-' + tabs[i]);
+        var btn = document.querySelector('.tab[data-tab="' + tabs[i] + '"]');
+        if (sec) sec.style.display = tabs[i] === id ? 'block' : 'none';
+        if (btn) btn.className = tabs[i] === id ? 'tab on' : 'tab';
+      }
+    }
+
+    function setMailMode(mode) {
+      mailMode = mode === 'range' ? 'range' : 'recent';
+      document.getElementById('mode-recent').className = mailMode === 'recent' ? 'on' : '';
+      document.getElementById('mode-range').className = mailMode === 'range' ? 'on' : '';
+      document.getElementById('block-recent').style.display = mailMode === 'recent' ? 'block' : 'none';
+      document.getElementById('block-range').style.display = mailMode === 'range' ? 'block' : 'none';
+      checkMailWarn();
+    }
+
+    function toggleFold(id) {
+      var el = document.getElementById(id);
+      var btn = document.querySelector('[data-fold="' + id + '"]');
+      var on = el.className.indexOf('on') !== -1;
+      el.className = on ? 'fold' : 'fold on';
+      if (btn) btn.className = on ? 'row-link' : 'row-link open';
+    }
+
+    function toggleAdd() {
+      var box = document.getElementById('acct-add');
+      box.style.display = box.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function updateAcctCount() {
+      var rows = acctListEl.querySelectorAll('.acct');
+      var on = 0;
+      for (var i = 0; i < rows.length; i++) {
+        var cb = rows[i].querySelector('.acct-on');
+        if (cb && cb.checked) on++;
+      }
+      document.getElementById('acct-count').textContent = on + ' / ' + rows.length + ' tài khoản đang bật';
+    }
+
+    function closeMenus() {
+      var nodes = acctListEl.querySelectorAll('.acct.open');
+      for (var i = 0; i < nodes.length; i++) nodes[i].className = nodes[i].className.replace(/\s*open\b/g, '');
+    }
+
+    function closestAcct(el) {
+      while (el && el !== document) {
+        if (el.getAttribute && el.getAttribute('data-type') && el.getAttribute('data-id') != null) return el;
+        el = el.parentNode;
+      }
+      return null;
+    }
+
+    function toggleMenu(btn) {
+      var card = closestAcct(btn);
+      var was = card && (' ' + card.className + ' ').indexOf(' open ') !== -1;
+      closeMenus();
+      if (card && !was) card.className += ' open';
+    }
+
+    function showCred(btn) {
+      var card = closestAcct(btn);
+      if (!card) return;
+      var wrap = card.querySelector('.acct-cred-wrap');
+      if (wrap) wrap.className = 'acct-cred-wrap on';
+      closeMenus();
+    }
+
+    function renderAccounts(accounts) {
+      var list = accounts && accounts.length ? accounts : [{ id: 'gmail-default', type: 'gmail', label: 'Gmail chính', email: '', enabled: true }];
+      var html = '';
+      for (var i = 0; i < list.length; i++) {
+        var a = list[i];
+        var on = a.enabled !== false;
+        var isHm = a.type === 'hotmail';
+        html += '<div class="acct" data-id="' + esc(a.id) + '" data-type="' + esc(a.type) + '">';
+        html += '<div class="acct-top">';
+        html += '<div class="ico ' + (isHm ? 'hm' : 'gm') + '">' + (isHm ? 'H' : 'G') + '</div>';
+        html += '<div class="acct-body">';
+        html += '<div class="acct-r1">';
+        html += '<input type="text" class="acct-label" value="' + esc(a.label || '') + '" placeholder="Nhãn">';
+        html += '<span class="badge ' + (isHm ? 'hm' : 'gm') + '">' + (isHm ? 'Hotmail' : 'Gmail') + '</span>';
+        html += '<label class="sw"><input type="checkbox" class="acct-on"' + (on ? ' checked' : '') + '><i></i></label>';
+        html += '</div>';
+        html += '<div class="acct-r2">';
+        html += '<div class="acct-email">' + esc(a.email || (isHm ? 'Hotmail' : 'Tài khoản Google của Sheet')) + '</div>';
+        html += '<div class="acct-acts">';
+        html += '<button type="button" class="btn-mini" onclick="run(\'scanOne\',\'' + esc(a.id) + '\')"><svg width="9" height="9" viewBox="0 0 10 10"><path fill="#2563eb" d="M2 1.2v7.6L8.8 5z"/></svg> Quét</button>';
+        if (isHm) {
+          html += '<button type="button" class="btn-more" onclick="toggleMenu(this)">⋯</button>';
+        }
+        html += '</div></div></div></div>';
+        if (isHm) {
+          html += '<div class="menu">';
+          html += '<button type="button" onclick="run(\'checkHotmail\',\'' + esc(a.id) + '\')">Check cred</button>';
+          html += '<button type="button" onclick="showCred(this)">Sửa cred</button>';
+          html += '<button type="button" class="danger" onclick="removeAcct(this)">Xóa</button>';
+          html += '</div>';
+          html += '<div class="acct-cred-wrap"><textarea class="acct-cred" placeholder="email|password|refresh_token|client_id" autocomplete="off" spellcheck="false">' + esc(a.cred_masked || '') + '</textarea></div>';
+        }
+        html += '</div>';
+      }
+      acctListEl.innerHTML = html;
+      updateAcctCount();
+    }
+
+    function removeAcct(btn) {
+      var box = closestAcct(btn);
+      if (box && box.getAttribute('data-type') === 'hotmail' && box.parentNode) {
+        box.parentNode.removeChild(box);
+        updateAcctCount();
+      }
+    }
+
+    function collectAccounts() {
+      var nodes = acctListEl.querySelectorAll('.acct');
+      var out = [];
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        var type = el.getAttribute('data-type') || '';
+        var id = el.getAttribute('data-id') || '';
+        var on = el.querySelector('.acct-on');
+        var lab = el.querySelector('.acct-label');
+        var ta = el.querySelector('.acct-cred');
+        var em = el.querySelector('.acct-email');
+        var row = {
+          id: id,
+          type: type,
+          enabled: !!(on && on.checked),
+          label: lab ? String(lab.value || '').trim() : '',
+          email: em ? String(em.textContent || '').trim() : ''
+        };
+        if (type === 'hotmail') row.cred = ta ? ta.value : '';
+        out.push(row);
+      }
+      return out;
+    }
+
+    function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+    function fillSelect(el, values, labels) {
+      el.innerHTML = '';
+      for (var i = 0; i < values.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = String(values[i]);
+        opt.textContent = labels ? labels[i] : pad2(values[i]);
+        el.appendChild(opt);
+      }
+    }
+
+    (function initClockOptions() {
+      var hours = [];
+      var hourLabs = [];
+      for (var h = 0; h < 24; h++) {
+        hours.push(h);
+        hourLabs.push(pad2(h) + ' giờ');
+      }
+      fillSelect(document.getElementById('mail-trig-h'), hours, hourLabs);
+      fillSelect(document.getElementById('meta-trig-h'), hours, hourLabs);
+      var mins = [0, 15, 30, 45];
+      var minLabs = ['00 phút', '15 phút', '30 phút', '45 phút'];
+      fillSelect(document.getElementById('mail-trig-m'), mins, minLabs);
+      fillSelect(document.getElementById('meta-trig-m'), mins, minLabs);
+
+      // Tần suất theo giờ hợp lệ Apps Script
+      var intervalHours = [1, 2, 3, 4, 6, 8, 12, 24];
+      var intervalLabs = intervalHours.map(function (n) { return 'Mỗi ' + n + ' giờ'; });
+      fillSelect(document.getElementById('mail-trig-interval'), intervalHours, intervalLabs);
+      fillSelect(document.getElementById('report-trig-interval'), intervalHours, intervalLabs);
+    })();
+
+    function onMailModeChange() {
+      var mode = document.getElementById('mail-trig-mode').value;
+      document.getElementById('mail-interval-row').style.display = mode === 'hours' ? 'block' : 'none';
+      document.getElementById('mail-daily-row').style.display = mode === 'day' ? 'block' : 'none';
+    }
+
+    function say(cls, msg) {
+      var text = msg || '';
+      statusBox.className = cls || '';
+      statusBox.textContent = text;
+      var ready = document.getElementById('meta-ready');
+      if (ready) ready.style.display = text ? 'none' : 'flex';
+    }
+
+    function busy(on) {
+      if (on) app.className = 'busy';
+      else app.className = '';
+    }
+
+    function checkMailWarn() {
+      var warn = document.getElementById('mail-warn');
+      var n = parseInt(document.getElementById('so-ngay').value, 10) || 0;
+      var tu = document.getElementById('quet-tu').value;
+      var den = document.getElementById('quet-den').value;
+      var show = false;
+      if (mailMode === 'recent') show = n > 7;
+      else if (tu && den) {
+        var span = Math.round((new Date(den) - new Date(tu)) / 86400000) + 1;
+        if (span > 30) show = true;
+      }
+      warn.style.display = show ? 'block' : 'none';
+    }
+
+    function mailForm() {
+      var accounts = collectAccounts();
+      var extraEl = document.getElementById('new-hotmail-cred');
+      var extra = extraEl ? String(extraEl.value || '').replace(/\r/g, '').trim() : '';
+      if (extra) {
+        var labEl = document.getElementById('new-hotmail-label');
+        accounts.push({
+          id: 'new-' + Date.now(),
+          type: 'hotmail',
+          enabled: true,
+          label: labEl ? String(labEl.value || '').trim() : '',
+          cred: extra
+        });
+      }
+      var recent = mailMode !== 'range';
+      return {
+        so_ngay_quet: document.getElementById('so-ngay').value,
+        quet_tu_ngay: recent ? '' : document.getElementById('quet-tu').value,
+        quet_den_ngay: recent ? '' : document.getElementById('quet-den').value,
+        accounts_json: JSON.stringify(accounts)
+      };
+    }
+
+    function metaForm() {
+      var tok = tokEl.value || '';
+      return {
+        meta_access_token: (tok && tok.indexOf('••••') === -1) ? tok : '',
+        meta_business_id: document.getElementById('meta-bid').value,
+        meta_billing_lookback_days: document.getElementById('meta-lb').value
+      };
+    }
+
+    function scheduleForm() {
+      return {
+        mail_trigger_on: document.getElementById('mail-trig-on').checked,
+        mail_trigger_mode: document.getElementById('mail-trig-mode').value,
+        mail_trigger_interval_hours: document.getElementById('mail-trig-interval').value,
+        mail_trigger_hour: document.getElementById('mail-trig-h').value,
+        mail_trigger_minute: document.getElementById('mail-trig-m').value,
+        mail_rebuild_after: document.getElementById('mail-rebuild-after').checked,
+        report_trigger_on: document.getElementById('report-trig-on').checked,
+        report_trigger_interval_hours: document.getElementById('report-trig-interval').value,
+        meta_trigger_on: metaBillingOn && document.getElementById('meta-trig-on').checked,
+        meta_trigger_hour: document.getElementById('meta-trig-h').value,
+        meta_trigger_minute: document.getElementById('meta-trig-m').value
+      };
+    }
+
+    function initState(state) {
+      applyMetaBillingUi(!!(state && state.meta_billing_enabled));
+      document.getElementById('so-ngay').value = state.so_ngay_quet || '1';
+      document.getElementById('quet-tu').value = state.quet_tu_ngay || '';
+      document.getElementById('quet-den').value = state.quet_den_ngay || '';
+      document.getElementById('mail-mode').textContent = 'Hiện tại: ' + (state.mail_label || '');
+      setMailMode((state.quet_tu_ngay && state.quet_den_ngay) ? 'range' : 'recent');
+      renderAccounts(state.accounts || []);
+      document.getElementById('meta-bid').value = state.meta_business_id || '';
+      document.getElementById('meta-lb').value = state.meta_billing_lookback_days || '60';
+      if (state.meta_access_token) {
+        tokEl.type = 'text';
+        tokEl.value = state.meta_access_token;
+        tokEl.setAttribute('data-masked', '1');
+      } else {
+        tokEl.type = 'password';
+        tokEl.value = '';
+        tokEl.setAttribute('data-masked', '0');
+      }
+      document.getElementById('mail-trig-on').checked = !!state.mail_trigger_on;
+      document.getElementById('mail-trig-mode').value = state.mail_trigger_mode || 'hours';
+      document.getElementById('mail-trig-interval').value = String(state.mail_trigger_interval_hours || 2);
+      document.getElementById('mail-trig-h').value = String(state.mail_trigger_hour != null ? state.mail_trigger_hour : 8);
+      document.getElementById('mail-trig-m').value = String(state.mail_trigger_minute != null ? state.mail_trigger_minute : 0);
+      document.getElementById('mail-rebuild-after').checked = !!state.mail_rebuild_after;
+      document.getElementById('report-trig-on').checked = !!state.report_trigger_on;
+      document.getElementById('report-trig-interval').value = String(state.report_trigger_interval_hours || 3);
+      onMailModeChange();
+      document.getElementById('meta-trig-on').checked = !!state.meta_trigger_on;
+      document.getElementById('meta-trig-h').value = String(state.meta_trigger_hour != null ? state.meta_trigger_hour : 8);
+      document.getElementById('meta-trig-m').value = String(state.meta_trigger_minute != null ? state.meta_trigger_minute : 30);
+      document.getElementById('trig-tz').textContent = 'Múi giờ: ' + (state.trigger_tz || 'GMT+7');
+      document.getElementById('trig-now').textContent = 'Hiện tại: ' + (state.trigger_label || 'chưa đặt');
+      checkMailWarn();
+      applyOpsMode();
+    }
+
+    tokEl.addEventListener('input', function () {
+      if (tokEl.getAttribute('data-masked') === '1' && tokEl.value.indexOf('••••') === -1) {
+        tokEl.setAttribute('data-masked', '0');
+        tokEl.type = 'password';
+      }
+    });
+
+    acctListEl.addEventListener('change', function (e) {
+      if (e.target && e.target.className.indexOf('acct-on') !== -1) updateAcctCount();
+    });
+
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      while (t && t !== document) {
+        if (t.className && String(t.className).indexOf('btn-more') !== -1) return;
+        if (t.className && String(t.className).indexOf('menu') !== -1) return;
+        t = t.parentNode;
+      }
+      closeMenus();
+    });
+
+    var csvInput = document.getElementById('meta-csv');
+    if (csvInput) {
+      csvInput.addEventListener('change', function () {
+        var f = this.files && this.files[0];
+        var lab = document.getElementById('meta-csv-name');
+        if (lab) lab.textContent = f ? f.name : '';
+      });
+    }
+
+    function run(action, mailboxId) {
+      var tu = document.getElementById('quet-tu').value;
+      var den = document.getElementById('quet-den').value;
+      if ((action === 'saveMail' || action === 'scanMail' || action === 'scanOne') && mailMode === 'range' && ((tu && !den) || (!tu && den))) {
+        say('err', 'Khoảng ngày: điền đủ cả Từ và Đến, hoặc chuyển sang Gần đây.');
+        return;
+      }
+      if ((action === 'saveMail' || action === 'scanMail' || action === 'scanOne') && mailMode === 'range' && !tu && !den) {
+        say('err', 'Khoảng ngày: chọn Từ và Đến.');
+        return;
+      }
+
+      var ok = function (r) {
+        busy(false);
+        if (action === 'view') return;
+        say(r && r.ok ? 'ok' : 'err', (r && r.message) || 'Xong');
+        if (r && r.mail_label) {
+          document.getElementById('mail-mode').textContent = 'Hiện tại: ' + r.mail_label;
+        }
+        if (r && r.accounts) renderAccounts(r.accounts);
+        if (r && r.ok) {
+          var addBox = document.getElementById('new-hotmail-cred');
+          var addLab = document.getElementById('new-hotmail-label');
+          if (addBox) addBox.value = '';
+          if (addLab) addLab.value = '';
+          if (action === 'saveMail') document.getElementById('acct-add').style.display = 'none';
+        }
+        if (r && r.trigger_label) {
+          document.getElementById('trig-now').textContent = 'Hiện tại: ' + r.trigger_label;
+        }
+      };
+      var fail = function (err) {
+        busy(false);
+        say('err', (err && err.message) || String(err));
+      };
+
+      if (action === 'saveMeta' || action === 'checkMeta' || action === 'syncMeta' || action === 'syncFull' || action === 'writeLog') {
+        if (!metaBillingOn) {
+          say('err', 'Meta Billing API đang tắt. Dùng quét mail hoặc upload Invoice CSV.');
+          return;
+        }
+      }
+
+      if (action === 'uploadCsv') {
+        var input = document.getElementById('meta-csv');
+        var file = input && input.files && input.files[0];
+        if (!file) {
+          say('err', 'Chưa chọn file CSV.');
+          return;
+        }
+        var name = file.name || 'invoice.csv';
+        if (!/\.csv$/i.test(name)) {
+          say('err', 'Chỉ nhận file .csv (không dùng PDF).');
+          return;
+        }
+        if (file.size > 800000) {
+          say('err', 'File quá lớn (tối đa 800KB).');
+          return;
+        }
+        busy(true);
+        say('wait', 'Đang đọc ' + name + '…');
+        var reader = new FileReader();
+        reader.onerror = function () {
+          busy(false);
+          say('err', 'Không đọc được file.');
+        };
+        reader.onload = function () {
+          say('wait', 'Đang đối soát Log… có thể mất vài phút.');
+          google.script.run.withSuccessHandler(ok).withFailureHandler(fail)
+            .opsSidebarIngestMetaCsv(String(reader.result || ''), name);
+        };
+        reader.readAsText(file, 'UTF-8');
+        return;
+      }
+
+      busy(true);
+      say('wait', action === 'view' ? 'Đang mở View…' : 'Đang xử lý… có thể mất vài phút.');
+      var runner = google.script.run.withSuccessHandler(ok).withFailureHandler(fail);
+
+      if (action === 'saveMail') runner.opsSidebarSaveMail(mailForm());
+      else if (action === 'scanMail') runner.opsSidebarScanMail(mailForm(), '');
+      else if (action === 'scanOne') runner.opsSidebarScanMail(mailForm(), mailboxId || '');
+      else if (action === 'checkHotmail') runner.opsSidebarCheckHotmail(mailForm(), mailboxId || '');
+      else if (action === 'checkHotmailNew') runner.opsSidebarCheckHotmailCred((document.getElementById('new-hotmail-cred').value || '').trim());
+      else if (action === 'saveMeta') runner.opsSidebarSaveMeta(metaForm());
+      else if (action === 'checkMeta') runner.opsSidebarCheckMeta(metaForm());
+      else if (action === 'syncMeta') runner.opsSidebarSyncMeta(metaForm(), false);
+      else if (action === 'syncFull') runner.opsSidebarSyncMeta(metaForm(), true);
+      else if (action === 'writeLog') runner.opsSidebarWriteMetaLog();
+      else if (action === 'saveSchedule') runner.opsSidebarSaveSchedule(scheduleForm());
+      else runner.showViewSidebar();
+    }
+
+    applyOpsMode();
+
+    if (window.google && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(initState)
+        .withFailureHandler(function (err) { say('err', (err && err.message) || String(err)); })
+        .opsSidebarState();
+    }
+  </script>
+</body>
+</html>

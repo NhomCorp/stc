@@ -94,13 +94,17 @@ function handleTelegramUpdate_(contents) {
       return;
     }
     if (text === '/scan' || text.indexOf('/scan') === 0) {
-      const loadId = sendMessage(chatId, "⏳ Đang quét hóa đơn từ Gmail...");
+      const loadId = sendMessage(chatId, "⏳ Đang quét hóa đơn từ mail (hộp đang bật)...");
       scanMail(chatId);
       deleteMessage(chatId, loadId);
       return;
     }
     if (text === '/metabilling' || text.indexOf('/metabilling') === 0) {
-      const loadId = sendMessage(chatId, "⏳ Đang sync Meta Billing...");
+      if (!META_BILLING_ENABLED) {
+        sendMessage(chatId, 'ℹ️ Meta Billing API đang tắt. Dùng /scan hoặc upload Invoice CSV trên sidebar.');
+        return;
+      }
+      const loadId = sendMessage(chatId, "⏳ Đang quét Meta Billing (file tạm)...");
       syncMetaBilling(chatId);
       deleteMessage(chatId, loadId);
       return;
@@ -157,8 +161,10 @@ function helpMessageHtml_() {
   return "🤖 <b>Bot Sổ Thu Chi AI v2</b>\n" +
     "• Gửi text / ảnh bill / voice để ghi sổ.\n" +
     "• <code>/report</code> — báo cáo hôm nay (+ nút Tháng này / 3 tháng).\n" +
-    "• <code>/scan</code> — quét mail ngân hàng.\n" +
-    "• <code>/metabilling</code> — đối soát Meta Ads billing ↔ mail.\n" +
+    "• <code>/scan</code> — quét mail (Gmail/Hotmail đang bật).\n" +
+    (META_BILLING_ENABLED
+      ? "• <code>/metabilling</code> — quét Meta vào file tạm (đối soát mail, chưa ghi Log).\n"
+      : "") +
     "• <code>/help</code> — hiện hướng dẫn này.\n\n" +
     "<b>Sửa</b> — bấm ✏️ → chọn field (Số tiền / Ví / DM / …) hoặc ⚡ sửa nhanh.\n" +
     "• Reply tin GD: <code>ví MB</code> · <code>50k</code> · <code>dm Cafe</code> · <code>hủy</code>\n" +
@@ -928,7 +934,11 @@ function addToNotebook(field, value) {
     let valueColOffset = 0;
     if (field === "vi") { rangeName = "Wallet"; valueColOffset = 0; }
     else if (field === "dt") { rangeName = "userr"; valueColOffset = 0; }
-    else if (field === "dm") { rangeName = "Category"; valueColOffset = 1; }
+    else if (field === "dm") {
+      rangeName = "Category";
+      const catLayout = categoryNamedRangeLayout_(ss);
+      valueColOffset = catLayout.conCol;
+    }
     else return false;
 
     const range = ss.getRangeByName(rangeName);

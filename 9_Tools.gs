@@ -70,7 +70,7 @@ function hideTemplateLog() {
 
 function getTemplateLog_() {
   const ss = getSpreadsheet_();
-  const tpl = getSheetByGid(GID.TEMPLATE_LOG) || ss.getSheetByName('Template_Log');
+  const tpl = getSheetByGid(GID.TEMPLATE_LOG);
   if (!tpl) throw new Error('Không tìm thấy Template_Log (GID: ' + GID.TEMPLATE_LOG + ')');
   return tpl;
 }
@@ -367,7 +367,7 @@ function syncOneMonthReportTheme(monthKey) {
 
 function runMonthReportThemeSync_(onlyMonthKey) {
   const ss = getSpreadsheet_();
-  const tpl = getSheetByGid(GID.TEMPLATE_REPORT) || ss.getSheetByName('Template_Report');
+  const tpl = getSheetByGid(GID.TEMPLATE_REPORT);
   if (!tpl) throw new Error('Không tìm thấy Template_Report (GID: ' + GID.TEMPLATE_REPORT + ')');
 
   const numRows = REPORT_SYNC.KPI_LAST_ROW - REPORT_SYNC.KPI_FIRST_ROW + 1;
@@ -962,9 +962,10 @@ function getMonthLogUniqueKeySet_(sheet) {
 
 function ensureLogChuyenSheet_() {
   const ss = getSpreadsheet_();
-  let sheet = ss.getSheetByName(SHEET_NAMES.LOG_CHUYEN);
+  let sheet = getLogChuyenSheet_();
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAMES.LOG_CHUYEN);
+    try { PROP.setProperty('log_chuyen_gid', String(sheet.getSheetId())); } catch (e0) {}
     sheet.appendRow(LOG_CHUYEN_HEADERS);
     sheet.getRange(1, 1, 1, LOG_CHUYEN_HEADERS.length).setFontWeight('bold');
     sheet.setFrozenRows(1);

@@ -42,6 +42,29 @@ function getSheetByGid(gid) {
   return ss.getSheets().find(s => s.getSheetId() === target) || null;
 }
 
+/**
+ * Lấy sheet vận hành theo GID (ưu tiên), fallback theo tên.
+ * Nếu tìm được theo GID thì trả về ngay; ghi nhận cả hai cách an toàn.
+ * @param {number|string} gid GID ưu tiên
+ * @param {string} fallbackName Tên sheet fallback khi GID chưa khớp (vd đổi tên không đổi GID)
+ */
+function getSheetByGidOrName(gid, fallbackName) {
+  const byGid = getSheetByGid(gid);
+  if (byGid) return byGid;
+  const ss = getSpreadsheet_();
+  return fallbackName ? (ss.getSheetByName(fallbackName) || null) : null;
+}
+
+/** Helper an toàn: lấy sheet Mục Lục theo GID đã ghi nhận hoặc tên */
+function getMucLucSheet_() {
+  return getSheetByGidOrName(getDynamicGid_('muc_luc_gid'), SHEET_NAMES.MUC_LUC);
+}
+
+/** Helper an toàn: lấy sheet Log_Chuyen theo GID đã ghi nhận hoặc tên */
+function getLogChuyenSheet_() {
+  return getSheetByGidOrName(getDynamicGid_('log_chuyen_gid'), SHEET_NAMES.LOG_CHUYEN);
+}
+
 /** Parse ngày Log (Date hoặc dd/MM/yyyy) — dùng chung Report/Tools */
 function parseLogDate_(val) {
   if (val instanceof Date && !isNaN(val.getTime())) return val;
@@ -107,7 +130,7 @@ function getOrCreateMonthSheets(monthKey) {
   let rptSheet = ss.getSheetByName(rptName);
 
   if (!logSheet) {
-    const tplLog = getSheetByGid(GID.TEMPLATE_LOG) || ss.getSheetByName('Template_Log');
+    const tplLog = getSheetByGid(GID.TEMPLATE_LOG);
     if (!tplLog) throw new Error('Không tìm thấy Template_Log (GID: ' + GID.TEMPLATE_LOG + ')');
     logSheet = tplLog.copyTo(ss).setName(logName);
     logSheet.getRange('A1:B1').setValues([['Thu Chi tháng', monthKey.replace('_', '/')]]);
@@ -116,7 +139,7 @@ function getOrCreateMonthSheets(monthKey) {
 
   const createdRpt = !rptSheet;
   if (!rptSheet) {
-    const tplRpt = getSheetByGid(GID.TEMPLATE_REPORT) || ss.getSheetByName('Template_Report');
+    const tplRpt = getSheetByGid(GID.TEMPLATE_REPORT);
     if (tplRpt) {
       rptSheet = tplRpt.copyTo(ss).setName(rptName);
       rptSheet.getRange('A1:B1').setValues([['Báo cáo tháng:', monthKey.replace('_', '/')]]);
@@ -132,6 +155,8 @@ function getOrCreateMonthSheets(monthKey) {
       markMonthsDirty_([monthKey]);
     } catch (eDirty) {}
   }
+  // UX View: shard tháng mặc định ẩn (bot/mail vẫn ghi bình thường)
+  try { hideMonthShardPair_(logSheet, rptSheet); } catch (eHide) {}
   return { logSheet, rptSheet };
 }
 
@@ -155,14 +180,20 @@ function appendRowsToMonthLog(sheet, rows) {
   const targetRange = sheet.getRange(dummyRow, 1, rows.length, numCols);
   formatSource.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
   formatSource.copyTo(targetRange, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+  // Dummy hay dính zebra xám — dòng mới để nền mặc định (giống Làm mới data)
+  targetRange.setBackground(null);
 
   // Ghi giá trị
   targetRange.setValues(rows);
   return rows.length;
 }
 
-/** Ghi batch giao dịch vào các Shard Log_MM_YYYY (Đơn ghi duy nhất) */
-function saveBatchToMonthShards(batchData) {
+/**
+ * Ghi batch giao dịch vào các Shard Log_MM_YYYY (Đơn ghi duy nhất).
+ * @param {Array} batchData
+ * @param {{skipRebuild?: boolean}=} opts skipRebuild = chỉ dirty, không nấu Report
+ */
+function saveBatchToMonthShards(batchData, opts) {
   if (!batchData || !batchData.length) return true;
   const lock = LockService.getScriptLock();
   let touchedMonths_ = null;
@@ -208,7 +239,7 @@ function saveBatchToMonthShards(batchData) {
   } finally {
     lock.releaseLock();
     if (touchedMonths_ && touchedMonths_.length) {
-      try { notifyLogMonthsChanged_(touchedMonths_); } catch (eN) {}
+      try { notifyLogMonthsChanged_(touchedMonths_, opts); } catch (eN) {}
     }
   }
 }
@@ -485,7 +516,7 @@ function repairTamperedB1_(ss) {
 /** Cập nhật hoặc thêm tháng vào Mục Lục */
 function ensureMonthInMucLuc_(monthKey, logSheet, rptSheet) {
   const ss = getSpreadsheet_();
-  let mucLuc = ss.getSheetByName(SHEET_NAMES.MUC_LUC);
+  let mucLuc = getMucLucSheet_();
   if (!mucLuc) {
     rebuildMucLuc();
     return;
@@ -509,15 +540,57 @@ function ensureMonthInMucLuc_(monthKey, logSheet, rptSheet) {
   }
 }
 
-/** Tái tạo toàn bộ sheet Mục Lục từ các Log tháng hiện có */
+/** Tái tạo toàn bộ sheet Mục Lục từ các Log tháng hiện có + các sheet vận hành */
 function rebuildMucLuc() {
   const ss = getSpreadsheet_();
-  let mucLuc = ss.getSheetByName(SHEET_NAMES.MUC_LUC);
+  let mucLuc = getMucLucSheet_();
   if (!mucLuc) mucLuc = ss.insertSheet(SHEET_NAMES.MUC_LUC, 0);
 
+  // Lưu GID Mục Lục để dùng lại khi đổi tên
+  try { PROP.setProperty('muc_luc_gid', String(mucLuc.getSheetId())); } catch (e0) {}
+
   mucLuc.clearContents();
-  mucLuc.getRange('A1:C1').setValues([['📑 MỤC LỤC — Log & Report theo tháng', '', '']]);
-  mucLuc.getRange('A2:C2').setValues([['Tháng', 'Log', 'Report']]);
+
+  // --- Phần A: Sheet vận hành ---
+  mucLuc.getRange('A1:C1').setValues([['📑 MỤC LỤC — Sheet vận hành + Log & Report theo tháng', '', '']]);
+  mucLuc.getRange('A2:C2').setValues([['Sheet vận hành', 'Mô tả', '']]);
+
+  const opSheets = [
+    { gid: GID.BAO_CAO, name: 'Bao cao_v2', desc: 'Bao cao tổng hợp' },
+    { gid: GID.TOM_TAT, name: 'Tóm tắt_v2', desc: 'Báo cáo trọn đời + master data' },
+    { gid: GID.QUET_MAIL, name: 'Quet Mail', desc: 'Rule quét mail' },
+    { gid: GID.ALIAS, name: 'Alias', desc: 'Chuẩn hóa tên' },
+    { gid: GID.AI_LEARNING, name: 'AI_Learning', desc: 'Học thói quen phân loại' },
+    { gid: GID.TEMPLATE_LOG, name: 'Template_Log', desc: 'Mẫu sổ Log tháng' },
+    { gid: GID.TEMPLATE_REPORT, name: 'Template_Report', desc: 'Mẫu báo cáo tháng' },
+    { gid: getDynamicGid_('log_chuyen_gid'), name: SHEET_NAMES.LOG_CHUYEN, desc: 'Nhật ký chuyển dòng' },
+    { gid: getDynamicGid_('view_log_gid'), name: SHEET_NAMES.VIEW_LOG, desc: 'View Log (đọc)' },
+    { gid: getDynamicGid_('view_report_gid'), name: SHEET_NAMES.VIEW_REPORT, desc: 'View Report (đọc)' }
+  ];
+
+  let opRow = 3;
+  const opFormulas = [];
+  const opLabels = [];
+  for (let i = 0; i < opSheets.length; i++) {
+    const op = opSheets[i];
+    const sh = getSheetByGid(op.gid) || (op.name ? ss.getSheetByName(op.name) : null);
+    if (!sh) continue;
+    opLabels.push([op.name]);
+    opFormulas.push([
+      '=HYPERLINK("#gid=' + sh.getSheetId() + '"; "' + sh.getName() + '")',
+      op.desc
+    ]);
+    opRow++;
+  }
+  if (opLabels.length) {
+    mucLuc.getRange(3, 1, opLabels.length, 1).setNumberFormat('@').setValues(opLabels);
+    mucLuc.getRange(3, 2, opFormulas.length, 2).setFormulas(opFormulas);
+  }
+
+  // --- Phần B: Log & Report theo tháng ---
+  const leftAt = opRow + 1;
+  mucLuc.getRange(leftAt, 1).setValue('📅 Log & Report theo tháng');
+  mucLuc.getRange(leftAt + 1, 1, 1, 3).setValues([['Tháng', 'Log', 'Report']]);
 
   const sheets = ss.getSheets();
   const labels = [];
@@ -529,7 +602,8 @@ function rebuildMucLuc() {
       const mKey = m[1];
       labels.push([mKey.replace('_', '/')]);
       const logLink = '=HYPERLINK("#gid=' + sh.getSheetId() + '"; "' + sh.getName() + '")';
-      const rpt = ss.getSheetByName('Report_' + mKey);
+      const rptName = 'Report_' + mKey;
+      const rpt = getSheetByGidOrName(null, rptName);
       const rptLink = rpt
         ? '=HYPERLINK("#gid=' + rpt.getSheetId() + '"; "' + rpt.getName() + '")'
         : '';
@@ -538,8 +612,8 @@ function rebuildMucLuc() {
   });
 
   if (labels.length > 0) {
-    mucLuc.getRange(3, 1, labels.length, 1).setNumberFormat('@').setValues(labels);
-    mucLuc.getRange(3, 2, formulas.length, 2).setFormulas(formulas);
+    mucLuc.getRange(leftAt + 2, 1, labels.length, 1).setNumberFormat('@').setValues(labels);
+    mucLuc.getRange(leftAt + 2, 2, formulas.length, 2).setFormulas(formulas);
   }
 }
 
@@ -549,19 +623,37 @@ function rebuildMucLuc() {
 
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
-  ui.createMenu('💎 Sổ Thu Chi AI v2')
-    .addItem('⚙️ Cấu hình AI & Bot', 'showConfigDialog')
-    .addItem('📧 Quét Mail thủ công', 'triggerScanMailUI')
-    .addItem('💳 Sync Meta Billing', 'triggerSyncMetaBillingUI')
+
+  // --- Submenu Quét (không sidebar) ---
+  const scanNoSidebar = ui.createMenu('📧 Quét (không cần sidebar)')
+    .addItem('📧 Quét Mail thủ công', 'triggerScanMailUI');
+  if (META_BILLING_ENABLED) {
+    scanNoSidebar
+      .addItem('💳 Quét Meta Billing (file tạm)', 'triggerSyncMetaBillingUI')
+      .addItem('💳 Sync Meta thiếu mail → Log', 'triggerWriteMetaBillingToLogUI')
+      .addItem('🔄 Meta Billing — sync lại toàn bộ', 'triggerSyncMetaBillingFullUI');
+  }
+
+  // --- Submenu Nâng cao (gom hết phần ít dùng) ---
+  const advMenu = ui.createMenu('🔧 Nâng cao')
     .addItem('📑 Tái tạo Mục Lục', 'rebuildMucLuc')
+    .addSeparator()
+    .addSubMenu(
+      ui.createMenu('👁 View tháng (không cần sidebar)')
+        .addItem('📒 Xem sổ giao dịch', 'menuViewLoadLog')
+        .addItem('📊 Xem báo cáo', 'menuViewLoadReport')
+        .addItem('✏️ Sửa sổ giao dịch', 'menuViewEditLog')
+        .addItem('✏️ Sửa báo cáo', 'menuViewEditReport')
+        .addItem('🙈 Ẩn lại mọi Log/Report tháng', 'menuHideAllMonthShards')
+        .addItem('🔧 Dựng lại View', 'setupMonthViewsManual')
+    )
+    .addSubMenu(scanNoSidebar)
     .addSeparator()
     .addSubMenu(
       ui.createMenu('📊 Làm mới báo cáo')
         .addItem('Tháng đang mở', 'menuRebuildReportActiveMonth')
         .addItem('Các tháng chờ cập nhật (dirty)', 'menuRebuildAllDirtyReports')
         .addItem('Tất cả tháng (gõ ALL)', 'menuRebuildAllMonthReports')
-        .addItem('Bật trigger dirty 15 phút', 'setReportDirtyTriggerManual')
-        .addItem('Bật trigger Meta Billing 6 giờ', 'setMetaBillingTriggerManual')
     )
     .addSubMenu(
       ui.createMenu('🔄 Làm mới format/data Log')
@@ -578,7 +670,16 @@ function onOpen() {
         .addItem('Không ghi đè (stub theme)', 'setupSheetFormulasAndTheme')
         .addItem('Ghi đè Bao Cao v2…', 'updateBaoCaoV2Manual')
         .addItem('Ghi đè Tóm tắt_v2…', 'updateTomTatV2Manual')
-    )
+    );
+
+  // --- Menu chính: BDK + Set Trigger (1 chỗ) + View + Config + Nâng cao ---
+  ui.createMenu('💎 Sổ Thu Chi AI v2')
+    .addItem('🎛️ Bảng điều khiển', 'showOpsSidebar')
+    .addItem('⏰ Set Trigger', 'showOpsTriggerSidebar')
+    .addItem('👁 Xem tháng', 'showViewSidebar')
+    .addItem('⚙️ Cấu hình AI & Bot', 'showConfigDialog')
+    .addSeparator()
+    .addSubMenu(advMenu)
     .addToUi();
 
   try {
@@ -587,6 +688,16 @@ function onOpen() {
     repairTamperedB1_(ss);
   } catch (e) {}
   try { ensureReportDirtyTrigger_(); } catch (e2) {}
+  // Ẩn shard tháng + nạp View_Log / View_Report tháng hiện tại
+  try { bootstrapMonthViewsOnOpen_(); } catch (eView) {
+    Logger.log('bootstrapMonthViewsOnOpen_: ' + (eView && eView.message ? eView.message : eView));
+  }
+  try { showViewSidebar(); } catch (eBar) {
+    Logger.log('showViewSidebar: ' + (eBar && eBar.message ? eBar.message : eBar));
+  }
+  try { enforceMetaBillingOff_(); } catch (eOff) {
+    Logger.log('enforceMetaBillingOff_: ' + (eOff && eOff.message ? eOff.message : eOff));
+  }
 }
 
 function showConfigDialog() {
@@ -642,7 +753,8 @@ function onEdit(e) {
 function onSelectionChange(e) {
   if (!e || !e.range) return;
   const sheet = e.range.getSheet();
-  if (sheet.getName() !== SHEET_NAMES.MUC_LUC) return;
+  const name = sheet.getName();
+  if (name !== SHEET_NAMES.MUC_LUC) return;
   const row = e.range.getRow();
   const col = e.range.getColumn();
   if (row < 3 || col > 3) return;
@@ -651,7 +763,7 @@ function onSelectionChange(e) {
   const m = formula.match(/#gid=(\d+)/);
   if (m && m[1]) {
     const target = getSheetByGid(m[1]);
-    if (target) target.activate();
+    if (target) activateSheetFromMucLuc_(target);
   }
 }
 
@@ -721,7 +833,7 @@ function updateTomTatV2Manual() {
 
 /** 1. Cập nhật công thức và theme cho Bao Cao v2 */
 function updateBaoCaoV2_(ss) {
-  const baoCao = getSheetByGid(GID.BAO_CAO) || ss.getSheetByName('Bao Cao v2');
+  const baoCao = getSheetByGid(GID.BAO_CAO);
   if (!baoCao) return;
 
   const numFmt = '#,##0 "₫";[Red]-#,##0 "₫";0 "₫"';
@@ -784,7 +896,7 @@ function updateBaoCaoV2_(ss) {
 
 /** 2. Cập nhật công thức và theme cho Tóm tắt_v2 (Đọc danh sách thực tế làm chuẩn) */
 function updateTomTatV2_(ss) {
-  const tomTat = getSheetByGid(GID.TOM_TAT) || ss.getSheetByName('Tóm tắt_v2');
+  const tomTat = getSheetByGid(GID.TOM_TAT);
   if (!tomTat) return;
 
   const numFmt = '#,##0 "₫";[Red]-#,##0 "₫";0 "₫"';

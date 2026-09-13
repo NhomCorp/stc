@@ -1,53 +1,43 @@
 # 📉 CONTEXT COMPACTED (Tóm tắt thu gọn Context)
 
-> **Phiên**: 08–09/09/2026 — UX View thay vì lộ nhiều tab Log/Report tháng  
-> **Mục tiêu**: Giữ logic/quyết định kỹ thuật; chưa implement code.
+> **Phiên**: 08–09/09/2026 — UX View thay vì lộ nhiều tab Log/Report tháng
+> **Cập nhật**: 09/09/2026 — phase 1 hoàn tất, điều khiển bằng sidebar.
 
 ## 🎯 Current Status & Goal
-- **Mục tiêu chính**: Giảm số tab người dùng thấy (mỗi tháng đẻ 2 sheet Log+Report → UX kém), vẫn giữ kiến trúc ghi shard phía sau.
-- **Trạng thái hiện tại**: Đã **chốt hướng kiến trúc** (thảo luận only). **Chưa viết code**.
+- **Mục tiêu chính**: Giảm tab UX; giữ shard `Log_MM_YYYY` / `Report_MM_YYYY` phía sau.
+- **Trạng thái**: Đã code xong `7_MonthView.gs` + `viewui.html`; chờ push lên Apps Script để kiểm tra.
 
 ## 🛠️ Key Decisions & Technical Context
 
-### Kiến trúc đã chốt (Hybrid)
-- **Giữ** `Log_MM_YYYY` + `Report_MM_YYYY` làm nơi lưu/rebuild (bot Telegram, Mail, dirty rebuild như hiện tại).
-- **Ẩn** toàn bộ shard tháng mặc định → thanh sheet không phình.
-- Thêm lớp **View chỉ đọc**: chọn tháng → bấm **Xem** mới load snapshot → tiết kiệm tài nguyên.
-- Nút **Sửa**: unhide + activate sheet gốc (`Log_…` hoặc `Report_…`), **không** sửa 2 chiều trên View.
-- Đổi dropdown tháng **không** auto-load; chỉ load khi bấm Xem.
-- Sau sửa trên sheet gốc: View chỉ cập nhật khi bấm Xem lại; dirty/rebuild Report giữ flow cũ (`notifyLogMonthsChanged_` / `rebuildReportMonth`).
+### Kiến trúc Hybrid (đã chốt + đã code)
+- Shard tháng vẫn là nơi ghi/rebuild; **ẩn mặc định**, `onOpen`/F5 ẩn lại.
+- `View_Log` + `View_Report`: hàng 1 = banner (merge A1:I1), nội dung snapshot từ hàng 2.
+- **Sidebar `viewui.html`** = nơi điều khiển: dropdown tháng + nút Xem Log / Xem Report / Sửa Log / Sửa Report / Ẩn sheet tháng.
+- `onOpen`: ẩn shard → nạp tháng hiện tại vào 2 View → mở sidebar.
+- Sửa = `showSheet()` + activate shard gốc; F5 ẩn lại.
+- Tháng đang chọn lưu ở `PROP` key `view_last_month` (menu fallback dùng lại).
 
-### Không làm (đã loại)
-- Bỏ shard / chỉ 1 Master + dropdown thay lưu trữ → rủi ro lock, quota, đụng mail/unique key.
-- Template trống + chọn tháng “tự ra dữ liệu” → không khả thi với flow ghi hiện tại.
-- Auto-load khi đổi tháng; sửa trực tiếp trên View (phase 1).
+### Đã loại bỏ (không hiệu quả)
+- Dropdown data-validation ở B1 → Sheets ép Date, lệch list, báo lỗi.
+- Ô text C1/D1 + `onSelectionChange` → bấm lại cùng ô không fire.
+- Checkbox + installable onEdit; nút ảnh `assignScript`.
 
-### Flow View (phase 1)
-```
-Chọn tháng → [Xem] nạp Log/Report vào View → [Sửa] mở sheet gốc ẩn
-```
+### File
+- `7_MonthView.gs` — hide shard, load View, API sidebar (`viewSidebarState/Load/Edit/HideShards`)
+- `viewui.html` — sidebar UI
+- `4_SheetStore.gs` — `onOpen` bootstrap + mở sidebar; hide sau `getOrCreateMonthSheets`; Mục Lục unhide khi click
+- `0_Config.gs` — `SHEET_NAMES.VIEW_LOG/VIEW_REPORT`
 
-### File / module liên quan (tham chiếu, chưa sửa phiên này)
-- `4_SheetStore.gs` — `getOrCreateMonthSheets`, `saveBatchToMonthShards`, Mục Lục
-- `5_ReportRebuild.gs` — dirty-set, `rebuildReportMonth`, `notifyLogMonthsChanged_`
-- `9_Tools.gs` — sync theme Template_Log / Template_Report → shard tháng
-- `0_Config.gs` — `GID.TEMPLATE_LOG`, `GID.TEMPLATE_REPORT`
-- Sheet Mới: `Template_Log`, `Template_Report`, `Log_MM_YYYY`, `Report_MM_YYYY`, Mục Lục
-- **Sheet Cũ**: không đụng (`Giao dịch_v2`, `Bao cao_v2`, `Tóm tắt_v2`, Alias, AI_Learning, Quet Mail)
-
-### Ràng buộc / lưu ý
-- Rule flow-discussion: phiên này chỉ bàn logic; code khi user yêu cầu implement.
-- Rule sheet-cũ: tuyệt đối không sửa sheet/flow Cũ.
-- Ẩn tab ≠ giảm dung lượng file; shard vẫn tồn tại phía sau.
-- Chưa chốt UI: **2 sheet View** (`View_Log` + `View_Report`) vs **1 sheet 2 vùng**; nút = **menu Apps Script** vs **nút vẽ trên sheet**.
+### Ràng buộc
+- Sheet Cũ không đụng.
+- Ẩn tab ≠ giảm dung lượng file.
+- View = snapshot chỉ đọc; không sync 2 chiều.
 
 ## 📝 Completed Work
-- [x] Phân tích ý tưởng “Excel: template + chọn tháng” vs shard hiện tại.
-- [x] Chốt hybrid: shard ẩn + View đọc + Xem mới load + Sửa → gốc.
-- [x] Làm rõ pain UX: N tháng → 2N tab → cần ẩn + View.
+- [x] Chốt hybrid + 2 View + mặc định tháng hiện tại + ẩn shard mỗi F5
+- [x] Thử 4 kiểu nút trên sheet → chốt sidebar
+- [x] Rewrite sạch `7_MonthView.gs`, thêm `viewui.html`, dọn hack ở `onEdit`/`onSelectionChange`
 
 ## ⏳ Next Steps & Open Questions
-- [ ] User chốt: 1 hay 2 sheet View; nút menu hay drawing button.
-- [ ] Implement phase 1 (khi được yêu cầu): hide sau `getOrCreateMonthSheets` + tool ẩn hàng loạt; View + dropdown + Xem + Sửa; bảo vệ range View chỉ đọc.
-- [ ] (Sau) Mục Lục link “Xem tháng”; badge dirty trên View; menu ẩn lại sheet sau khi sửa.
-- [ ] Không xóa shard; không đổi Sheet Cũ.
+- [ ] Push Apps Script (nhớ tạo file HTML tên `viewui`) → F5 kiểm tra sidebar + nạp tháng
+- [ ] (Sau) Bảo vệ range View chỉ đọc; badge dirty; Mục Lục link "Xem tháng"
