@@ -4,243 +4,322 @@
   <base target="_top">
   <meta charset="UTF-8">
   <style>
+    :root {
+      --ink: #0f172a;
+      --muted: #64748b;
+      --faint: #94a3b8;
+      --line: #e2e8f0;
+      --soft: #f8fafc;
+      --blue: #2563eb;
+      --ok: #047857;
+      --ok-bg: #ecfdf5;
+      --err: #b91c1c;
+      --err-bg: #fef2f2;
+      --wait: #1d4ed8;
+      --wait-bg: #eff6ff;
+      --warn: #9a3412;
+      --r: 10px;
+    }
     * { box-sizing: border-box; }
+    html, body { height: 100%; }
     body {
-      font-family: "Segoe UI", Arial, sans-serif;
-      margin: 0; padding: 10px;
-      color: #0f172a; background: #eef2f7;
+      font-family: "Segoe UI", system-ui, Arial, sans-serif;
+      margin: 0; padding: 8px;
+      color: var(--ink); background: #e8edf4;
     }
     #app {
+      position: relative;
+      display: flex; flex-direction: column;
+      height: 100%; min-height: 0;
       background: #fff;
-      border-radius: 16px;
-      padding: 14px 14px 16px;
+      border-radius: 12px;
       box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+      overflow: hidden;
     }
-    #app.busy { opacity: .55; pointer-events: none; }
+    #app.busy { pointer-events: none; }
+    #app.busy::before {
+      content: ""; position: absolute; left: 0; right: 0; top: 0; z-index: 3;
+      height: 2px; background: linear-gradient(90deg, var(--blue), #93c5fd);
+    }
 
-    .top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-    .top h1 { margin: 0; font-size: 18px; letter-spacing: -0.02em; }
-    .top p { margin: 2px 0 0; font-size: 12px; color: #64748b; }
+    .chrome { flex-shrink: 0; padding: 10px 10px 0; border-bottom: 1px solid #f1f5f9; }
+    .scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 10px; }
+    .scroll > section { display: none; }
+    .scroll > section.on { display: block; }
+
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .top > div:first-child { min-width: 0; flex: 1; }
+    .top h1 { margin: 0; font-size: 15px; letter-spacing: -0.02em; line-height: 1.2; min-width: 0; }
+    .top p { margin: 1px 0 0; font-size: 11px; color: var(--muted); }
+    .top-acts { display: flex; gap: 4px; flex-shrink: 0; }
     .btn-view {
-      flex-shrink: 0; display: inline-flex; align-items: center; gap: 5px;
-      border: 1px solid #e2e8f0; background: #fff; color: #334155;
-      border-radius: 10px; padding: 6px 9px; font-size: 11px; font-weight: 600; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 4px;
+      border: 1px solid var(--line); background: #fff; color: #334155;
+      border-radius: 8px; padding: 5px 7px; font-size: 11px; font-weight: 600; cursor: pointer;
     }
+    .btn-view:hover { background: var(--soft); }
 
-    .tabs {
-      display: flex; gap: 2px; margin: 12px 0 14px;
-      border-bottom: 1px solid #eef2f6;
-    }
+    .tabs { display: flex; gap: 2px; margin-top: 8px; }
     .tab {
       flex: 1; border: none; background: none; cursor: pointer;
-      padding: 8px 2px 10px; font-size: 12px; font-weight: 600; color: #94a3b8;
+      padding: 7px 2px 8px; font-size: 11px; font-weight: 650; color: var(--faint);
     }
-    .tab.on { color: #2563eb; box-shadow: inset 0 -2px 0 #2563eb; }
+    .tab.on { color: var(--blue); box-shadow: inset 0 -2px 0 var(--blue); }
 
-    .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 10px; }
-    .sec-head h2 { margin: 0; font-size: 16px; }
-    .sec-head .sub { margin: 2px 0 0; font-size: 12px; color: #64748b; font-weight: 400; }
-    .count { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #64748b; white-space: nowrap; }
-    .dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; }
+    .sec-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
+    .sec-head h2 { margin: 0; font-size: 13px; }
+    .sec-head .sub { margin: 1px 0 0; font-size: 11px; color: var(--muted); font-weight: 400; }
+    .count { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--muted); white-space: nowrap; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: #22c55e; }
 
     .box {
-      background: #f8fafc; border: 1px solid #eef2f6;
-      border-radius: 14px; padding: 12px; margin-bottom: 12px;
+      background: var(--soft); border: 1px solid #eef2f6;
+      border-radius: var(--r); padding: 8px; margin-bottom: 8px;
     }
-    .box h3 { margin: 0 0 10px; font-size: 13px; }
-    .hint { font-size: 11px; color: #64748b; line-height: 1.45; margin: 8px 0 0; }
-    .warn { font-size: 11px; color: #b45309; margin: 8px 0 0; display: none; }
+    .box h3 { margin: 0 0 6px; font-size: 12px; }
+    .hint { font-size: 11px; color: var(--muted); line-height: 1.4; margin: 6px 0 0; }
+    .warn { font-size: 11px; color: #b45309; margin: 6px 0 0; display: none; }
 
-    label { display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 6px; }
+    label { display: block; font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
     input[type="text"], input[type="password"], input[type="number"], input[type="date"], select, textarea {
-      width: 100%; padding: 9px 10px; font-size: 13px;
-      border: 1px solid #e2e8f0; border-radius: 10px;
-      background: #fff; margin-bottom: 8px; color: #0f172a;
+      width: 100%; padding: 7px 8px; font-size: 12px;
+      border: 1px solid var(--line); border-radius: 8px;
+      background: #fff; margin-bottom: 6px; color: var(--ink);
     }
-    input[type="file"] {
-      width: 100%; font-size: 12px; margin-bottom: 8px; color: #334155;
-    }
-    textarea { min-height: 72px; font-family: Consolas, "Courier New", monospace; font-size: 11px; resize: vertical; }
-    .row-2 { display: flex; gap: 8px; align-items: center; }
-    .row-2 > label { flex: 1; }
+    input[type="file"] { width: 100%; font-size: 11px; margin-bottom: 6px; color: #334155; }
+    textarea { min-height: 56px; font-family: Consolas, "Courier New", monospace; font-size: 11px; resize: vertical; }
+    .row-2 { display: flex; gap: 6px; align-items: center; }
+    .row-2 > label { flex: 1; margin-bottom: 0; }
     .row-2 input, .row-2 select { margin-bottom: 0; }
     .row-2 select { flex: 1; }
-    .colon { font-weight: 700; color: #94a3b8; flex: 0; }
+    .colon { font-weight: 700; color: var(--faint); flex: 0; }
 
-    .seg { display: flex; background: #eef2f7; border-radius: 10px; padding: 3px; margin-bottom: 10px; }
+    .seg { display: flex; background: #eef2f7; border-radius: 8px; padding: 2px; margin-bottom: 8px; }
     .seg button {
       flex: 1; border: none; background: transparent; cursor: pointer;
-      padding: 8px 6px; border-radius: 8px; font-size: 12px; font-weight: 700; color: #64748b;
+      padding: 6px 4px; border-radius: 6px; font-size: 11px; font-weight: 700; color: var(--muted);
     }
-    .seg button.on { background: #2563eb; color: #fff; }
+    .seg button.on { background: var(--blue); color: #fff; }
 
     .btn {
-      width: 100%; border: none; border-radius: 12px; cursor: pointer;
-      padding: 12px; font-size: 14px; font-weight: 700;
+      width: 100%; border: none; border-radius: 8px; cursor: pointer;
+      padding: 8px 10px; font-size: 13px; font-weight: 700;
     }
-    .btn-primary { background: #2563eb; color: #fff; }
-    .btn-outline { background: #fff; color: #0f172a; border: 1px solid #e2e8f0; }
+    .btn-primary { background: var(--blue); color: #fff; }
+    .btn-outline { background: #fff; color: var(--ink); border: 1px solid var(--line); }
     .btn-ghost { background: #f1f5f9; color: #334155; }
-    .btn-save { background: #fff; color: #334155; border: 1px solid #e2e8f0; margin-top: 4px; }
-    .btn-warn { background: #fff7ed; color: #9a3412; }
+    .btn-save { background: #fff; color: #334155; border: 1px solid var(--line); }
     .btn:hover { opacity: 0.92; }
+    .btn-row { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+    .btn-row .btn, .btn-row .btn-compact { width: 100%; flex: none; }
+    .btn-compact { padding: 8px 10px; font-size: 12px; }
 
-    .acct-head { display: flex; align-items: center; justify-content: space-between; margin: 4px 0 8px; }
-    .acct-head h3 { margin: 0; font-size: 13px; }
-    .btn-add {
-      border: none; background: none; color: #2563eb; font-size: 12px; font-weight: 700; cursor: pointer;
-    }
+    .acct-head { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 6px; }
+    .acct-head h3 { margin: 0; font-size: 12px; }
+    .btn-add { border: none; background: none; color: var(--blue); font-size: 12px; font-weight: 700; cursor: pointer; }
 
     .acct {
       position: relative;
-      border: 1px solid #eef2f6; border-radius: 14px;
-      padding: 10px; margin-bottom: 8px; background: #fff;
+      border: 1px solid #eef2f6; border-radius: var(--r);
+      padding: 7px 8px; margin-bottom: 6px; background: #fff;
     }
-    .acct-top { display: flex; align-items: flex-start; gap: 8px; }
+    .acct-top { display: flex; align-items: flex-start; gap: 7px; }
     .ico {
-      width: 36px; height: 36px; border-radius: 10px; flex-shrink: 0;
+      width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      color: #fff; font-size: 12px; font-weight: 800; margin-top: 2px;
+      color: #fff; font-size: 11px; font-weight: 800; margin-top: 1px;
     }
     .ico.gm { background: linear-gradient(135deg, #ea4335 0%, #fbbc05 42%, #34a853 68%, #4285f4 100%); }
     .ico.hm { background: #0078d4; }
     .acct-body { flex: 1; min-width: 0; }
-    .acct-r1, .acct-r2 { display: flex; align-items: center; gap: 6px; }
-    .acct-r2 { margin-top: 4px; }
+    .acct-r1, .acct-r2 { display: flex; align-items: center; gap: 5px; }
+    .acct-r2 { margin-top: 3px; }
     .acct-label {
       flex: 1; min-width: 0; margin: 0; padding: 0; border: none; background: transparent;
-      font-size: 13px; font-weight: 700; color: #0f172a;
+      font-size: 12px; font-weight: 700; color: var(--ink);
     }
-    .acct-label:focus { outline: none; box-shadow: inset 0 -1px 0 #2563eb; }
-    .acct-email { flex: 1; min-width: 0; font-size: 11px; color: #94a3b8; word-break: break-all; line-height: 1.3; }
+    .acct-label:focus { outline: none; box-shadow: inset 0 -1px 0 var(--blue); }
+    .acct-email { flex: 1; min-width: 0; font-size: 10px; color: var(--faint); word-break: break-all; line-height: 1.3; }
     .badge {
-      display: inline-block; font-size: 10px; font-weight: 700;
-      padding: 2px 7px; border-radius: 999px;
+      display: inline-block; font-size: 9px; font-weight: 700;
+      padding: 1px 6px; border-radius: 999px;
     }
     .badge.gm { background: #ffe4e6; color: #e11d48; }
-    .badge.hm { background: #dbeafe; color: #2563eb; }
+    .badge.hm { background: #dbeafe; color: var(--blue); }
 
-    .sw { position: relative; width: 40px; height: 22px; display: inline-block; }
+    .sw { position: relative; width: 36px; height: 20px; display: inline-block; flex-shrink: 0; }
     .sw input { opacity: 0; width: 0; height: 0; position: absolute; }
     .sw i {
       position: absolute; inset: 0; background: #d1d5db; border-radius: 999px;
       transition: background .15s;
     }
     .sw i:before {
-      content: ""; position: absolute; width: 18px; height: 18px; left: 2px; top: 2px;
+      content: ""; position: absolute; width: 16px; height: 16px; left: 2px; top: 2px;
       background: #fff; border-radius: 50%; box-shadow: 0 1px 2px rgba(0,0,0,.2);
       transition: transform .15s;
     }
     .sw input:checked + i { background: #22c55e; }
-    .sw input:checked + i:before { transform: translateX(18px); }
+    .sw input:checked + i:before { transform: translateX(16px); }
 
-    .acct-acts { display: flex; align-items: center; gap: 4px; }
+    .acct-acts { display: flex; align-items: center; gap: 3px; }
     .btn-mini {
-      display: inline-flex; align-items: center; gap: 4px;
-      border: 1px solid #e2e8f0; background: #fff; color: #334155;
-      border-radius: 8px; padding: 4px 8px; font-size: 11px; font-weight: 700; cursor: pointer;
+      display: inline-flex; align-items: center; gap: 3px;
+      border: 1px solid var(--line); background: #fff; color: #334155;
+      border-radius: 6px; padding: 3px 6px; font-size: 10px; font-weight: 700; cursor: pointer;
     }
     .btn-more {
-      width: 26px; height: 26px; border: none; background: none; color: #94a3b8;
-      border-radius: 8px; font-size: 16px; line-height: 1; cursor: pointer;
+      width: 22px; height: 22px; border: none; background: none; color: var(--faint);
+      border-radius: 6px; font-size: 15px; line-height: 1; cursor: pointer;
     }
     .menu {
-      display: none; position: absolute; right: 8px; top: 44px; z-index: 6;
-      min-width: 148px; background: #fff; border: 1px solid #e2e8f0;
-      border-radius: 10px; box-shadow: 0 10px 24px rgba(15,23,42,.12); overflow: hidden;
+      display: none; position: absolute; right: 6px; top: 36px; z-index: 6;
+      min-width: 132px; background: #fff; border: 1px solid var(--line);
+      border-radius: 8px; box-shadow: 0 8px 20px rgba(15,23,42,.12); overflow: hidden;
     }
     .acct.open .menu { display: block; }
     .menu button {
       display: block; width: 100%; text-align: left; border: none; background: #fff;
-      padding: 8px 12px; font-size: 12px; cursor: pointer; color: #0f172a;
+      padding: 7px 10px; font-size: 12px; cursor: pointer; color: var(--ink);
     }
-    .menu button:hover { background: #f8fafc; }
+    .menu button:hover { background: var(--soft); }
     .menu button.danger { color: #b91c1c; }
-    .acct-cred-wrap { display: none; margin-top: 8px; }
+    .acct-cred-wrap { display: none; margin-top: 6px; }
     .acct-cred-wrap.on { display: block; }
 
     .row-link {
-      width: 100%; display: flex; align-items: center; gap: 10px;
-      border: 1px solid #eef2f6; background: #fff; border-radius: 14px;
-      padding: 12px; margin-bottom: 8px; cursor: pointer; text-align: left;
+      width: 100%; display: flex; align-items: center; gap: 8px;
+      border: 1px solid #eef2f6; background: #fff; border-radius: var(--r);
+      padding: 8px; margin-bottom: 6px; cursor: pointer; text-align: left;
     }
     .row-link.open { border-color: #dbeafe; background: #f8fbff; }
     .row-ico {
-      width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+      width: 26px; height: 26px; border-radius: 7px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
-      background: #f1f5f9; color: #475569; font-size: 14px;
+      background: #f1f5f9; color: #475569; font-size: 12px;
     }
     .row-txt { flex: 1; min-width: 0; }
-    .row-txt b { display: block; font-size: 13px; }
-    .row-txt small { display: block; font-size: 11px; color: #94a3b8; margin-top: 1px; }
-    .chev { color: #94a3b8; font-size: 16px; transition: transform .15s; }
-    .row-link.open .chev { transform: rotate(90deg); }
-    .fold { display: none; padding: 0 2px 10px; }
+    .row-txt b { display: block; font-size: 12px; }
+    .row-txt small { display: block; font-size: 10px; color: var(--faint); margin-top: 1px; }
+    .chev { color: var(--faint); font-size: 14px; }
+    .fold { display: none; padding: 0 2px 8px; }
     .fold.on { display: block; }
 
-    .ready {
-      display: flex; align-items: center; gap: 8px;
-      background: #ecfdf5; color: #047857; border-radius: 12px;
-      padding: 10px 12px; font-size: 13px; font-weight: 600; margin-top: 4px;
-    }
-    .ready-ico {
-      width: 18px; height: 18px; border-radius: 50%; background: #22c55e; color: #fff;
-      display: flex; align-items: center; justify-content: center; font-size: 11px;
-    }
-
     .note {
-      display: flex; gap: 8px; align-items: flex-start;
-      font-size: 11px; color: #64748b; line-height: 1.45; margin: 8px 0 12px;
+      display: flex; gap: 6px; align-items: flex-start;
+      font-size: 11px; color: var(--muted); line-height: 1.4; margin: 6px 0 8px;
     }
     .note-i {
-      width: 16px; height: 16px; border-radius: 50%; border: 1px solid #94a3b8;
-      color: #64748b; font-size: 10px; font-weight: 700;
+      width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--faint);
+      color: var(--muted); font-size: 9px; font-weight: 700;
       display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px;
     }
 
     #status {
-      font-size: 12px; line-height: 1.45; padding: 10px 12px; border-radius: 12px;
-      display: none; margin-top: 12px; white-space: pre-wrap;
+      flex-shrink: 0; font-size: 11px; line-height: 1.4; padding: 8px 10px;
+      display: none; white-space: pre-wrap; border-top: 1px solid #f1f5f9;
+      max-height: 28vh; overflow-y: auto;
     }
-    #status.ok { display: block; background: #ecfdf5; color: #047857; }
-    #status.err { display: block; background: #fef2f2; color: #b91c1c; }
-    #status.wait { display: block; background: #eff6ff; color: #1d4ed8; }
+    #status.ok { display: block; background: var(--ok-bg); color: var(--ok); }
+    #status.err { display: block; background: var(--err-bg); color: var(--err); }
+    #status.wait { display: block; background: var(--wait-bg); color: var(--wait); }
+
+    .flow {
+      display: flex; align-items: center; gap: 4px;
+      margin: 0 0 8px; padding: 6px 8px; border-radius: 8px;
+      background: var(--soft); border: 1px solid #eef2f6;
+      font-size: 10px; color: var(--muted); font-weight: 600;
+    }
+    .flow b { color: var(--ink); }
+    .flow i { color: var(--faint); font-style: normal; font-weight: 700; }
+
+    .folder-card {
+      background: #fff; border: 1px solid #eef2f6; border-radius: 8px;
+      padding: 7px 8px; margin-bottom: 6px;
+    }
+    .folder-card .fc-top {
+      display: flex; align-items: center; justify-content: space-between; gap: 6px;
+      cursor: pointer; user-select: none;
+    }
+    .folder-card .fc-label { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1; }
+    .folder-card .fc-ico {
+      width: 22px; height: 22px; border-radius: 6px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 8px; font-weight: 800; color: #fff;
+    }
+    .folder-card .fc-ico.read { background: var(--blue); }
+    .folder-card .fc-ico.arch { background: #0d9488; }
+    .folder-card .fc-title { font-size: 12px; font-weight: 700; color: var(--ink); }
+    .folder-card .fc-sub { font-size: 10px; color: var(--faint); }
+    .folder-card .fc-chev {
+      flex-shrink: 0; width: 10px; height: 10px; position: relative;
+    }
+    .folder-card .fc-chev::before {
+      content: ""; position: absolute; left: 2px; top: 1px;
+      width: 5px; height: 5px;
+      border-right: 1.5px solid var(--faint); border-bottom: 1.5px solid var(--faint);
+      transform: rotate(45deg);
+    }
+    .folder-card.open .fc-chev::before { top: 3px; transform: rotate(-135deg); }
+    .folder-card .fc-link { display: none; margin-top: 6px; }
+    .folder-card.open .fc-link { display: block; }
+    .folder-card .fc-link input { margin-bottom: 0; }
+    .folder-card .chip { max-width: 36%; flex-shrink: 1; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 3px;
+      font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
+      max-width: 48%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .chip.ok { background: var(--ok-bg); color: var(--ok); }
+    .chip.off { background: #f1f5f9; color: var(--muted); }
+    .chip.warn { background: #fff7ed; color: var(--warn); }
+    .stat-row { display: flex; gap: 6px; margin: 0 0 8px; }
+    .stat {
+      flex: 1; background: var(--soft); border: 1px solid #eef2f6; border-radius: 8px;
+      padding: 6px 8px; text-align: center;
+    }
+    .stat b { display: block; font-size: 15px; letter-spacing: -0.02em; color: var(--ink); }
+    .stat span { display: block; font-size: 10px; color: var(--muted); margin-top: 1px; font-weight: 600; }
+
+    .mode-chip {
+      display: inline-block; font-size: 10px; color: var(--muted);
+      background: #fff; border: 1px solid var(--line);
+      border-radius: 999px; padding: 2px 7px; margin-left: 4px; font-weight: 600;
+    }
+    .mode-chip:empty { display: none; }
+
+    button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+    .fc-top:focus-visible {
+      outline: 2px solid var(--blue); outline-offset: 1px;
+    }
   </style>
 </head>
 <body>
   <script>
-    // 'ops' = Quét Mail/Meta; 'trigger' = chỉ Set Trigger (menu riêng, 1 chỗ)
-    // In thô JSON (force-print) để tránh escape HTML làm hỏng chuỗi mode.
-    var OPS_MODE = <?!= JSON.stringify(opsMode || 'ops') ?>;
+    var OPS_MODE = "<?!= opsMode || 'ops' ?>";
   </script>
   <div id="app">
-    <div class="top">
-      <div>
-        <h1 id="ops-title">Quét Mail</h1>
-        <p id="ops-sub">Bảng điều khiển</p>
+    <div class="chrome">
+      <div class="top">
+        <div>
+          <h1 id="ops-title">Quét Mail</h1>
+          <p id="ops-sub">Bảng điều khiển</p>
+        </div>
+        <div class="top-acts">
+          <button type="button" class="btn-view" id="btn-trigger" onclick="openTrigger()" style="display:none;">Lịch</button>
+          <button type="button" class="btn-view" id="btn-view" onclick="run('view')">View</button>
+        </div>
       </div>
-      <button type="button" class="btn-view" id="btn-trigger" onclick="openTrigger()" style="display:none;">
-        ⏰ Trigger
-      </button>
-      <button type="button" class="btn-view" id="btn-view" onclick="run('view')">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
-        View tháng
-      </button>
+      <nav class="tabs" id="ops-tabs">
+        <button type="button" class="tab on" data-tab="mail" onclick="showTab('mail')">Mail</button>
+        <button type="button" class="tab" data-tab="meta" onclick="showTab('meta')">CSV máy</button>
+        <button type="button" class="tab" data-tab="drive" onclick="showTab('drive')">Drive</button>
+      </nav>
     </div>
 
-    <nav class="tabs" id="ops-tabs">
-      <button type="button" class="tab on" data-tab="mail" onclick="showTab('mail')">Quét Mail</button>
-      <button type="button" class="tab" data-tab="meta" onclick="showTab('meta')">Invoice CSV</button>
-    </nav>
-
+    <div class="scroll">
     <section id="tab-mail">
-      <div class="sec-head">
-        <h2>Quét Mail</h2>
-        <div class="count"><span class="dot"></span><span id="acct-count">0 / 0 tài khoản đang bật</span></div>
-      </div>
-
       <div class="box">
-        <h3>Thời gian quét</h3>
+        <h3>Thời gian quét <span class="mode-chip" id="mail-mode"></span></h3>
         <div class="seg">
           <button type="button" id="mode-recent" class="on" onclick="setMailMode('recent')">Gần đây</button>
           <button type="button" id="mode-range" onclick="setMailMode('range')">Khoảng ngày</button>
@@ -260,17 +339,17 @@
           </div>
         </div>
         <p id="mail-warn" class="warn">Khoảng quét lớn — chậm, dễ vượt quota.</p>
-        <p class="hint" id="mail-mode"></p>
-        <p class="hint">Quét mail chỉ ghi Log. Báo cáo nấu sau (menu / lịch dirty). Invoice CSV ở tab Invoice CSV.</p>
-        <div style="display:flex; gap:8px; margin-top:8px;">
-          <button type="button" class="btn btn-primary" style="flex:1;" onclick="run('scanMail')">Quét tài khoản đang bật</button>
-          <button type="button" class="btn btn-outline" style="flex:0 0 auto; width:auto; padding:10px 14px;" onclick="run('saveMail')">💾 Lưu thời gian</button>
+        <div class="btn-row">
+          <button type="button" class="btn btn-primary" onclick="run('scanMail')">Quét đang bật</button>
+          <button type="button" class="btn btn-outline btn-compact" onclick="run('saveMail')">Lưu</button>
         </div>
       </div>
 
       <div class="acct-head">
         <h3>Tài khoản</h3>
-        <button type="button" class="btn-add" onclick="toggleAdd()">+ Thêm</button>
+        <div class="count"><span class="dot"></span><span id="acct-count">0 / 0 đang bật</span>
+          <button type="button" class="btn-add" onclick="toggleAdd()">+ Thêm</button>
+        </div>
       </div>
       <div id="acct-list"></div>
 
@@ -280,87 +359,115 @@
         <input type="text" id="new-hotmail-label" placeholder="VD: Ads HN, Bank MB…">
         <label for="new-hotmail-cred">Cred</label>
         <textarea id="new-hotmail-cred" placeholder="email|password|refresh_token|client_id" autocomplete="off" spellcheck="false"></textarea>
-        <p class="hint" style="margin:0 0 8px;">Format 4 khúc hoặc 3 khúc (không password). Graph API, password không dùng.</p>
-        <button type="button" class="btn btn-ghost" onclick="run('checkHotmailNew')">Check cred này</button>
-        <button type="button" class="btn btn-primary" style="margin-top:8px;" onclick="run('saveMail')">Thêm vào bảng</button>
-      </div>
-
-      <button type="button" class="btn btn-save" onclick="run('saveMail')">Lưu thay đổi</button>
-    </section>
-
-    <section id="tab-meta" style="display:none;">
-      <div class="sec-head">
-        <div>
-          <h2>Invoice CSV</h2>
-          <div class="sub">Ghi Log từ file Invoice Summary</div>
+        <p class="hint" style="margin:0 0 6px;">4 khúc hoặc 3 khúc (không password). Graph API, password không dùng.</p>
+        <div class="btn-row">
+          <button type="button" class="btn btn-ghost" onclick="run('checkHotmailNew')">Check cred</button>
+          <button type="button" class="btn btn-primary" onclick="run('saveMail')">Thêm vào bảng</button>
         </div>
       </div>
 
-      <div class="meta-api-only" id="meta-api-cfg" style="display:none;">
-      <button type="button" class="row-link" data-fold="meta-cfg" onclick="toggleFold('meta-cfg')">
-        <span class="row-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.49.49 0 00.12-.61l-1.92-3.32a.49.49 0 00-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.92l-.36-2.54a.49.49 0 00-.48-.41h-3.84a.49.49 0 00-.48.41l-.36 2.54c-.59.22-1.13.54-1.62.92l-2.39-.96a.49.49 0 00-.59.22L2.74 8.87a.49.49 0 00.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58a.49.49 0 00-.12.61l1.92 3.32c.12.22.37.3.59.22l2.39-.96c.5.38 1.03.7 1.62.92l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .43-.17.48-.41l.36-2.54c.59-.22 1.13-.54 1.62-.92l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 00-.12-.61l-2.03-1.58zM12 15.6A3.6 3.6 0 1112 8.4a3.6 3.6 0 010 7.2z"/></svg></span>
-        <span class="row-txt">
-          <b>Cấu hình kết nối</b>
-          <small>Access Token · Business ID</small>
-        </span>
-        <span class="chev">›</span>
-      </button>
-      <div id="meta-cfg" class="fold">
-        <label for="meta-token">Access Token</label>
-        <input type="password" id="meta-token" placeholder="System User token…" autocomplete="off">
-        <label for="meta-bid">Business ID</label>
-        <input type="text" id="meta-bid" placeholder="ID Business Manager">
-        <button type="button" class="btn btn-ghost" onclick="run('saveMeta')">Lưu Meta</button>
-        <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="run('checkMeta')">Check live</button>
-      </div>
-      </div>
+      <button type="button" class="btn btn-save" onclick="run('saveMail')">Lưu thay đổi tài khoản</button>
+    </section>
 
+    <section id="tab-meta">
       <div class="box">
         <h3>Upload Invoice CSV</h3>
-        <p class="hint" style="margin:0 0 10px;">Xuất Invoice Summary từ Facebook. ID tài khoản phải trùng keyword cột A Quet Mail. Upload → dò ID trên Log → ghi thẳng dòng chưa có (ví / ĐT / DM từ Quet Mail, ghi chú = PTTT). ID đã có thì bỏ qua, không ghi đè.</p>
-        <input type="file" id="meta-csv" accept=".csv,text/csv,text/plain">
-        <p class="hint" id="meta-csv-name" style="margin:0 0 8px;"></p>
-        <button type="button" class="btn btn-primary" onclick="run('uploadCsv')">Upload &amp; ghi Log</button>
+        <p class="hint" style="margin:0 0 6px;">Nhiều file. ID trùng keyword cột A Quet Mail. Chỉ Visa / Mastercard → Sync → Log (lô 10/tháng).</p>
+        <input type="file" id="meta-csv" accept=".csv,text/csv,text/plain" multiple>
+        <p class="hint" id="meta-csv-name" style="margin:0 0 6px;"></p>
+        <button type="button" class="btn btn-primary" onclick="run('uploadCsv')">Upload → Sync → Log</button>
       </div>
-
-      <div class="meta-api-only" id="meta-api-sync" style="display:none;">
       <div class="box">
-        <h3>Đồng bộ API</h3>
-        <p class="hint" style="margin:0 0 10px;">Lấy giao dịch từ Meta về file tạm</p>
-        <button type="button" class="btn btn-outline" onclick="run('syncMeta')">Quét Meta</button>
-        <button type="button" class="btn btn-outline" style="margin-top:8px;" onclick="run('writeLog')">Ghi giao dịch thiếu mail vào Log</button>
-      </div>
-
-      <button type="button" class="row-link" data-fold="meta-adv" onclick="toggleFold('meta-adv')">
-        <span class="row-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></svg></span>
-        <span class="row-txt">
-          <b>Đồng bộ nâng cao</b>
-          <small>Quét lại toàn bộ theo số ngày đã chọn</small>
-        </span>
-        <span class="chev">›</span>
-      </button>
-      <div id="meta-adv" class="fold">
-        <label for="meta-lb">Lookback (ngày) — chỉ khi sync toàn bộ</label>
-        <input type="number" id="meta-lb" min="1" step="1">
-        <p class="hint" style="margin:0 0 8px;">Job hằng ngày chỉ lấy charge mới (~48 giờ), không quét đủ lookback.</p>
-        <button type="button" class="btn btn-ghost" onclick="run('syncFull')">Sync lại toàn bộ</button>
-      </div>
-
-      <div class="ready" id="meta-ready"><span class="ready-ico">✓</span> Sẵn sàng thao tác</div>
+        <div class="sec-head" style="margin:0 0 6px;">
+          <h3 style="margin:0;font-size:12px;">Đẩy Log còn thiếu</h3>
+          <span class="chip off" id="ads-pending">—</span>
+        </div>
+        <p class="hint" style="margin:0 0 6px;">Dòng Sync STATUS trống (ngắt giữa chừng).</p>
+        <button type="button" class="btn btn-outline" onclick="run('flushAds')">Đẩy Sync → Log</button>
       </div>
     </section>
 
-    <section id="tab-sched" style="display:none;">
-      <div class="sec-head">
-        <div>
-          <h2>Lịch tự động</h2>
-          <div class="sub" id="trig-tz">Múi giờ: GMT+7</div>
+    <section id="tab-drive">
+      <div class="flow" aria-hidden="true">
+        <b>Đọc</b> CSV mới <i>→</i> <b>Ghi Log</b> <i>→</i> <b>Lưu trữ</b>
+      </div>
+
+      <div class="stat-row">
+        <div class="stat">
+          <b id="drive-pending">—</b>
+          <span>CSV chờ</span>
+        </div>
+        <div class="stat">
+          <b id="drive-ready-label" style="font-size:13px;">—</b>
+          <span>Trạng thái</span>
         </div>
       </div>
 
       <div class="box">
-        <div class="sec-head" style="margin:0 0 10px;">
-          <h3 style="margin:0;font-size:13px;">&#x1F4E7; Quét Mail tự động</h3>
+        <h3>Folder Drive</h3>
+        <p class="hint" style="margin:0 0 6px;">Cùng TK Google với Sheet. Dán link hoặc ID — hai folder phải khác nhau.</p>
+
+        <div class="folder-card">
+          <div class="fc-top" role="button" tabindex="0" aria-expanded="false"
+               onclick="toggleFolderCard(this)"
+               onkeydown="folderCardKey(event, this)">
+            <div class="fc-label">
+              <span class="fc-ico read">IN</span>
+              <div>
+                <div class="fc-title">Folder đọc</div>
+                <div class="fc-sub">Thả Invoice Summary.csv</div>
+              </div>
+            </div>
+            <span class="chip off" id="drive-inbox-chip">Chưa gắn</span>
+            <span class="fc-chev" aria-hidden="true"></span>
+          </div>
+          <div class="fc-link">
+            <input type="text" id="drive-inbox" placeholder="Link / ID folder đọc" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+
+        <div class="folder-card">
+          <div class="fc-top" role="button" tabindex="0" aria-expanded="false"
+               onclick="toggleFolderCard(this)"
+               onkeydown="folderCardKey(event, this)">
+            <div class="fc-label">
+              <span class="fc-ico arch">OUT</span>
+              <div>
+                <div class="fc-title">Folder lưu</div>
+                <div class="fc-sub">Archive sau khi import</div>
+              </div>
+            </div>
+            <span class="chip off" id="drive-archive-chip">Chưa gắn</span>
+            <span class="fc-chev" aria-hidden="true"></span>
+          </div>
+          <div class="fc-link">
+            <input type="text" id="drive-archive" placeholder="Link / ID folder lưu" autocomplete="off" spellcheck="false">
+          </div>
+        </div>
+
+        <p class="hint" style="margin:0 0 6px;">Import: hết .csv folder đọc → Log (trùng ID thì bỏ) → chuyển folder lưu. File lỗi giữ nguyên.</p>
+        <div class="btn-row">
+          <button type="button" class="btn btn-outline" onclick="run('saveDrive')">Lưu folder</button>
+          <button type="button" class="btn btn-primary" onclick="run('importDrive')">Import</button>
+        </div>
+      </div>
+
+      <div class="box">
+        <div class="sec-head" style="margin:0 0 6px;">
+          <h3 style="margin:0;font-size:12px;">Lịch 23:00 mỗi ngày</h3>
+          <label class="sw"><input type="checkbox" id="drive-trig-panel"><i></i></label>
+        </div>
+        <p class="hint" style="margin:0 0 6px;">Múi giờ script. Cần 2 folder trước khi bật.</p>
+        <button type="button" class="btn btn-outline" onclick="run('saveDriveTrig')">Lưu lịch Drive</button>
+      </div>
+    </section>
+
+    <section id="tab-sched">
+      <p class="hint" id="trig-tz" style="margin:0 0 8px;">Múi giờ: GMT+7</p>
+
+      <div class="box">
+        <div class="sec-head" style="margin:0 0 8px;">
+          <h3 style="margin:0;font-size:12px;">Quét Mail</h3>
           <label class="sw"><input type="checkbox" id="mail-trig-on"><i></i></label>
         </div>
         <label>Chế độ</label>
@@ -368,11 +475,11 @@
           <option value="hours">Mỗi N giờ</option>
           <option value="day">Mỗi ngày (giờ:phút)</option>
         </select>
-        <div id="mail-interval-row" style="margin-top:8px;">
+        <div id="mail-interval-row">
           <label>Tần suất</label>
           <select id="mail-trig-interval"></select>
         </div>
-        <div id="mail-daily-row" style="display:none; margin-top:8px;">
+        <div id="mail-daily-row" style="display:none;">
           <label>Thời gian</label>
           <div class="row-2">
             <select id="mail-trig-h"></select>
@@ -380,43 +487,35 @@
             <select id="mail-trig-m"></select>
           </div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px;">
-          <span style="font-size:12px;font-weight:600;color:#334155;">Nấu báo cáo ngay sau khi quét</span>
-          <label class="sw"><input type="checkbox" id="mail-rebuild-after"><i></i></label>
-        </div>
-        <p class="hint" style="margin:6px 0 0;">Bật → sau mỗi lần quét mail có GD mới sẽ nấu lại báo cáo các tháng đó.</p>
+        <p class="hint" style="margin:6px 0 0;">Chỉ ghi Log + dirty. Báo cáo nấu ở mục dưới, menu, hoặc /report.</p>
       </div>
 
       <div class="box">
-        <div class="sec-head" style="margin:0 0 10px;">
-          <h3 style="margin:0;font-size:13px;">&#x1F4CA; Báo cáo tự nấu</h3>
+        <div class="sec-head" style="margin:0 0 8px;">
+          <h3 style="margin:0;font-size:12px;">Báo cáo tự nấu</h3>
           <label class="sw"><input type="checkbox" id="report-trig-on"><i></i></label>
         </div>
         <label>Tần suất</label>
         <select id="report-trig-interval"></select>
-        <p class="hint" style="margin:6px 0 0;">Tự nấu các tháng đang dirty. Tắt = chỉ nấu khi bấm Làm mới / /report.</p>
+        <p class="hint" style="margin:6px 0 0;">Nấu tháng dirty. Tắt = chỉ nấu khi Làm mới / /report.</p>
       </div>
 
-      <div class="box meta-api-only" id="meta-sched-box" style="display:none;">
-        <div class="sec-head" style="margin:0 0 10px;">
-          <h3 style="margin:0;font-size:13px;">Quét Meta mỗi ngày</h3>
-          <label class="sw"><input type="checkbox" id="meta-trig-on"><i></i></label>
+      <div class="box">
+        <div class="sec-head" style="margin:0;">
+          <h3 style="margin:0;font-size:12px;">Drive CSV 23:00</h3>
+          <label class="sw"><input type="checkbox" id="drive-trig-on"><i></i></label>
         </div>
-        <label>Thời gian</label>
-        <div class="row-2">
-          <select id="meta-trig-h"></select>
-          <span class="colon">:</span>
-          <select id="meta-trig-m"></select>
-        </div>
+        <p class="hint" style="margin:6px 0 0;">Folder đọc → Sync → Log → lưu. Cấu hình folder ở tab Drive trước khi bật.</p>
       </div>
 
       <div class="note">
         <span class="note-i">i</span>
-        <span>Thời gian chạy có thể dao động. Trigger mỗi N giờ chạy theo mốc chẵn; mỗi ngày chạy theo giờ đã chọn.</span>
+        <span>Giờ chạy có thể lệch vài phút. Mỗi N giờ theo mốc chẵn.</span>
       </div>
-      <p class="hint" id="trig-now" style="margin:0 0 10px;"></p>
+      <p class="hint" id="trig-now" style="margin:0 0 8px;"></p>
       <button type="button" class="btn btn-primary" onclick="run('saveSchedule')">Lưu lịch</button>
     </section>
+    </div>
 
     <div id="status"></div>
   </div>
@@ -424,27 +523,8 @@
   <script>
     var app = document.getElementById('app');
     var statusBox = document.getElementById('status');
-    var tokEl = document.getElementById('meta-token');
     var acctListEl = document.getElementById('acct-list');
     var mailMode = 'recent';
-    var metaBillingOn = false;
-
-    function applyMetaBillingUi(on) {
-      metaBillingOn = !!on;
-      var nodes = document.querySelectorAll('.meta-api-only');
-      for (var i = 0; i < nodes.length; i++) {
-        nodes[i].style.display = metaBillingOn ? 'block' : 'none';
-      }
-      if (OPS_MODE === 'trigger') return;
-      var h1 = document.getElementById('ops-title');
-      if (h1) h1.textContent = metaBillingOn ? 'Mail & Meta' : 'Quét Mail';
-      var tab = document.querySelector('.tab[data-tab="meta"]');
-      if (tab) tab.textContent = metaBillingOn ? 'Meta Billing' : 'Invoice CSV';
-      var h2 = document.querySelector('#tab-meta .sec-head h2');
-      var sub = document.querySelector('#tab-meta .sec-head .sub');
-      if (h2) h2.textContent = metaBillingOn ? 'Meta Billing' : 'Invoice CSV';
-      if (sub) sub.textContent = metaBillingOn ? 'Quản lý đồng bộ giao dịch' : 'Ghi Log từ file Invoice Summary';
-    }
 
     function applyOpsMode() {
       var isTrigger = OPS_MODE === 'trigger';
@@ -458,11 +538,13 @@
         if (btnView) btnView.style.display = 'none';
         if (btnTrig) btnTrig.style.display = 'none';
         if (title) title.textContent = 'Set Trigger';
-        if (sub) sub.textContent = 'Lịch tự động — Mail / Báo cáo / Meta';
+        if (sub) sub.textContent = 'Mail / Báo cáo / Drive';
         showTab('sched');
       } else {
         if (tabs) tabs.style.display = 'flex';
         if (btnTrig) btnTrig.style.display = 'inline-flex';
+        if (title) title.textContent = 'Quét Mail & CSV';
+        if (sub) sub.textContent = 'Bảng điều khiển';
         showTab('mail');
       }
     }
@@ -484,13 +566,80 @@
     }
 
     function showTab(id) {
-      var tabs = ['mail', 'meta', 'sched'];
+      var tabs = ['mail', 'meta', 'drive', 'sched'];
       for (var i = 0; i < tabs.length; i++) {
         var sec = document.getElementById('tab-' + tabs[i]);
         var btn = document.querySelector('.tab[data-tab="' + tabs[i] + '"]');
-        if (sec) sec.style.display = tabs[i] === id ? 'block' : 'none';
+        if (sec) {
+          sec.style.display = '';
+          sec.className = tabs[i] === id ? 'on' : '';
+        }
         if (btn) btn.className = tabs[i] === id ? 'tab on' : 'tab';
       }
+    }
+
+    function toggleFolderCard(el) {
+      var card = el && el.closest ? el.closest('.folder-card') : null;
+      if (!card) return;
+      var open = card.classList.toggle('open');
+      el.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) {
+        var inp = card.querySelector('input');
+        if (inp) {
+          try { inp.focus(); } catch (eF) {}
+        }
+      }
+    }
+
+    function folderCardKey(ev, el) {
+      if (!ev) return;
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        toggleFolderCard(el);
+      }
+    }
+
+    function setDriveChip(el, ok, name) {
+      if (!el) return;
+      if (ok && name) {
+        el.className = 'chip ok';
+        el.textContent = name;
+      } else if (ok) {
+        el.className = 'chip ok';
+        el.textContent = 'OK';
+      } else {
+        el.className = 'chip off';
+        el.textContent = 'Chưa gắn';
+      }
+    }
+
+    function applyDriveState(drive) {
+      var d = drive || {};
+      var inboxEl = document.getElementById('drive-inbox');
+      var archEl = document.getElementById('drive-archive');
+      if (inboxEl && d.inbox_folder_id != null) inboxEl.value = d.inbox_folder_id || '';
+      if (archEl && d.archive_folder_id != null) archEl.value = d.archive_folder_id || '';
+      setDriveChip(document.getElementById('drive-inbox-chip'), !!d.inbox_ok, d.inbox_folder_name);
+      setDriveChip(document.getElementById('drive-archive-chip'), !!d.archive_ok, d.archive_folder_name);
+      var pend = document.getElementById('drive-pending');
+      if (pend) pend.textContent = d.inbox_ok ? String(d.pending_csv != null ? d.pending_csv : 0) : '—';
+      var readyLab = document.getElementById('drive-ready-label');
+      if (readyLab) {
+        if (d.ready) {
+          readyLab.textContent = 'Sẵn sàng';
+          readyLab.style.color = '#047857';
+        } else {
+          readyLab.textContent = 'Thiếu folder';
+          readyLab.style.color = '#9a3412';
+        }
+      }
+    }
+
+    function driveForm() {
+      return {
+        drive_inbox_folder_id: (document.getElementById('drive-inbox').value || '').trim(),
+        drive_archive_folder_id: (document.getElementById('drive-archive').value || '').trim()
+      };
     }
 
     function setMailMode(mode) {
@@ -522,7 +671,7 @@
         var cb = rows[i].querySelector('.acct-on');
         if (cb && cb.checked) on++;
       }
-      document.getElementById('acct-count').textContent = on + ' / ' + rows.length + ' tài khoản đang bật';
+      document.getElementById('acct-count').textContent = on + ' / ' + rows.length + ' đang bật';
     }
 
     function closeMenus() {
@@ -567,16 +716,17 @@
         html += '<div class="acct-r1">';
         html += '<input type="text" class="acct-label" value="' + esc(a.label || '') + '" placeholder="Nhãn">';
         html += '<span class="badge ' + (isHm ? 'hm' : 'gm') + '">' + (isHm ? 'Hotmail' : 'Gmail') + '</span>';
+        html += '<div class="acct-acts">';
+        html += '<button type="button" class="btn-mini" onclick="run(\'scanOne\',\'' + esc(a.id) + '\')">Quét</button>';
+        if (isHm) {
+          html += '<button type="button" class="btn-more" onclick="toggleMenu(this)">⋯</button>';
+        }
+        html += '</div>';
         html += '<label class="sw"><input type="checkbox" class="acct-on"' + (on ? ' checked' : '') + '><i></i></label>';
         html += '</div>';
         html += '<div class="acct-r2">';
         html += '<div class="acct-email">' + esc(a.email || (isHm ? 'Hotmail' : 'Tài khoản Google của Sheet')) + '</div>';
-        html += '<div class="acct-acts">';
-        html += '<button type="button" class="btn-mini" onclick="run(\'scanOne\',\'' + esc(a.id) + '\')"><svg width="9" height="9" viewBox="0 0 10 10"><path fill="#2563eb" d="M2 1.2v7.6L8.8 5z"/></svg> Quét</button>';
-        if (isHm) {
-          html += '<button type="button" class="btn-more" onclick="toggleMenu(this)">⋯</button>';
-        }
-        html += '</div></div></div></div>';
+        html += '</div></div></div>';
         if (isHm) {
           html += '<div class="menu">';
           html += '<button type="button" onclick="run(\'checkHotmail\',\'' + esc(a.id) + '\')">Check cred</button>';
@@ -626,6 +776,7 @@
     function pad2(n) { return (n < 10 ? '0' : '') + n; }
 
     function fillSelect(el, values, labels) {
+      if (!el) return;
       el.innerHTML = '';
       for (var i = 0; i < values.length; i++) {
         var opt = document.createElement('option');
@@ -643,13 +794,10 @@
         hourLabs.push(pad2(h) + ' giờ');
       }
       fillSelect(document.getElementById('mail-trig-h'), hours, hourLabs);
-      fillSelect(document.getElementById('meta-trig-h'), hours, hourLabs);
       var mins = [0, 15, 30, 45];
       var minLabs = ['00 phút', '15 phút', '30 phút', '45 phút'];
       fillSelect(document.getElementById('mail-trig-m'), mins, minLabs);
-      fillSelect(document.getElementById('meta-trig-m'), mins, minLabs);
 
-      // Tần suất theo giờ hợp lệ Apps Script
       var intervalHours = [1, 2, 3, 4, 6, 8, 12, 24];
       var intervalLabs = intervalHours.map(function (n) { return 'Mỗi ' + n + ' giờ'; });
       fillSelect(document.getElementById('mail-trig-interval'), intervalHours, intervalLabs);
@@ -663,11 +811,8 @@
     }
 
     function say(cls, msg) {
-      var text = msg || '';
       statusBox.className = cls || '';
-      statusBox.textContent = text;
-      var ready = document.getElementById('meta-ready');
-      if (ready) ready.style.display = text ? 'none' : 'flex';
+      statusBox.textContent = msg || '';
     }
 
     function busy(on) {
@@ -712,15 +857,6 @@
       };
     }
 
-    function metaForm() {
-      var tok = tokEl.value || '';
-      return {
-        meta_access_token: (tok && tok.indexOf('••••') === -1) ? tok : '',
-        meta_business_id: document.getElementById('meta-bid').value,
-        meta_billing_lookback_days: document.getElementById('meta-lb').value
-      };
-    }
-
     function scheduleForm() {
       return {
         mail_trigger_on: document.getElementById('mail-trig-on').checked,
@@ -728,58 +864,65 @@
         mail_trigger_interval_hours: document.getElementById('mail-trig-interval').value,
         mail_trigger_hour: document.getElementById('mail-trig-h').value,
         mail_trigger_minute: document.getElementById('mail-trig-m').value,
-        mail_rebuild_after: document.getElementById('mail-rebuild-after').checked,
         report_trigger_on: document.getElementById('report-trig-on').checked,
         report_trigger_interval_hours: document.getElementById('report-trig-interval').value,
-        meta_trigger_on: metaBillingOn && document.getElementById('meta-trig-on').checked,
-        meta_trigger_hour: document.getElementById('meta-trig-h').value,
-        meta_trigger_minute: document.getElementById('meta-trig-m').value
+        drive_trigger_on: document.getElementById('drive-trig-on').checked
       };
     }
 
+    function setAdsPending(n) {
+      var el = document.getElementById('ads-pending');
+      if (!el) return;
+      if (n == null || n === '') {
+        el.className = 'chip off';
+        el.textContent = '—';
+      } else {
+        el.className = Number(n) > 0 ? 'chip warn' : 'chip ok';
+        el.textContent = String(n);
+      }
+    }
+
     function initState(state) {
-      applyMetaBillingUi(!!(state && state.meta_billing_enabled));
       document.getElementById('so-ngay').value = state.so_ngay_quet || '1';
       document.getElementById('quet-tu').value = state.quet_tu_ngay || '';
       document.getElementById('quet-den').value = state.quet_den_ngay || '';
-      document.getElementById('mail-mode').textContent = 'Hiện tại: ' + (state.mail_label || '');
+      document.getElementById('mail-mode').textContent = state.mail_label || '';
       setMailMode((state.quet_tu_ngay && state.quet_den_ngay) ? 'range' : 'recent');
       renderAccounts(state.accounts || []);
-      document.getElementById('meta-bid').value = state.meta_business_id || '';
-      document.getElementById('meta-lb').value = state.meta_billing_lookback_days || '60';
-      if (state.meta_access_token) {
-        tokEl.type = 'text';
-        tokEl.value = state.meta_access_token;
-        tokEl.setAttribute('data-masked', '1');
-      } else {
-        tokEl.type = 'password';
-        tokEl.value = '';
-        tokEl.setAttribute('data-masked', '0');
-      }
+      applyDriveState({
+        inbox_folder_id: state.drive_inbox_folder_id,
+        archive_folder_id: state.drive_archive_folder_id,
+        inbox_folder_name: state.drive_inbox_folder_name,
+        archive_folder_name: state.drive_archive_folder_name,
+        inbox_ok: state.drive_inbox_ok,
+        archive_ok: state.drive_archive_ok,
+        ready: state.drive_ready,
+        pending_csv: state.drive_pending_csv
+      });
+      setAdsPending(state.ads_pending_sync);
       document.getElementById('mail-trig-on').checked = !!state.mail_trigger_on;
       document.getElementById('mail-trig-mode').value = state.mail_trigger_mode || 'hours';
       document.getElementById('mail-trig-interval').value = String(state.mail_trigger_interval_hours || 2);
       document.getElementById('mail-trig-h').value = String(state.mail_trigger_hour != null ? state.mail_trigger_hour : 8);
       document.getElementById('mail-trig-m').value = String(state.mail_trigger_minute != null ? state.mail_trigger_minute : 0);
-      document.getElementById('mail-rebuild-after').checked = !!state.mail_rebuild_after;
       document.getElementById('report-trig-on').checked = !!state.report_trigger_on;
       document.getElementById('report-trig-interval').value = String(state.report_trigger_interval_hours || 3);
       onMailModeChange();
-      document.getElementById('meta-trig-on').checked = !!state.meta_trigger_on;
-      document.getElementById('meta-trig-h').value = String(state.meta_trigger_hour != null ? state.meta_trigger_hour : 8);
-      document.getElementById('meta-trig-m').value = String(state.meta_trigger_minute != null ? state.meta_trigger_minute : 30);
+      document.getElementById('drive-trig-on').checked = !!state.drive_trigger_on;
+      var drivePanel = document.getElementById('drive-trig-panel');
+      if (drivePanel) drivePanel.checked = !!state.drive_trigger_on;
       document.getElementById('trig-tz').textContent = 'Múi giờ: ' + (state.trigger_tz || 'GMT+7');
       document.getElementById('trig-now').textContent = 'Hiện tại: ' + (state.trigger_label || 'chưa đặt');
       checkMailWarn();
       applyOpsMode();
     }
 
-    tokEl.addEventListener('input', function () {
-      if (tokEl.getAttribute('data-masked') === '1' && tokEl.value.indexOf('••••') === -1) {
-        tokEl.setAttribute('data-masked', '0');
-        tokEl.type = 'password';
-      }
-    });
+    function syncDriveTrigUi(on) {
+      var a = document.getElementById('drive-trig-on');
+      var b = document.getElementById('drive-trig-panel');
+      if (a) a.checked = !!on;
+      if (b) b.checked = !!on;
+    }
 
     acctListEl.addEventListener('change', function (e) {
       if (e.target && e.target.className.indexOf('acct-on') !== -1) updateAcctCount();
@@ -798,9 +941,18 @@
     var csvInput = document.getElementById('meta-csv');
     if (csvInput) {
       csvInput.addEventListener('change', function () {
-        var f = this.files && this.files[0];
         var lab = document.getElementById('meta-csv-name');
-        if (lab) lab.textContent = f ? f.name : '';
+        if (!lab) return;
+        var files = this.files;
+        if (!files || !files.length) {
+          lab.textContent = '';
+          return;
+        }
+        var names = [];
+        for (var i = 0; i < files.length; i++) names.push(files[i].name || ('file' + (i + 1)));
+        lab.textContent = names.length === 1
+          ? names[0]
+          : (names.length + ' file: ' + names.join(', '));
       });
     }
 
@@ -821,9 +973,11 @@
         if (action === 'view') return;
         say(r && r.ok ? 'ok' : 'err', (r && r.message) || 'Xong');
         if (r && r.mail_label) {
-          document.getElementById('mail-mode').textContent = 'Hiện tại: ' + r.mail_label;
+          document.getElementById('mail-mode').textContent = r.mail_label;
         }
         if (r && r.accounts) renderAccounts(r.accounts);
+        if (r && r.drive) applyDriveState(r.drive);
+        if (r && r.ads_pending_sync != null) setAdsPending(r.ads_pending_sync);
         if (r && r.ok) {
           var addBox = document.getElementById('new-hotmail-cred');
           var addLab = document.getElementById('new-hotmail-label');
@@ -834,48 +988,136 @@
         if (r && r.trigger_label) {
           document.getElementById('trig-now').textContent = 'Hiện tại: ' + r.trigger_label;
         }
+        if (action === 'saveDriveTrig' && r && r.ok) {
+          syncDriveTrigUi(!!r.drive_trigger_on);
+        }
+        if (action === 'saveSchedule' && r && r.ok) {
+          syncDriveTrigUi(document.getElementById('drive-trig-on').checked);
+        }
       };
       var fail = function (err) {
         busy(false);
         say('err', (err && err.message) || String(err));
       };
 
-      if (action === 'saveMeta' || action === 'checkMeta' || action === 'syncMeta' || action === 'syncFull' || action === 'writeLog') {
-        if (!metaBillingOn) {
-          say('err', 'Meta Billing API đang tắt. Dùng quét mail hoặc upload Invoice CSV.');
-          return;
-        }
-      }
-
       if (action === 'uploadCsv') {
         var input = document.getElementById('meta-csv');
-        var file = input && input.files && input.files[0];
-        if (!file) {
+        var rawFiles = input && input.files ? input.files : null;
+        if (!rawFiles || !rawFiles.length) {
           say('err', 'Chưa chọn file CSV.');
           return;
         }
-        var name = file.name || 'invoice.csv';
-        if (!/\.csv$/i.test(name)) {
-          say('err', 'Chỉ nhận file .csv (không dùng PDF).');
+
+        var queue = [];
+        var skipped = [];
+        for (var fi = 0; fi < rawFiles.length; fi++) {
+          var f = rawFiles[fi];
+          var fname = (f && f.name) || ('invoice_' + (fi + 1) + '.csv');
+          if (!/\.csv$/i.test(fname)) {
+            skipped.push(fname + ': không phải .csv');
+            continue;
+          }
+          if (f.size > 800000) {
+            skipped.push(fname + ': quá lớn (tối đa 800KB)');
+            continue;
+          }
+          queue.push(f);
+        }
+        if (!queue.length) {
+          say('err', 'Không có file .csv hợp lệ.\n' + skipped.join('\n'));
           return;
         }
-        if (file.size > 800000) {
-          say('err', 'File quá lớn (tối đa 800KB).');
-          return;
-        }
-        busy(true);
-        say('wait', 'Đang đọc ' + name + '…');
-        var reader = new FileReader();
-        reader.onerror = function () {
+
+        var results = [];
+        var total = queue.length;
+        var idx = 0;
+        var flushMsg = '';
+
+        function finishQueue() {
           busy(false);
-          say('err', 'Không đọc được file.');
-        };
-        reader.onload = function () {
-          say('wait', 'Đang đối soát Log… có thể mất vài phút.');
-          google.script.run.withSuccessHandler(ok).withFailureHandler(fail)
-            .opsSidebarIngestMetaCsv(String(reader.result || ''), name);
-        };
-        reader.readAsText(file, 'UTF-8');
+          if (input) input.value = '';
+          var lab = document.getElementById('meta-csv-name');
+          if (lab) lab.textContent = '';
+
+          var okN = 0;
+          var errN = 0;
+          var lines = [];
+          for (var ri = 0; ri < results.length; ri++) {
+            var row = results[ri];
+            if (row.ok) okN++;
+            else errN++;
+            var detail = String(row.message || '').replace(/\n/g, ' | ');
+            if (detail.length > 180) detail = detail.slice(0, 177) + '…';
+            lines.push((row.ok ? 'OK' : 'Lỗi') + ' — ' + row.name + ': ' + detail);
+          }
+          for (var si = 0; si < skipped.length; si++) {
+            errN++;
+            lines.push('Lỗi — ' + skipped[si]);
+          }
+          var head = 'Stage Sync: ' + okN + ' OK / ' + errN + ' lỗi (' + total + ' file)';
+          var body = lines.slice(0, 10).join('\n');
+          if (lines.length > 10) body += '\n… và ' + (lines.length - 10) + ' dòng nữa';
+          if (flushMsg) body += '\n\n' + flushMsg;
+          say(errN && !okN ? 'err' : 'ok', head + '\n' + body);
+        }
+
+        function afterStageAll() {
+          say('wait', 'Đang đẩy Sync → Log (batch 10/tháng)…');
+          google.script.run
+            .withSuccessHandler(function (r) {
+              flushMsg = (r && r.message) || 'Flush xong';
+              if (r && r.ads_pending_sync != null) setAdsPending(r.ads_pending_sync);
+              finishQueue();
+            })
+            .withFailureHandler(function (err) {
+              flushMsg = 'Flush lỗi: ' + ((err && err.message) || String(err));
+              finishQueue();
+            })
+            .opsSidebarFlushAdsBilling();
+        }
+
+        function processNext() {
+          if (idx >= total) {
+            afterStageAll();
+            return;
+          }
+          var file = queue[idx];
+          var name = file.name || ('invoice_' + (idx + 1) + '.csv');
+          var step = idx + 1;
+          say('wait', 'Stage Sync ' + step + '/' + total + ': ' + name + '…');
+          var reader = new FileReader();
+          reader.onerror = function () {
+            results.push({ ok: false, name: name, message: 'Không đọc được file.' });
+            idx++;
+            processNext();
+          };
+          reader.onload = function () {
+            google.script.run
+              .withSuccessHandler(function (r) {
+                results.push({
+                  ok: !!(r && r.ok),
+                  name: name,
+                  message: (r && r.message) || (r && r.ok ? 'Xong' : 'Lỗi')
+                });
+                idx++;
+                processNext();
+              })
+              .withFailureHandler(function (err) {
+                results.push({
+                  ok: false,
+                  name: name,
+                  message: (err && err.message) || String(err)
+                });
+                idx++;
+                processNext();
+              })
+              .opsSidebarStageMetaCsv(String(reader.result || ''), name);
+          };
+          reader.readAsText(file, 'UTF-8');
+        }
+
+        busy(true);
+        processNext();
         return;
       }
 
@@ -888,11 +1130,15 @@
       else if (action === 'scanOne') runner.opsSidebarScanMail(mailForm(), mailboxId || '');
       else if (action === 'checkHotmail') runner.opsSidebarCheckHotmail(mailForm(), mailboxId || '');
       else if (action === 'checkHotmailNew') runner.opsSidebarCheckHotmailCred((document.getElementById('new-hotmail-cred').value || '').trim());
-      else if (action === 'saveMeta') runner.opsSidebarSaveMeta(metaForm());
-      else if (action === 'checkMeta') runner.opsSidebarCheckMeta(metaForm());
-      else if (action === 'syncMeta') runner.opsSidebarSyncMeta(metaForm(), false);
-      else if (action === 'syncFull') runner.opsSidebarSyncMeta(metaForm(), true);
-      else if (action === 'writeLog') runner.opsSidebarWriteMetaLog();
+      else if (action === 'flushAds') runner.opsSidebarFlushAdsBilling();
+      else if (action === 'saveDrive') runner.opsSidebarSaveDriveFolders(driveForm());
+      else if (action === 'saveDriveTrig') {
+        var panel = document.getElementById('drive-trig-panel');
+        runner.opsSidebarSaveDriveTrigger({
+          drive_trigger_on: !!(panel && panel.checked)
+        });
+      }
+      else if (action === 'importDrive') runner.opsSidebarImportDriveCsv();
       else if (action === 'saveSchedule') runner.opsSidebarSaveSchedule(scheduleForm());
       else runner.showViewSidebar();
     }

@@ -1,18 +1,16 @@
 // ============================================================================
-// 📧 8_OPSSIDEBAR.GS — Sidebar cấu hình + chạy Quét Mail / Invoice CSV
+// 📧 8_OPSSIDEBAR.GS — Sidebar cấu hình + chạy Quét Mail / CSV máy / Drive CSV
 // ============================================================================
 // Điều khiển bằng SIDEBAR (opsui.html) — cùng kiểu viewui.html.
-// Token / khoảng ngày / lịch trigger lưu Script Properties.
-// Menu: Bảng điều khiển = mail/meta; Set Trigger = lịch (1 chỗ duy nhất).
-// Meta Billing API ẩn khi META_BILLING_ENABLED = false (code giữ nguyên).
-// Menu cũ (alert) vẫn dùng được khi không mở sidebar.
+// Khoảng ngày / lịch trigger / folder Drive lưu Script Properties.
+// Menu: Bảng điều khiển = mail/csv/drive; Set Trigger = lịch (1 chỗ duy nhất).
 // ============================================================================
 
 function showOpsSidebar() {
   return showOpsSidebar_('ops');
 }
 
-/** Menu riêng: chỉ set lịch trigger (Mail / Báo cáo / Meta). */
+/** Menu riêng: chỉ set lịch trigger (Mail / Báo cáo / Drive CSV). */
 function showOpsTriggerSidebar() {
   return showOpsSidebar_('trigger');
 }
@@ -22,15 +20,19 @@ function showOpsSidebar_(mode) {
   const tpl = HtmlService.createTemplateFromFile('opsui');
   tpl.opsMode = isTrigger ? 'trigger' : 'ops';
   const html = tpl.evaluate()
-    .setTitle(isTrigger
-      ? 'Set Trigger'
-      : (META_BILLING_ENABLED ? 'Mail & Meta' : 'Quét Mail'));
+    .setTitle(isTrigger ? 'Set Trigger' : 'Quét Mail & CSV');
   SpreadsheetApp.getUi().showSidebar(html);
 }
 
-/** Sidebar gọi khi mở: cấu hình mail + Meta + lịch hiện tại */
+/** Sidebar gọi khi mở: cấu hình mail + Drive + lịch hiện tại */
 function opsSidebarState() {
-  if (!META_BILLING_ENABLED) enforceMetaBillingOff_();
+  // Dọn trigger Meta cũ nếu còn sót
+  try {
+    opsDeleteTriggersByHandler_('runScheduledMetaBillingSync');
+    PROP.setProperty('META_BILLING_TRIGGER_ON', '0');
+    PROP.deleteProperty('META_BILLING_TRIGGER_OK');
+  } catch (eClean) {}
+
   const props = PROP.getProperties();
   const filter = buildGmailDateFilter_();
   const mailMode = props.MAIL_SCAN_TRIGGER_MODE === 'day' ? 'day' : 'hours';
@@ -38,41 +40,42 @@ function opsSidebarState() {
   const mailHour = opsClampHour_(props.MAIL_SCAN_TRIGGER_HOUR, MAIL_SCAN_TRIGGER_HOUR_DEFAULT);
   const mailMin = opsClampMinute_(props.MAIL_SCAN_TRIGGER_MINUTE, MAIL_SCAN_TRIGGER_MINUTE_DEFAULT);
   const reportInterval = opsClampHours_(props.REPORT_TRIGGER_INTERVAL_HOURS, REPORT_TRIGGER_INTERVAL_HOURS_DEFAULT);
-  const metaHour = opsClampHour_(props.META_BILLING_TRIGGER_HOUR, META_BILLING_TRIGGER_HOUR_DEFAULT);
-  const metaMin = opsClampMinute_(props.META_BILLING_TRIGGER_MINUTE, META_BILLING_TRIGGER_MINUTE_DEFAULT);
   const mailOn = props.MAIL_SCAN_TRIGGER_ON === '1' || opsHasTrigger_(MAIL_SCAN_TRIGGER_HANDLER_);
-  // Báo cáo tự nấu = CÓ trigger 15' đang chạy (chỉ tắt khi CÓ cờ REPORT_AUTO_TRIGGER_OFF).
-  const reportOn = props.REPORT_AUTO_TRIGGER_OFF_PROP !== '1'
+  const reportOff = props[REPORT_AUTO_TRIGGER_OFF_PROP_] === '1' || props.REPORT_AUTO_TRIGGER_OFF === '1';
+  const reportOn = !reportOff
     && (props.REPORT_DIRTY_TRIGGER_OK === '1' || opsHasTrigger_(REPORT_REFRESH_TRIGGER_HANDLER_));
-  const rebuildAfter = props.MAIL_SCAN_REBUILD_AFTER === '1';
-  const metaOn = props.META_BILLING_TRIGGER_ON === '1' || opsHasTrigger_(META_BILLING_TRIGGER_HANDLER_);
+  const driveOn = props.DRIVE_CSV_TRIGGER_ON === '1' || opsHasTrigger_(DRIVE_CSV_TRIGGER_HANDLER_);
+  const driveState = getDriveCsvFolderState_();
   const accounts = mailAccountsForUi_();
+  let pendingSync = 0;
+  try { pendingSync = countAdsBillingPending_(); } catch (eP) {}
   return {
     so_ngay_quet: props.so_ngay_quet || String(SO_NGAY_QUET_DEFAULT),
     quet_tu_ngay: props.quet_tu_ngay || '',
     quet_den_ngay: props.quet_den_ngay || '',
     mail_label: filter.label,
     accounts: accounts,
-    meta_access_token: maskApiKey(props.META_ACCESS_TOKEN || ''),
-    meta_business_id: props.META_BUSINESS_ID || '',
-    meta_billing_lookback_days: props.META_BILLING_LOOKBACK_DAYS || String(META_BILLING_LOOKBACK_DAYS_DEFAULT),
+    drive_inbox_folder_id: driveState.inbox_folder_id,
+    drive_archive_folder_id: driveState.archive_folder_id,
+    drive_inbox_folder_name: driveState.inbox_folder_name,
+    drive_archive_folder_name: driveState.archive_folder_name,
+    drive_inbox_ok: driveState.inbox_ok,
+    drive_archive_ok: driveState.archive_ok,
+    drive_ready: driveState.ready,
+    drive_pending_csv: driveState.pending_csv,
+    ads_pending_sync: pendingSync,
     mail_trigger_on: mailOn,
     mail_trigger_mode: mailMode,
     mail_trigger_interval_hours: mailInterval,
     mail_trigger_hour: mailHour,
     mail_trigger_minute: mailMin,
-    mail_rebuild_after: rebuildAfter,
     report_trigger_on: reportOn,
     report_trigger_interval_hours: reportInterval,
-    meta_billing_enabled: META_BILLING_ENABLED === true,
-    meta_trigger_on: META_BILLING_ENABLED && metaOn,
-    meta_trigger_hour: metaHour,
-    meta_trigger_minute: metaMin,
+    drive_trigger_on: driveOn,
+    drive_trigger_hour: DRIVE_CSV_TRIGGER_HOUR_DEFAULT,
+    drive_trigger_minute: DRIVE_CSV_TRIGGER_MINUTE_DEFAULT,
     trigger_tz: Session.getScriptTimeZone() || 'GMT+7',
-    trigger_label: opsTriggerLabel_(mailOn, mailMode, mailInterval, mailHour, mailMin, reportOn, reportInterval, META_BILLING_ENABLED && metaOn, metaHour, metaMin)
-      + (META_BILLING_ENABLED && props.META_BILLING_TRIGGER_OK === '1' && props.META_BILLING_TRIGGER_ON !== '1' && opsHasTrigger_(META_BILLING_TRIGGER_HANDLER_)
-        ? ' (Meta đang mỗi 6 giờ cũ — bấm Lưu lịch để chuyển sang giờ cố định)'
-        : '')
+    trigger_label: opsTriggerLabel_(mailOn, mailMode, mailInterval, mailHour, mailMin, reportOn, reportInterval, driveOn)
   };
 }
 
@@ -157,52 +160,72 @@ function opsSidebarCheckHotmailCred(credLine) {
   }
 }
 
-function opsSidebarSaveMeta(form) {
-  if (!META_BILLING_ENABLED) return { ok: false, message: metaBillingOffMsg_() };
-  opsSaveMetaProps_(form || {});
-  return { ok: true, message: 'Đã lưu cấu hình Meta Billing.' };
-}
-
-function opsSidebarCheckMeta(form) {
-  if (!META_BILLING_ENABLED) return { ok: false, message: metaBillingOffMsg_() };
-  opsSaveMetaProps_(form || {});
-  const text = checkMetaBillingFromUI(getConfigToken(), form || {});
-  const ok = String(text || '').indexOf('OK:') === 0;
-  return { ok: ok, message: opsSidebarPlain_(text) };
-}
-
-function opsSidebarSyncMeta(form, full) {
-  if (!META_BILLING_ENABLED) return { ok: false, message: metaBillingOffMsg_() };
-  opsSaveMetaProps_(form || {});
+function opsSidebarStageMetaCsv(csvText, fileName) {
   try {
-    if (full) resetMetaBillingWatermarks();
-    const raw = syncMetaBilling(null, full ? { full: true } : {});
-    return { ok: opsSidebarOk_(raw), message: opsSidebarPlain_(raw) };
+    const r = stageInvoiceCsvFile_(csvText, fileName);
+    return { ok: true, message: r.message, staged: r.staged };
   } catch (e) {
     return { ok: false, message: (e && e.message) ? e.message : String(e) };
   }
 }
 
-function opsSidebarWriteMetaLog() {
-  if (!META_BILLING_ENABLED) return { ok: false, message: metaBillingOffMsg_() };
+/** Stage + flush (1 file). Multi-file: stage từng file rồi gọi flush. */
+function opsSidebarIngestMetaCsv(csvText, fileName) {
   try {
-    ensureAdsBillingSyncSheet_();
-    matchBillingAgainstMail_();
-    const res = writeMissingMetaBillingToLog_();
-    if (res.error) return { ok: false, message: 'ERR: ' + res.error };
+    const msg = ingestMetaInvoiceCsv_(csvText, fileName);
+    return { ok: true, message: msg };
+  } catch (e) {
+    return { ok: false, message: (e && e.message) ? e.message : String(e) };
+  }
+}
+
+function opsSidebarFlushAdsBilling() {
+  try {
+    const res = flushAdsBillingQueueToLog_();
     return {
       ok: true,
-      message: 'Đã ghi ' + res.written + ' dòng vào Log tháng (bỏ qua ' + res.skipped + ').'
+      message: (res && res.message) || 'Xong',
+      ads_pending_sync: countAdsBillingPending_()
     };
   } catch (e) {
     return { ok: false, message: (e && e.message) ? e.message : String(e) };
   }
 }
 
-function opsSidebarIngestMetaCsv(csvText, fileName) {
+function opsSidebarSaveDriveFolders(form) {
   try {
-    const msg = ingestMetaInvoiceCsv_(csvText, fileName);
-    return { ok: true, message: msg };
+    const f = form || {};
+    return saveDriveCsvFolders_(f.drive_inbox_folder_id, f.drive_archive_folder_id);
+  } catch (e) {
+    return { ok: false, message: (e && e.message) ? e.message : String(e) };
+  }
+}
+
+/** Chỉ bật/tắt lịch Drive 23:00 — không đụng Mail/Báo cáo/Meta. */
+function opsSidebarSaveDriveTrigger(form) {
+  try {
+    const driveOn = opsIsOn_((form || {}).drive_trigger_on);
+    const r = opsApplyDriveTriggerOnly_(driveOn);
+    return {
+      ok: true,
+      message: r.message,
+      trigger_label: r.label,
+      drive_trigger_on: driveOn
+    };
+  } catch (e) {
+    return { ok: false, message: (e && e.message) ? e.message : String(e) };
+  }
+}
+
+function opsSidebarImportDriveCsv() {
+  try {
+    const res = importDriveInvoiceCsvFolder_();
+    const drive = getDriveCsvFolderState_();
+    return {
+      ok: !!(res && res.ok),
+      message: (res && res.message) || 'Xong',
+      drive: drive
+    };
   } catch (e) {
     return { ok: false, message: (e && e.message) ? e.message : String(e) };
   }
@@ -315,47 +338,23 @@ function opsSaveMailProps_(form) {
   };
 }
 
-function opsSaveMetaProps_(form) {
-  if (form.meta_business_id !== undefined) {
-    const bid = String(form.meta_business_id || '').trim();
-    if (bid) PROP.setProperty('META_BUSINESS_ID', bid);
-    else PROP.deleteProperty('META_BUSINESS_ID');
-  }
-  if (form.meta_billing_lookback_days !== undefined && String(form.meta_billing_lookback_days).trim() !== '') {
-    const lb = Math.max(1, parseInt(form.meta_billing_lookback_days, 10) || META_BILLING_LOOKBACK_DAYS_DEFAULT);
-    PROP.setProperty('META_BILLING_LOOKBACK_DAYS', String(lb));
-  }
-  if (form.meta_access_token !== undefined) {
-    const metaTok = String(form.meta_access_token || '').trim();
-    if (!metaTok) {
-      // ô trống khi đang mask = giữ token cũ; ô trống thật (user xóa) thì không đụng
-    } else if (metaTok.indexOf('••••') === -1) {
-      PROP.setProperty('META_ACCESS_TOKEN', metaTok);
-    }
-  }
-}
-
 function opsApplySchedule_(form) {
   const mailOn = opsIsOn_(form.mail_trigger_on);
   const reportOn = opsIsOn_(form.report_trigger_on);
-  const metaOn = META_BILLING_ENABLED && opsIsOn_(form.meta_trigger_on);
-  // Mail: chế độ Mỗi N giờ hoặc mỗi ngày giờ:phút.
+  const driveOn = opsIsOn_(form.drive_trigger_on);
   const mailMode = form.mail_trigger_mode === 'day' ? 'day' : 'hours';
   const mailInterval = opsClampHours_(form.mail_trigger_interval_hours, MAIL_SCAN_TRIGGER_INTERVAL_HOURS_DEFAULT);
   const mailHour = opsClampHour_(form.mail_trigger_hour, MAIL_SCAN_TRIGGER_HOUR_DEFAULT);
   const mailMin = opsClampMinute_(form.mail_trigger_minute, MAIL_SCAN_TRIGGER_MINUTE_DEFAULT);
-  const rebuildAfter = opsIsOn_(form.mail_rebuild_after);
   const reportInterval = opsClampHours_(form.report_trigger_interval_hours, REPORT_TRIGGER_INTERVAL_HOURS_DEFAULT);
-  const metaHour = opsClampHour_(form.meta_trigger_hour, META_BILLING_TRIGGER_HOUR_DEFAULT);
-  const metaMin = opsClampMinute_(form.meta_trigger_minute, META_BILLING_TRIGGER_MINUTE_DEFAULT);
 
-  // --- Quét Mail ---
   PROP.setProperty('MAIL_SCAN_TRIGGER_ON', mailOn ? '1' : '0');
   PROP.setProperty('MAIL_SCAN_TRIGGER_MODE', mailMode);
   PROP.setProperty('MAIL_SCAN_TRIGGER_INTERVAL_HOURS', String(mailInterval));
   PROP.setProperty('MAIL_SCAN_TRIGGER_HOUR', String(mailHour));
   PROP.setProperty('MAIL_SCAN_TRIGGER_MINUTE', String(mailMin));
-  PROP.setProperty(MAIL_SCAN_REBUILD_AFTER_PROP_, rebuildAfter ? '1' : '0');
+  // Không còn nấu báo cáo sau quét — chỉ dirty; nấu = trigger báo cáo / menu / /report
+  PROP.setProperty(MAIL_SCAN_REBUILD_AFTER_PROP_, '0');
   if (mailOn) {
     if (mailMode === 'hours') opsUpsertHoursTrigger_(MAIL_SCAN_TRIGGER_HANDLER_, mailInterval);
     else opsUpsertDailyTrigger_(MAIL_SCAN_TRIGGER_HANDLER_, mailHour, mailMin);
@@ -363,7 +362,6 @@ function opsApplySchedule_(form) {
     opsDeleteTriggersByHandler_(MAIL_SCAN_TRIGGER_HANDLER_);
   }
 
-  // --- Báo cáo tự nấu ---
   PROP.setProperty('REPORT_TRIGGER_ON', reportOn ? '1' : '0');
   PROP.setProperty('REPORT_TRIGGER_INTERVAL_HOURS', String(reportInterval));
   if (reportOn) {
@@ -371,21 +369,60 @@ function opsApplySchedule_(form) {
     PROP.deleteProperty('REPORT_DIRTY_TRIGGER_OK');
     opsUpsertHoursTrigger_(REPORT_REFRESH_TRIGGER_HANDLER_, reportInterval);
   } else {
-    // Tắt: xóa trigger báo cáo + khóa tái tạo ngầm 15'.
     disableReportAutoTrigger_();
   }
 
-  // --- Meta (giữ nguyên mỗi ngày) ---
-  PROP.setProperty('META_BILLING_TRIGGER_ON', metaOn ? '1' : '0');
-  PROP.setProperty('META_BILLING_TRIGGER_HOUR', String(metaHour));
-  PROP.setProperty('META_BILLING_TRIGGER_MINUTE', String(metaMin));
-  PROP.deleteProperty(META_BILLING_TRIGGER_OK_PROP_);
-  if (metaOn) opsUpsertDailyTrigger_(META_BILLING_TRIGGER_HANDLER_, metaHour, metaMin);
-  else opsDeleteTriggersByHandler_(META_BILLING_TRIGGER_HANDLER_);
+  // Xóa trigger Meta cũ nếu còn
+  try {
+    opsDeleteTriggersByHandler_('runScheduledMetaBillingSync');
+    PROP.setProperty('META_BILLING_TRIGGER_ON', '0');
+  } catch (eMeta) {}
 
-  const label = opsTriggerLabel_(mailOn, mailMode, mailInterval, mailHour, mailMin, reportOn, reportInterval, metaOn, metaHour, metaMin);
+  opsApplyDriveTriggerOnly_(driveOn);
+
+  const label = opsTriggerLabel_(mailOn, mailMode, mailInterval, mailHour, mailMin, reportOn, reportInterval, driveOn);
   const tz = Session.getScriptTimeZone() || 'GMT+7';
   return { label: label, message: 'Đã lưu lịch — ' + label + ' (' + tz + ').' };
+}
+
+/**
+ * Bật/tắt trigger Drive CSV cố định 23:00. Không đụng trigger khác.
+ */
+function opsApplyDriveTriggerOnly_(driveOn) {
+  const on = !!driveOn;
+  PROP.setProperty(DRIVE_CSV_TRIGGER_ON_PROP_, on ? '1' : '0');
+  if (on) {
+    const st = getDriveCsvFolderState_();
+    if (!st.ready) {
+      throw new Error('Bật lịch Drive CSV cần cấu hình đủ folder đọc + folder lưu (tab Drive CSV).');
+    }
+    opsUpsertDailyTrigger_(DRIVE_CSV_TRIGGER_HANDLER_, DRIVE_CSV_TRIGGER_HOUR_DEFAULT, DRIVE_CSV_TRIGGER_MINUTE_DEFAULT);
+  } else {
+    opsDeleteTriggersByHandler_(DRIVE_CSV_TRIGGER_HANDLER_);
+  }
+  const props = PROP.getProperties();
+  const mailMode = props.MAIL_SCAN_TRIGGER_MODE === 'day' ? 'day' : 'hours';
+  const mailOn = props.MAIL_SCAN_TRIGGER_ON === '1' || opsHasTrigger_(MAIL_SCAN_TRIGGER_HANDLER_);
+  const reportOff = props[REPORT_AUTO_TRIGGER_OFF_PROP_] === '1' || props.REPORT_AUTO_TRIGGER_OFF === '1';
+  const reportOn = !reportOff
+    && (props.REPORT_DIRTY_TRIGGER_OK === '1' || opsHasTrigger_(REPORT_REFRESH_TRIGGER_HANDLER_));
+  const label = opsTriggerLabel_(
+    mailOn,
+    mailMode,
+    opsClampHours_(props.MAIL_SCAN_TRIGGER_INTERVAL_HOURS, MAIL_SCAN_TRIGGER_INTERVAL_HOURS_DEFAULT),
+    opsClampHour_(props.MAIL_SCAN_TRIGGER_HOUR, MAIL_SCAN_TRIGGER_HOUR_DEFAULT),
+    opsClampMinute_(props.MAIL_SCAN_TRIGGER_MINUTE, MAIL_SCAN_TRIGGER_MINUTE_DEFAULT),
+    reportOn,
+    opsClampHours_(props.REPORT_TRIGGER_INTERVAL_HOURS, REPORT_TRIGGER_INTERVAL_HOURS_DEFAULT),
+    on
+  );
+  const tz = Session.getScriptTimeZone() || 'GMT+7';
+  return {
+    label: label,
+    message: on
+      ? ('Đã bật Drive CSV 23:00 mỗi ngày (' + tz + ').')
+      : ('Đã tắt lịch Drive CSV (' + tz + ').')
+  };
 }
 
 function opsIsOn_(v) {
@@ -428,7 +465,7 @@ function opsPad2_(n) {
   return (n < 10 ? '0' : '') + n;
 }
 
-function opsTriggerLabel_(mailOn, mailMode, mailInterval, mailHour, mailMin, reportOn, reportInterval, metaOn, metaHour, metaMin) {
+function opsTriggerLabel_(mailOn, mailMode, mailInterval, mailHour, mailMin, reportOn, reportInterval, driveOn) {
   const parts = [];
   parts.push(mailOn
     ? (mailMode === 'day'
@@ -438,11 +475,9 @@ function opsTriggerLabel_(mailOn, mailMode, mailInterval, mailHour, mailMin, rep
   parts.push(reportOn
     ? ('Báo cáo mỗi ' + reportInterval + 'h')
     : 'Báo cáo tắt');
-  if (META_BILLING_ENABLED) {
-    parts.push(metaOn
-      ? ('Meta ' + opsPad2_(metaHour) + ':' + opsPad2_(metaMin) + ' mỗi ngày')
-      : 'Meta tắt');
-  }
+  parts.push(driveOn
+    ? ('Drive ' + opsPad2_(DRIVE_CSV_TRIGGER_HOUR_DEFAULT) + ':' + opsPad2_(DRIVE_CSV_TRIGGER_MINUTE_DEFAULT) + ' mỗi ngày')
+    : 'Drive tắt');
   return parts.join(' · ');
 }
 

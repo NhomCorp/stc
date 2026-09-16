@@ -16,7 +16,7 @@ var VIEW_ROW_CONTENT_ = 2;
 // ---------------------------------------------------------------------------
 
 function currentMonthKey_() {
-  return Utilities.formatDate(new Date(), 'GMT+7', 'MM_yyyy');
+  return getMonthKeyFromDate(new Date());
 }
 
 function monthKeyToLabel_(monthKey) {

@@ -55,6 +55,28 @@ function getSheetByGidOrName(gid, fallbackName) {
   return fallbackName ? (ss.getSheetByName(fallbackName) || null) : null;
 }
 
+/** Nhật ký lỗi: chỉ nhận mô tả an toàn, không truyền token/body email. */
+function logOpsError_(runId, source, step, message, action, written) {
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(5000);
+    const ss = getSpreadsheet_();
+    let sh = getSheetByGidOrName(getDynamicGid_('loi_van_hanh_gid'), SHEET_NAMES.LOI_VAN_HANH);
+    if (!sh) {
+      sh = ss.insertSheet(SHEET_NAMES.LOI_VAN_HANH);
+      PROP.setProperty('loi_van_hanh_gid', String(sh.getSheetId()));
+      sh.appendRow(LOI_VAN_HANH_HEADERS);
+      sh.setFrozenRows(1);
+    }
+    const safe = function (v) { return String(v || '').replace(/^[=+@-]/, "'").slice(0, 500); };
+    sh.appendRow([new Date(), safe(runId), safe(source), safe(step), safe(message), safe(action), Number(written) || 0]);
+  } catch (e) {
+    Logger.log('Không ghi được nhật ký vận hành.');
+  } finally {
+    if (lock.hasLock()) lock.releaseLock();
+  }
+}
+
 /** Helper an toàn: lấy sheet Mục Lục theo GID đã ghi nhận hoặc tên */
 function getMucLucSheet_() {
   return getSheetByGidOrName(getDynamicGid_('muc_luc_gid'), SHEET_NAMES.MUC_LUC);
@@ -107,7 +129,13 @@ function guessMonthKeyFromUniqueKey_(uniqueKey) {
     }
   }
 
-  // Pattern 2: Mail scanner fallback "YYYYMMDD_..."
+  // Pattern 2: Nhập tay MAN_YYYYMMDD_... hoặc AI_YYYYMMDD_...
+  const manMatch = str.match(/^(?:MAN|AI)_(\d{4})(\d{2})(\d{2})_/);
+  if (manMatch) {
+    return `${manMatch[2]}_${manMatch[1]}`;
+  }
+
+  // Pattern 3: Mail scanner fallback "YYYYMMDD_..."
   const mailMatch = str.match(/^(\d{4})(\d{2})\d{2}_/);
   if (mailMatch) {
     return `${mailMatch[2]}_${mailMatch[1]}`;
@@ -147,16 +175,19 @@ function getOrCreateMonthSheets(monthKey) {
   }
 
   ensureMonthInMucLuc_(monthKey, logSheet, rptSheet);
-  try { ensureMonthLinkedOnBaoCao_(monthKey); } catch (eLink) {}
+  try { ensureMonthLinkedOnBaoCao_(monthKey); } catch (eLink) {
+    logQuiet_('ensureMonthLinkedOnBaoCao_', eLink);
+  }
   if (createdRpt && rptSheet) {
     try {
       rptSheet.getRange('D1').setValue('⚠ Chưa nấu báo cáo lần đầu')
         .setFontColor('#B45309').setFontWeight('bold');
       markMonthsDirty_([monthKey]);
-    } catch (eDirty) {}
+    } catch (eDirty) {
+      logQuiet_('getOrCreateMonthSheets dirty', eDirty);
+    }
   }
-  // UX View: shard tháng mặc định ẩn (bot/mail vẫn ghi bình thường)
-  try { hideMonthShardPair_(logSheet, rptSheet); } catch (eHide) {}
+  // Không ẩn shard ở đây — hide thuộc onOpen / View sidebar (tránh ẩn sheet user đang sửa khi bot ghi).
   return { logSheet, rptSheet };
 }
 
@@ -190,13 +221,14 @@ function appendRowsToMonthLog(sheet, rows) {
 
 /**
  * Ghi batch giao dịch vào các Shard Log_MM_YYYY (Đơn ghi duy nhất).
+ * Sau ghi chỉ dirty — không nấu Report (trigger / menu / /report mới nấu).
  * @param {Array} batchData
- * @param {{skipRebuild?: boolean}=} opts skipRebuild = chỉ dirty, không nấu Report
+ * @param {*=} opts giữ tương thích caller cũ (bỏ qua)
  */
 function saveBatchToMonthShards(batchData, opts) {
   if (!batchData || !batchData.length) return true;
   const lock = LockService.getScriptLock();
-  let touchedMonths_ = null;
+  const touchedMonths_ = [];
   try {
     lock.waitLock(15000);
   } catch (e) {
@@ -228,18 +260,38 @@ function saveBatchToMonthShards(batchData, opts) {
     for (let k = 0; k < keys.length; k++) {
       const mKey = keys[k];
       const { logSheet } = getOrCreateMonthSheets(mKey);
-      appendRowsToMonthLog(logSheet, monthGroups[mKey]);
+      const existing = new Set();
+      const last = logSheet.getLastRow();
+      if (last >= 3) {
+        logSheet.getRange(3, MONTH_LOG_COL.UNIQUE_KEY + 1, last - 2, 1).getValues()
+          .forEach(function (row) { existing.add(String(row[0] || '').trim()); });
+      }
+      const fresh = monthGroups[mKey].filter(function (row) {
+        const key = String(row[MONTH_LOG_COL.UNIQUE_KEY] || '').trim();
+        if (!key) throw new Error('Thiếu UNIQUE_KEY');
+        if (existing.has(key)) return false;
+        existing.add(key);
+        return true;
+      });
+      if (fresh.length) {
+        // Đánh dirty cả khi append/flush lỗi sau khi đã thay đổi một phần.
+        touchedMonths_.push(mKey);
+        markMonthsDirty_([mKey]);
+        appendRowsToMonthLog(logSheet, fresh);
+        SpreadsheetApp.flush();
+      }
     }
 
     SpreadsheetApp.flush();
-    touchedMonths_ = keys;
     return true;
   } catch (err) {
     return "Lỗi ghi Sheet: " + err.message;
   } finally {
     lock.releaseLock();
     if (touchedMonths_ && touchedMonths_.length) {
-      try { notifyLogMonthsChanged_(touchedMonths_, opts); } catch (eN) {}
+      try { notifyLogMonthsChanged_(touchedMonths_, opts); } catch (eN) {
+      logQuiet_('notifyLogMonthsChanged_', eN);
+    }
     }
   }
 }
@@ -307,6 +359,25 @@ function findRowInLogSheet_(sh, uniqueKey) {
 
 /** Cập nhật 1 dòng giao dịch theo Unique Key (đổi tháng thì chuyển shard) */
 function updateRowByUniqueKey(uniqueKey, data) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  const touched = [];
+  try {
+    return updateRowByUniqueKeyLocked_(uniqueKey, data, touched);
+  } finally {
+    try { SpreadsheetApp.flush(); } catch (flushError) {
+      logQuiet_('Log mutation final flush', flushError);
+    } finally { lock.releaseLock(); }
+    if (touched.length) {
+      try { notifyLogMonthsChanged_(touched); } catch (eN) {
+        logQuiet_('updateRowByUniqueKey notify', eN);
+      }
+    }
+  }
+}
+
+/** Chỉ gọi khi đang giữ ScriptLock. */
+function updateRowByUniqueKeyLocked_(uniqueKey, data, touched) {
   const located = locateLogSheetByUniqueKey_(uniqueKey);
   if (!located) return false;
 
@@ -314,20 +385,27 @@ function updateRowByUniqueKey(uniqueKey, data) {
     ? getMonthKeyFromDate(data.ngay_gd)
     : located.monthKey;
 
-  const touched = [];
-
   if (destMonth === located.monthKey) {
-    if (updateInLogSheet_(located.sheet, uniqueKey, data)) {
-      SpreadsheetApp.flush();
-      touched.push(located.monthKey);
-      try { notifyLogMonthsChanged_(touched); } catch (eN) {}
-      return true;
-    }
-    return false;
+    markMonthsDirty_([located.monthKey]);
+    touched.push(located.monthKey);
+    const updated = updateInLogSheet_(located.sheet, uniqueKey, data);
+    SpreadsheetApp.flush();
+    return updated;
   }
 
   const { logSheet } = getOrCreateMonthSheets(destMonth);
-  appendRowsToMonthLog(logSheet, [[
+  if (findRowInLogSheet_(logSheet, uniqueKey)) {
+    throw new Error('Khóa giao dịch đã tồn tại ở tháng đích; cần đối soát trước khi chuyển.');
+  }
+  const sourceRows = located.sheet.getRange(3, 1, located.sheet.getLastRow() - 2, 9).getValues();
+  const originals = sourceRows.filter(function (row) {
+    return String(row[MONTH_LOG_COL.UNIQUE_KEY]) === String(uniqueKey);
+  });
+  if (originals.length !== 1) throw new Error('Khóa giao dịch nguồn không duy nhất.');
+  markMonthsDirty_([located.monthKey, destMonth]);
+  touched.push(located.monthKey, destMonth);
+  try {
+    appendRowsToMonthLog(logSheet, [[
     data.ngay_gd,
     data.phan_loai,
     data.so_tien,
@@ -339,13 +417,35 @@ function updateRowByUniqueKey(uniqueKey, data) {
     data.status || ""
   ]]);
 
-  const subMap = {};
-  subMap[String(uniqueKey)] = true;
-  deleteKeysInLogSheet_(located.sheet, subMap);
-  SpreadsheetApp.flush();
-  touched.push(located.monthKey, destMonth);
-  try { notifyLogMonthsChanged_(touched); } catch (eN) {}
-  return true;
+    // Đích phải ghi thành công trước khi xóa nguồn.
+    SpreadsheetApp.flush();
+    if (!findRowInLogSheet_(logSheet, uniqueKey)) throw new Error('Chưa ghi được giao dịch đích.');
+    const subMap = Object.create(null);
+    subMap[String(uniqueKey)] = true;
+    if (deleteKeysInLogSheet_(located.sheet, subMap) !== 1) {
+      throw new Error('Không xóa được đúng một giao dịch nguồn.');
+    }
+    SpreadsheetApp.flush();
+    return true;
+  } catch (moveError) {
+    try {
+      // Khôi phục nguồn trước; tuyệt đối không xóa bản đích nếu nguồn chưa an toàn.
+      if (!findRowInLogSheet_(located.sheet, uniqueKey)) {
+        appendRowsToMonthLog(located.sheet, originals);
+      }
+      SpreadsheetApp.flush();
+      if (!findRowInLogSheet_(located.sheet, uniqueKey)) throw new Error('Nguồn chưa được khôi phục.');
+      const rollbackKeys = Object.create(null);
+      rollbackKeys[String(uniqueKey)] = true;
+      deleteKeysInLogSheet_(logSheet, rollbackKeys);
+      SpreadsheetApp.flush();
+    } catch (rollbackError) {
+      throw new Error('Chuyển tháng lỗi và khôi phục chưa hoàn tất; cần đối soát khóa ' +
+        uniqueKey + ' tại ' + located.monthKey + ' / ' + destMonth + ': ' +
+        moveError.message + '; khôi phục: ' + rollbackError.message);
+    }
+    throw moveError;
+  }
 }
 
 /** Tìm sheet Log đang chứa uniqueKey */
@@ -401,11 +501,35 @@ function updateInLogSheet_(sh, uniqueKey, data) {
 /** Xóa nhiều dòng theo danh sách Unique Keys */
 function deleteRowsByUniqueKeys(keys) {
   if (!keys || !keys.length) return 0;
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  const touchedMonths = {};
+  try {
+    return deleteRowsByUniqueKeysLocked_(keys, touchedMonths);
+  } finally {
+    try { SpreadsheetApp.flush(); } catch (flushError) {
+      logQuiet_('Log mutation final flush', flushError);
+    } finally { lock.releaseLock(); }
+    const months = Object.keys(touchedMonths);
+    if (months.length) {
+      try { notifyLogMonthsChanged_(months); } catch (eN) {
+        logQuiet_('deleteRowsByUniqueKeys notify', eN);
+      }
+    }
+  }
+}
+
+/** Chỉ gọi khi đang giữ ScriptLock. */
+function deleteRowsByUniqueKeysLocked_(keys, touchedMonths) {
   const ss = getSpreadsheet_();
-  const keyMap = {};
+  const keyMap = Object.create(null);
   keys.forEach(k => { keyMap[String(k)] = true; });
   let totalDeleted = 0;
-  const touchedMonths = {};
+  const beforeDelete = function (sh) {
+    const month = sh.getName().replace(/^Log_/, '');
+    markMonthsDirty_([month]);
+    touchedMonths[month] = true;
+  };
 
   const monthGroups = {};
   keys.forEach(k => {
@@ -424,7 +548,7 @@ function deleteRowsByUniqueKeys(keys) {
     if (!sh) continue;
     scannedSheets.add(sName);
     const beforeDel = totalDeleted;
-    totalDeleted += deleteKeysInLogSheet_(sh, keyMap);
+    totalDeleted += deleteKeysInLogSheet_(sh, keyMap, beforeDelete);
     if (totalDeleted > beforeDel) touchedMonths[targetMonths[m]] = true;
   }
 
@@ -437,7 +561,7 @@ function deleteRowsByUniqueKeys(keys) {
       if (!name.startsWith('Log_') || name === 'Log_Chuyen') return;
       if (scannedSheets.has(name)) return;
       const beforeDel = totalDeleted;
-      totalDeleted += deleteKeysInLogSheet_(sh, keyMap);
+      totalDeleted += deleteKeysInLogSheet_(sh, keyMap, beforeDelete);
       if (totalDeleted > beforeDel) {
         touchedMonths[name.replace(/^Log_/, '')] = true;
       }
@@ -445,15 +569,11 @@ function deleteRowsByUniqueKeys(keys) {
   }
 
   SpreadsheetApp.flush();
-  const months = Object.keys(touchedMonths);
-  if (months.length) {
-    try { notifyLogMonthsChanged_(months); } catch (eN) {}
-  }
   return totalDeleted;
 }
 
 /** Helper xóa các dòng khớp keyMap trong 1 Sheet Log; gỡ key đã xóa khỏi map */
-function deleteKeysInLogSheet_(sh, keyMap) {
+function deleteKeysInLogSheet_(sh, keyMap, beforeDelete) {
   const lastRow = sh.getLastRow();
   if (lastRow < 3) return 0;
 
@@ -469,6 +589,7 @@ function deleteKeysInLogSheet_(sh, keyMap) {
   }
 
   if (rowsToDelete.length > 0) {
+    if (beforeDelete) beforeDelete(sh);
     rowsToDelete.sort((a, b) => b - a);
     rowsToDelete.forEach(r => sh.deleteRow(r));
     foundKeys.forEach(k => { delete keyMap[k]; });
@@ -476,14 +597,21 @@ function deleteKeysInLogSheet_(sh, keyMap) {
   return rowsToDelete.length;
 }
 
-/** Tự động bảo vệ ô B1 trên Log tháng */
+/** Tự động bảo vệ ô B1 trên Log tháng — idempotent (không tạo Protection trùng). */
 function protectMonthLogB1_(sheet) {
   try {
+    const existing = sheet.getProtections(SpreadsheetApp.ProtectionType.RANGE);
+    for (let i = 0; i < existing.length; i++) {
+      const r = existing[i].getRange();
+      if (r && r.getA1Notation() === 'B1') return;
+    }
     const p = sheet.getRange('B1').protect();
     p.setDescription('Khóa tháng dữ liệu');
     p.removeEditors(p.getEditors());
     if (p.canDomainEdit()) p.setDomainEdit(false);
-  } catch (e) {}
+  } catch (e) {
+    logQuiet_('protectMonthLogB1_', e);
+  }
 }
 
 function guardAllMonthLogB1_() {
@@ -564,6 +692,7 @@ function rebuildMucLuc() {
     { gid: GID.TEMPLATE_LOG, name: 'Template_Log', desc: 'Mẫu sổ Log tháng' },
     { gid: GID.TEMPLATE_REPORT, name: 'Template_Report', desc: 'Mẫu báo cáo tháng' },
     { gid: getDynamicGid_('log_chuyen_gid'), name: SHEET_NAMES.LOG_CHUYEN, desc: 'Nhật ký chuyển dòng' },
+    { gid: getDynamicGid_('loi_van_hanh_gid'), name: SHEET_NAMES.LOI_VAN_HANH, desc: 'Lỗi quét/sync' },
     { gid: getDynamicGid_('view_log_gid'), name: SHEET_NAMES.VIEW_LOG, desc: 'View Log (đọc)' },
     { gid: getDynamicGid_('view_report_gid'), name: SHEET_NAMES.VIEW_REPORT, desc: 'View Report (đọc)' }
   ];
@@ -626,13 +755,8 @@ function onOpen() {
 
   // --- Submenu Quét (không sidebar) ---
   const scanNoSidebar = ui.createMenu('📧 Quét (không cần sidebar)')
-    .addItem('📧 Quét Mail thủ công', 'triggerScanMailUI');
-  if (META_BILLING_ENABLED) {
-    scanNoSidebar
-      .addItem('💳 Quét Meta Billing (file tạm)', 'triggerSyncMetaBillingUI')
-      .addItem('💳 Sync Meta thiếu mail → Log', 'triggerWriteMetaBillingToLogUI')
-      .addItem('🔄 Meta Billing — sync lại toàn bộ', 'triggerSyncMetaBillingFullUI');
-  }
+    .addItem('📧 Quét Mail thủ công', 'triggerScanMailUI')
+    .addItem('💳 Đẩy Ads_Billing_Sync → Log', 'triggerFlushAdsBillingQueueUI');
 
   // --- Submenu Nâng cao (gom hết phần ít dùng) ---
   const advMenu = ui.createMenu('🔧 Nâng cao')
@@ -695,15 +819,16 @@ function onOpen() {
   try { showViewSidebar(); } catch (eBar) {
     Logger.log('showViewSidebar: ' + (eBar && eBar.message ? eBar.message : eBar));
   }
-  try { enforceMetaBillingOff_(); } catch (eOff) {
-    Logger.log('enforceMetaBillingOff_: ' + (eOff && eOff.message ? eOff.message : eOff));
-  }
+  try {
+    opsDeleteTriggersByHandler_('runScheduledMetaBillingSync');
+    PROP.setProperty('META_BILLING_TRIGGER_ON', '0');
+  } catch (eOff) {}
 }
 
 function showConfigDialog() {
   const tpl = HtmlService.createTemplateFromFile('configui');
   tpl.token = getConfigToken();
-  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(620).setHeight(920), '⚙️ Cấu hình Sổ Thu Chi AI v2');
+  SpreadsheetApp.getUi().showModalDialog(tpl.evaluate().setWidth(620).setHeight(640), '⚙️ Cấu hình Sổ Thu Chi AI v2');
 }
 
 function guardAllMonthLogB1UI() {
@@ -718,30 +843,62 @@ function onEdit(e) {
   const name = sheet.getName();
   if (!name.startsWith('Log_') || name === 'Log_Chuyen') return;
 
-  const row = e.range.getRow();
-  const col = e.range.getColumn();
-  if (row < 3) return;
+  const startRow = e.range.getRow();
+  const startCol = e.range.getColumn();
+  const numRows = e.range.getNumRows();
+  const numCols = e.range.getNumColumns();
+  if (startRow < 3) return;
 
-  // Sửa Số tiền (cột 3) hoặc Phân loại (cột 2)
-  if (col === MONTH_LOG_COL.SO_TIEN + 1 || col === MONTH_LOG_COL.PHAN_LOAI + 1) {
-    const phanLoai = sheet.getRange(row, MONTH_LOG_COL.PHAN_LOAI + 1).getValue();
-    const tienRange = sheet.getRange(row, MONTH_LOG_COL.SO_TIEN + 1);
-    const val = Number(tienRange.getValue());
-    if (!isNaN(val) && val !== 0) {
-      if (phanLoai === 'Chi' && val > 0) tienRange.setValue(-val);
-      else if (phanLoai === 'Thu' && val < 0) tienRange.setValue(Math.abs(val));
+  const endRow = startRow + numRows - 1;
+  const endCol = startCol + numCols - 1;
+  const dataStart = Math.max(startRow, 3);
+  const nRows = endRow - dataStart + 1;
+  if (nRows < 1) return;
+
+  const colPhan = MONTH_LOG_COL.PHAN_LOAI + 1;
+  const colTien = MONTH_LOG_COL.SO_TIEN + 1;
+  const colKey = MONTH_LOG_COL.UNIQUE_KEY + 1;
+  const colNgay = MONTH_LOG_COL.NGAY + 1;
+
+  // Auto ± tiền theo Thu/Chi (kể cả paste nhiều dòng)
+  if (startCol <= colTien && endCol >= colPhan) {
+    for (let r = dataStart; r <= endRow; r++) {
+      const phanLoai = sheet.getRange(r, colPhan).getValue();
+      const tienRange = sheet.getRange(r, colTien);
+      const val = Number(tienRange.getValue());
+      if (!isNaN(val) && val !== 0) {
+        if (phanLoai === 'Chi' && val > 0) tienRange.setValue(-val);
+        else if (phanLoai === 'Thu' && val < 0) tienRange.setValue(Math.abs(val));
+      }
+    }
+  }
+
+  // Gõ tay / paste: thiếu UNIQUE_KEY → cấp MAN_…
+  if (startCol <= 9 && endCol >= 1) {
+    const values = sheet.getRange(dataStart, 1, nRows, 9).getValues();
+    for (let i = 0; i < values.length; i++) {
+      const rowVals = values[i];
+      const key = String(rowVals[MONTH_LOG_COL.UNIQUE_KEY] || '').trim();
+      if (key) continue;
+      if (!hasOtherDataInMonthRow_(rowVals)) continue;
+      sheet.getRange(dataStart + i, colKey).setValue(generateManualUniqueKey_());
     }
   }
 
   // P1: sửa data Log → dirty (trigger / menu nấu lại; không rebuild trong simple trigger)
-  if (col >= 1 && col <= 9) {
+  if (startCol <= 9 && endCol >= 1) {
     const m = name.match(/^Log_(\d{2}_\d{4})$/);
     if (m) {
       const dirtyKeys = [m[1]];
-      if (col === MONTH_LOG_COL.NGAY + 1) {
+      if (startCol <= colNgay && endCol >= colNgay) {
         try {
-          const newKey = getMonthKeyFromDate(sheet.getRange(row, 1).getValue());
-          if (newKey && newKey !== m[1]) dirtyKeys.push(newKey);
+          const dates = sheet.getRange(dataStart, colNgay, nRows, 1).getValues();
+          for (let i = 0; i < dates.length; i++) {
+            const newKey = getMonthKeyFromDate(dates[i][0]);
+            if (newKey && newKey !== m[1] && dirtyKeys.indexOf(newKey) < 0) {
+              dirtyKeys.push(newKey);
+            }
+          }
         } catch (eDate) {}
       }
       try { markMonthsDirty_(dirtyKeys); } catch (eDirty) {}

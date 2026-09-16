@@ -36,13 +36,12 @@ function triggerScanMailUI() {
 /**
  * Trigger tự động quét mail (menu Set Trigger → Lịch tự động).
  * Theo cấu hình: mỗi N giờ hoặc mỗi ngày 1 lần — cùng scanMail thủ công.
- * Kèm switch: nấu báo cáo ngay sau khi quét (MAIL_SCAN_REBUILD_AFTER).
+ * Chỉ ghi Log + dirty; báo cáo do trigger báo cáo / menu / /report.
  */
 function runScheduledScanMail() {
   Logger.log('runScheduledScanMail: start');
   try {
-    const rebuildAfter = PROP.getProperty(MAIL_SCAN_REBUILD_AFTER_PROP_) === '1';
-    const raw = scanMail(null, null, { rebuildAfter: rebuildAfter });
+    const raw = scanMail(null);
     Logger.log('runScheduledScanMail: ' + String(raw || '').slice(0, 400));
     return raw;
   } catch (e) {
@@ -55,16 +54,15 @@ function runScheduledScanMail() {
  * Quét mail theo Rule tab 'Quet Mail'. Chỉ ghi Log tháng + dirty; không khớp Meta.
  * @param {string|number|null} chatId Telegram; null = menu / sidebar
  * @param {string=} mailboxId null/omit = mọi hộp đang bật (ưu tiên); 'gmail-default' | 'hotmail-1' = quét lẻ
- * @param {{rebuildAfter?: boolean}=} opts.rebuildAfter — true = nấu báo cáo ngay sau khi ghi Log (trigger tự động dùng)
+ * @param {*=} _opts giữ tương thích caller cũ (bỏ qua)
  */
-function scanMail(chatId, mailboxId, opts) {
+function scanMail(chatId, mailboxId, _opts) {
   const loaded = loadQuetMailScanRules_();
   if (loaded.error) {
     if (chatId) sendMessage(chatId, loaded.error);
     return loaded.error;
   }
   const rules = loaded.rules;
-  const rebuildAfter = !!(opts && opts.rebuildAfter);
 
   const dateFilter = buildGmailDateFilter_();
   const boxes = resolveMailboxesForScan_(mailboxId);
@@ -85,44 +83,47 @@ function scanMail(chatId, mailboxId, opts) {
   };
   const boxLines = [];
   let boxErrors = 0;
+  let liveData = null;
 
+  // Mỗi hộp: quét xong → ghi Log ngay (lô ≤ MAIL_SCAN_FLUSH_BATCH_).
+  // Dedup: Log đã ghi ∪ batch hộp trước (monthKeyCache dùng chung).
   for (let b = 0; b < boxes.length; b++) {
     const box = boxes[b];
     const before = ctx.count;
+    ctx.batchData = [];
     try {
       if (box.type === 'gmail') scanGmailBox_(rules, dateFilter, ctx);
       else if (box.type === 'hotmail') scanHotmailBox_(box, rules, dateFilter, ctx);
-      boxLines.push('• ' + box.label + ': +' + (ctx.count - before) + ' GD');
     } catch (e) {
       boxErrors++;
-      const err = (e && e.message) ? e.message : String(e);
-      Logger.log('scanMail [' + box.id + ']: ' + err);
-      boxLines.push('• ⚠️ ' + box.label + ': ' + err);
+      logOpsError_('MAIL_' + Date.now(), box.id, 'Đọc/đăng nhập',
+        'Không đọc hết hộp thư; kiểm tra quyền truy cập và kết nối.',
+        'Ghi phần đã lấy được, tiếp tục hộp sau', 0);
+      boxLines.push('• ' + box.label + ': đọc lỗi, chỉ lưu phần đã lấy được.');
     }
-  }
 
-  if (ctx.batchData.length > 0) {
-    const liveData = getLiveData();
-    for (let i = 0; i < ctx.batchData.length; i++) {
-      ctx.batchData[i].data = normalizeTransactionForSheetWrite(ctx.batchData[i].data, liveData);
-    }
-    const saveRes = saveBatchToMonthShards(ctx.batchData, { skipRebuild: true });
-    if (saveRes !== true) {
-      const err = `❌ <b>Lỗi khi ghi dữ liệu:</b> ${saveRes}`;
+    try {
+      if (ctx.batchData.length > 0) {
+        if (!liveData) liveData = getLiveData();
+        for (let i = 0; i < ctx.batchData.length; i++) {
+          ctx.batchData[i].data = normalizeTransactionForSheetWrite(ctx.batchData[i].data, liveData);
+        }
+        const flushRes = flushMailBatchToLog_(ctx.batchData);
+        if (flushRes !== true) {
+          const err = `❌ <b>Lỗi khi ghi dữ liệu</b> [${box.label}]: ${flushRes}`;
+          logOpsError_('MAIL_' + Date.now(), box.id, 'Ghi Log',
+            'Lô ghi thất bại; các lô trước được giữ nguyên.', 'Dừng, lần sau quét lại từ hộp 1', 0);
+          if (chatId) sendMessage(chatId, err);
+          return err;
+        }
+      }
+      boxLines.push('• ' + box.label + ': +' + (ctx.count - before) + ' GD');
+    } catch (e) {
+      logOpsError_('MAIL_' + Date.now(), box.id, 'Chuẩn hóa/ghi Log',
+        'Không hoàn tất ghi dữ liệu.', 'Dừng, lần sau quét lại từ hộp 1', 0);
+      const err = 'Không hoàn tất ghi Log. Xem Loi_Van_Hanh; chạy lại để bù phần thiếu.';
       if (chatId) sendMessage(chatId, err);
       return err;
-    }
-    // Switch "nấu báo cáo ngay sau quét": rebuild các tháng vừa ghi (tháng dirty).
-    if (rebuildAfter) {
-      const monthKeys = [];
-      for (let i = 0; i < ctx.batchData.length; i++) {
-        const mk = getMonthKeyFromDate(ctx.batchData[i].data && ctx.batchData[i].data.ngay_gd);
-        if (mk && monthKeys.indexOf(mk) === -1) monthKeys.push(mk);
-      }
-      if (monthKeys.length) {
-        const res = rebuildMonthsNow_(monthKeys);
-        Logger.log('scanMail rebuildAfter: rebuilt=' + res.rebuilt.join(',') + ' err=' + res.errors.join(';'));
-      }
     }
   }
 
@@ -134,9 +135,7 @@ function scanMail(chatId, mailboxId, opts) {
   } else if (ctx.count > 0 || ctx.logMsgs.length > 0) {
     finalStr = '✅ <b>QUÉT XONG! Thêm ' + ctx.count + ' GD từ Mail vào Log</b> (' + dateFilter.label + ')'
       + aiNote + ':' + boxBlock + '\n' + ctx.logMsgs.join('\n')
-      + (rebuildAfter
-        ? '\n✔ Báo cáo đã nấu lại các tháng mới ghi.'
-        : '\n⚠ Báo cáo chưa nấu — menu Làm mới / lịch báo cáo.');
+      + '\n⚠ Báo cáo chưa nấu — /report · menu Làm mới · lịch báo cáo.';
   } else {
     finalStr = '✅ <b>QUÉT XONG!</b> Không có hóa đơn mới nào khớp Keyword trong '
       + dateFilter.label + '.' + aiNote + boxBlock;
@@ -144,6 +143,31 @@ function scanMail(chatId, mailboxId, opts) {
 
   if (chatId) sendMessage(chatId, finalStr);
   return finalStr;
+}
+
+/**
+ * Ghi batch mail vào Log theo lô ≤ MAIL_SCAN_FLUSH_BATCH_ (mặc định 10).
+ * @param {Array<{data:Object, uniqueKey:string}>} batchData
+ * @return {true|string} true hoặc chuỗi lỗi
+ */
+function flushMailBatchToLog_(batchData) {
+  if (!batchData || !batchData.length) return true;
+  const size = Number(MAIL_SCAN_FLUSH_BATCH_) || 10;
+  const groups = {};
+  batchData.forEach(function (item) {
+    const month = getMonthKeyFromDate(item.data.ngay_gd);
+    if (!groups[month]) groups[month] = [];
+    groups[month].push(item);
+  });
+  const months = Object.keys(groups);
+  for (let m = 0; m < months.length; m++) {
+    const rows = groups[months[m]];
+    for (let i = 0; i < rows.length; i += size) {
+      const saveRes = saveBatchToMonthShards(rows.slice(i, i + size));
+      if (saveRes !== true) return saveRes;
+    }
+  }
+  return true;
 }
 
 /** Rule Quet Mail hàng 2+: A keyword · B ghi chú · C ví · D đối tượng · E DM con */
@@ -234,15 +258,33 @@ function findFirstMatchingMailRule_(fullText, rules) {
 }
 
 /**
- * Bóc tách + UNIQUE_KEY vs Log tháng. Hộp trước / lần quét trước thắng.
+ * Bóc tách + UNIQUE_KEY vs Log tháng ∪ batch hộp đã xử lý trong lần quét.
+ * Nhiều hộp: quét xong hộp → ghi Log ngay; hộp n chỉ nhận key chưa có trên Log
+ * và chưa nhận từ hộp 1…n−1 (monthKeyCache dùng chung; priority thấp hơn thắng).
+ * Key chuẩn Ads: ID giao dịch Facebook — xem Structure.md §4.3.
  * @param {{subject:string, body:string, date:Date, source:string}} item
  * @param {{keyword:string, defaultNote:string, wallet:string, user:string, subCat:string}} rule
  */
+function extractMailTransactionDate_(text) {
+  const match = String(text || '').match(/(?:Ngày giao dịch|Ngày thanh toán|Transaction date|Payment date|Ngày|Date)\s*[:：]?\s*(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/i)
+    || String(text || '').match(/(?:Ngày giao dịch|Ngày thanh toán|Ngày)\s*[:：]?\s*(\d{1,2})\s+tháng\s+(\d{1,2})\s*,?\s*(\d{4})/i);
+  if (!match) return null;
+  const day = Number(match[1]), month = Number(match[2]), year = Number(match[3]);
+  const d = new Date(year, month - 1, day, 12);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  return d;
+}
+
 function ingestMailItem_(item, rule, ctx) {
   const subject = item.subject || '';
   const fullText = subject + '\n' + (item.body || '');
-  let dateObj = item.date instanceof Date ? item.date : new Date(item.date);
-  if (isNaN(dateObj.getTime())) dateObj = new Date();
+  const dateObj = extractMailTransactionDate_(fullText);
+  if (!dateObj) {
+    logOpsError_('MAIL_' + Date.now(), item.source, 'Ngày giao dịch',
+      'Không đọc được ngày giao dịch hợp lệ trong nội dung mail.',
+      'Bỏ qua; kiểm tra định dạng ngày rồi quét lại', 0);
+    return;
+  }
 
   const amountMatch = fullText.match(/(\d{1,3}(?:[.,]\d{3})*)\s*(?:VND|VNĐ|đ|₫)/i);
   let amount = null;
@@ -265,16 +307,16 @@ function ingestMailItem_(item, rule, ctx) {
       amount = extracted.so_tien;
       uniqueKey = extractMetaTransactionId_(fullText) || extracted.ma_giao_dich;
       if (extracted.phuong_thuc) paymentMethod = extracted.phuong_thuc;
-      if (extracted.ngay_gd && /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(extracted.ngay_gd)) {
-        const p = extracted.ngay_gd.split('/');
-        dateObj = new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
-      }
+      // Ngày đã được kiểm tra từ nội dung; không thay bằng ngày AI suy đoán.
       fromAi = true;
     }
   }
 
   if (!amount || amount <= 0 || !uniqueKey) return;
   uniqueKey = String(uniqueKey).trim();
+
+  // Chỉ ghi hóa đơn / mail có PTTT thẻ (Visa, Mastercard…)
+  if (!isCardPayMethod_(paymentMethod)) return;
 
   const dateStr = Utilities.formatDate(dateObj, 'GMT+7', 'dd/MM/yyyy');
   const monthKey = getMonthKeyFromDate(dateObj);
@@ -557,25 +599,33 @@ function extractBankReference_(text) {
 }
 
 /**
- * Trích xuất Phương thức thanh toán từ nội dung mail (Visa, Mastercard, Momo...)
+ * PTTT thẻ = tiền tố Visa / Mastercard (sau khi chuẩn hoá).
+ * VD: "Mastercard ···· 6993", "Visa ···· 9851".
+ */
+function isCardPayMethod_(raw) {
+  let s = String(raw == null ? '' : raw).replace(/[\u00a0]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!s) return false;
+  s = s.replace(/^CSV\s*[·•.\-–]\s*/i, '');
+  return /^(visa|master\s*card|mastercard)\b/i.test(s);
+}
+
+/**
+ * Trích xuất Phương thức thanh toán từ nội dung mail (Visa, Mastercard…)
  * @param {string} text Toàn bộ nội dung mail
  * @return {string|null}
  */
 function extractPaymentMethodFromMail_(text) {
   if (!text) return null;
 
-  // Tìm cụm "Phương thức thanh toán:" hoặc "Payment method:"
   const paymentMatch = text.match(/(?:Phương thức thanh toán|Payment method|Hình thức thanh toán)[\s\n:]*([^\n\r]+)/i);
   if (paymentMatch && paymentMatch[1]) {
     let raw = paymentMatch[1].trim();
-    // Cắt bỏ phần mã tham chiếu hoặc ký tự thừa nếu dính cùng dòng
     raw = raw.replace(/\s*(?:Số tham chiếu|Mã tham chiếu|Mã số tham chiếu|Tham chiếu|ID giao dịch|Mã giao dịch|Reference).*$/i, '').trim();
     raw = raw.replace(/[.,;]+$/, '').trim();
     if (raw) return raw;
   }
 
-  // Bắt nhanh các loại thẻ nếu có định dạng "Visa · 1234" hoặc "Mastercard **** 5678"
-  const cardMatch = text.match(/\b(Visa|MasterCard|JCB|American Express|MoMo|ShopeePay|ZaloPay)[\s·*•-]*(\d{4})?\b/i);
+  const cardMatch = text.match(/\b(Visa|Master\s*Card|Mastercard|JCB|American\s*Express|Amex)[\s·*•\-–]*(\d{4})?\b/i);
   if (cardMatch) {
     return cardMatch[0].trim();
   }

@@ -18,19 +18,19 @@ function doPost(e) {
   }
   if (!contents || typeof contents !== 'object') return;
 
-  // Chống trùng lặp Webhook: khóa ngắn lúc nhận, kéo TTL sau khi xử lý xong
+  // Chống trùng lặp Webhook: TTL BUSY đủ dài cho AI+ghi (retry Telegram không tạo lô mới)
   const updateId = contents.update_id;
   const lockKey = updateId ? "LOCK_" + updateId : null;
   if (lockKey) {
     if (CacheService.getScriptCache().get(lockKey)) return;
-    CacheService.getScriptCache().put(lockKey, "BUSY", 30);
+    CacheService.getScriptCache().put(lockKey, "BUSY", WEBHOOK_LOCK_BUSY_TTL);
   }
 
   try {
     handleTelegramUpdate_(contents);
   } finally {
     if (lockKey) {
-      CacheService.getScriptCache().put(lockKey, "DONE", 300);
+      CacheService.getScriptCache().put(lockKey, "DONE", WEBHOOK_LOCK_DONE_TTL);
     }
   }
 }
@@ -99,16 +99,6 @@ function handleTelegramUpdate_(contents) {
       deleteMessage(chatId, loadId);
       return;
     }
-    if (text === '/metabilling' || text.indexOf('/metabilling') === 0) {
-      if (!META_BILLING_ENABLED) {
-        sendMessage(chatId, 'ℹ️ Meta Billing API đang tắt. Dùng /scan hoặc upload Invoice CSV trên sidebar.');
-        return;
-      }
-      const loadId = sendMessage(chatId, "⏳ Đang quét Meta Billing (file tạm)...");
-      syncMetaBilling(chatId);
-      deleteMessage(chatId, loadId);
-      return;
-    }
   }
 
   // Reply Keyboard cũ (Tháng này / 3 tháng) còn dính trên mobile
@@ -162,11 +152,10 @@ function helpMessageHtml_() {
     "• Gửi text / ảnh bill / voice để ghi sổ.\n" +
     "• <code>/report</code> — báo cáo hôm nay (+ nút Tháng này / 3 tháng).\n" +
     "• <code>/scan</code> — quét mail (Gmail/Hotmail đang bật).\n" +
-    (META_BILLING_ENABLED
-      ? "• <code>/metabilling</code> — quét Meta vào file tạm (đối soát mail, chưa ghi Log).\n"
-      : "") +
+    "• Invoice Ads: upload CSV / Drive trên sidebar.\n" +
     "• <code>/help</code> — hiện hướng dẫn này.\n\n" +
     "<b>Sửa</b> — bấm ✏️ → chọn field (Số tiền / Ví / DM / …) hoặc ⚡ sửa nhanh.\n" +
+    "• <b>Chốt</b> — khóa Sửa / Hoàn tác ngay (không đợi 24h). Sai sau đó thì sửa trên Sheet.\n" +
     "• Reply tin GD: <code>ví MB</code> · <code>50k</code> · <code>dm Cafe</code> · <code>hủy</code>\n" +
     "• Lô nhiều dòng: <code>#2 ví MB</code>";
 }
@@ -206,6 +195,10 @@ function processAiTransactions(chatId, sourceText, giaoDichList, liveData) {
 }
 
 function refreshCommittedMessage_(chatId, draft, messageId) {
+  if (draft && isTxLocked_(draft.txId)) {
+    showLockedCommit_(chatId, messageId, draft.txId, draft);
+    return;
+  }
   const text = buildTxMessage(draft, "committed");
   const kb = committedKeyboard(draft.txId);
   let mid = messageId;
@@ -248,15 +241,110 @@ function commitDraft(chatId, draft, messageId) {
 }
 
 function undoCommitted(chatId, messageId, txId) {
+  if (isTxLocked_(txId)) {
+    showLockedCommit_(chatId, messageId, txId);
+    return;
+  }
+  // Cache tối đa 6h; sau đó vẫn undo trong 24h bằng cách nạp lại key từ Log tháng.
+  let keys = null;
   const undo = getJsonCache("UNDO_" + txId);
-  if (!undo || !undo.keys) {
+  if (undo && undo.keys && undo.keys.length) {
+    keys = undo.keys;
+  } else {
+    const draft = loadDraftFromSheet(txId);
+    if (draft && draft.items && draft.items.length) {
+      keys = draft.items.map(function (it) { return it.uniqueKey; });
+    }
+  }
+  if (!keys || !keys.length) {
     editMessage(chatId, messageId, "⌛ Hết hạn hoàn tác (24h) hoặc không tìm thấy lô.");
     return;
   }
-  const removed = deleteRowsByUniqueKeys(undo.keys);
+  const removed = deleteRowsByUniqueKeys(keys);
   CacheService.getScriptCache().remove("UNDO_" + txId);
   CacheService.getScriptCache().remove("DRAFT_" + txId);
   editMessage(chatId, messageId, `↩️ Đã hoàn tác lô <code>${txId}</code> (${removed} dòng).`, { inline_keyboard: [] });
+}
+
+function lockCommitted(chatId, messageId, txId) {
+  if (!txId) return;
+  const draft = getJsonCache("DRAFT_" + txId) || loadDraftFromSheet(txId);
+  const n = (draft && draft.items) ? draft.items.length : 1;
+  persistLockedTx_(txId);
+  clearTelegramTxCaches_(txId, chatId, n);
+  unscheduleClearCommittedKeyboard(chatId, messageId);
+  showLockedCommit_(chatId, messageId, txId, draft);
+}
+
+function lockedCommitFooter_() {
+  return "\n🔒 <b>Đã chốt</b> — hết Sửa / Hoàn tác trên Telegram.";
+}
+
+function lockedTxNotice_(txId) {
+  return "🔒 Đã chốt lô <code>" + txId + "</code> — hết Sửa / Hoàn tác trên Telegram. Muốn đổi thì sửa trên Sheet.";
+}
+
+function showLockedCommit_(chatId, messageId, txId, draft) {
+  draft = draft || getJsonCache("DRAFT_" + txId) || loadDraftFromSheet(txId);
+  const text = draft
+    ? (buildTxMessage(draft, "committed") + lockedCommitFooter_())
+    : lockedTxNotice_(txId);
+  const kb = { inline_keyboard: [] };
+  if (messageId) editMessage(chatId, messageId, text, kb);
+  else sendMessage(chatId, text, kb);
+}
+
+function isTxLocked_(txId) {
+  if (!txId) return false;
+  const raw = PROP.getProperty("LOCKED_TXIDS");
+  if (!raw) return false;
+  let list = [];
+  try { list = JSON.parse(raw); if (!Array.isArray(list)) return false; } catch (e) { return false; }
+  const nowSec = Math.floor(Date.now() / 1000);
+  for (let i = 0; i < list.length; i++) {
+    if (list[i] && list[i].id === txId && Number(list[i].t) > nowSec) return true;
+  }
+  return false;
+}
+
+function persistLockedTx_(txId) {
+  if (!txId) return;
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(5000);
+    let list = [];
+    const raw = PROP.getProperty("LOCKED_TXIDS");
+    if (raw) {
+      try { list = JSON.parse(raw); if (!Array.isArray(list)) list = []; } catch (e) { list = []; }
+    }
+    const nowSec = Math.floor(Date.now() / 1000);
+    const id = String(txId);
+    list = list.filter(function (it) {
+      return it && it.id && Number(it.t) > nowSec && it.id !== id;
+    });
+    list.push({ id: id, t: nowSec + UNDO_TTL });
+    if (list.length > 200) list = list.slice(list.length - 200);
+    PROP.setProperty("LOCKED_TXIDS", JSON.stringify(list));
+  } catch (e) {
+  } finally {
+    try { lock.releaseLock(); } catch (e2) {}
+  }
+}
+
+function clearTelegramTxCaches_(txId, chatId, itemCount) {
+  const cache = CacheService.getScriptCache();
+  const n = Math.max(1, Number(itemCount) || 1);
+  cache.remove("UNDO_" + txId);
+  cache.remove("DRAFT_" + txId);
+  if (chatId) cache.remove("AWAIT_" + chatId);
+  for (let i = 0; i < n; i++) {
+    cache.remove("EDITSESS_" + txId + "_" + i);
+    cache.remove("PENDCUSTOM_" + txId + "_" + i);
+    cache.remove("OPTS_" + txId + "_" + i + "_vi");
+    cache.remove("OPTS_" + txId + "_" + i + "_dm");
+    cache.remove("OPTS_" + txId + "_" + i + "_dt");
+    cache.remove("OPTS_" + txId + "_" + i + "_pl");
+  }
 }
 
 // ==========================================
@@ -274,11 +362,17 @@ function previewKeyboard(txId) {
 }
 
 function committedKeyboard(txId) {
+  if (isTxLocked_(txId)) return { inline_keyboard: [] };
   return {
-    inline_keyboard: [[
-      { text: "✏️ Sửa", callback_data: "E:" + txId },
-      { text: "↩️ Hoàn tác", callback_data: "U:" + txId }
-    ]]
+    inline_keyboard: [
+      [
+        { text: "✏️ Sửa", callback_data: "E:" + txId },
+        { text: "↩️ Hoàn tác", callback_data: "U:" + txId }
+      ],
+      [
+        { text: "🔒 Chốt", callback_data: "K:" + txId }
+      ]
+    ]
   };
 }
 
@@ -340,6 +434,17 @@ function handleCallbackQuery(cq) {
 
   if (data === "REPORT_MONTH") { sendMonthReport(chatId); return; }
   if (data === "REPORT_3MONTH") { send3MonthReport(chatId); return; }
+
+  if (op === "K") {
+    lockCommitted(chatId, messageId, txId);
+    return;
+  }
+
+  const lockedBlockOps = { E: 1, U: 1, Q: 1, F: 1, L: 1, N: 1, A: 1, P: 1, S: 1, R: 1 };
+  if (txId && lockedBlockOps[op] && isTxLocked_(txId)) {
+    showLockedCommit_(chatId, messageId, txId);
+    return;
+  }
 
   if (op === "C") {
     const draft = getJsonCache("DRAFT_" + txId);
@@ -436,7 +541,8 @@ function handleCallbackQuery(cq) {
   if (op === "R") {
     const idx = parseInt(parts[2], 10);
     CacheService.getScriptCache().remove(editSessKey(txId, idx));
-    const draft = getJsonCache("DRAFT_" + txId) || loadDraftFromSheet(txId);
+    // Ưu tiên Sheet khi tải lại — tránh DRAFT_ cache cũ che dữ liệu đã sửa tay.
+    const draft = loadDraftFromSheet(txId) || getJsonCache("DRAFT_" + txId);
     if (draft) putJsonCache("DRAFT_" + txId, draft, draft.committed ? UNDO_TTL : DRAFT_TTL);
     openEditSession(txId, idx);
     showEditMenu(chatId, messageId, txId, idx);
@@ -447,6 +553,10 @@ function handleCallbackQuery(cq) {
     const draft = getJsonCache("DRAFT_" + txId);
     if (!draft) {
       editMessage(chatId, messageId, "⌛ Phiên đã hết hạn.");
+      return;
+    }
+    if (draft.committed && isTxLocked_(txId)) {
+      showLockedCommit_(chatId, messageId, txId, draft);
       return;
     }
     const kb = draft.committed ? committedKeyboard(txId) : previewKeyboard(txId);
@@ -460,6 +570,10 @@ function handleCallbackQuery(cq) {
 // ==========================================
 
 function startEditFlow(chatId, messageId, txId) {
+  if (isTxLocked_(txId)) {
+    showLockedCommit_(chatId, messageId, txId);
+    return;
+  }
   CacheService.getScriptCache().remove("AWAIT_" + chatId);
   let draft = getJsonCache("DRAFT_" + txId);
   if (!draft) {
@@ -751,6 +865,11 @@ function confirmEditSessionSave(chatId, messageId, txId, idx) {
     else sendMessage(chatId, text, kb || null);
   };
 
+  if (isTxLocked_(txId)) {
+    showLockedCommit_(chatId, messageId, txId);
+    return;
+  }
+
   const sess = getEditSession(txId, idx);
   if (!sess) {
     reply("⌛ Phiên sửa hết hạn — không áp dụng mù. Bấm ✏️ Sửa lại.");
@@ -826,16 +945,29 @@ function openEditSession(txId, idx) {
   const draft = getJsonCache("DRAFT_" + txId);
   if (!draft || !draft.items || !draft.items[idx]) return null;
   const item = draft.items[idx];
-  const base = deepCopyTx(item.data);
+
+  // Committed: base + fingerprint phải cùng một lần đọc Sheet (tránh DRAFT_ cache lệch Sheet).
+  let liveData = item.data;
+  let sheetFingerprint = null;
+  if (draft.committed) {
+    const row = getRowByUniqueKey(item.uniqueKey);
+    if (!row) return null;
+    liveData = txDataFromSheetRow_(row);
+    sheetFingerprint = fingerprintFromRow_(row, item.uniqueKey);
+    draft.items[idx].data = deepCopyTx(liveData);
+    putJsonCache("DRAFT_" + txId, draft, UNDO_TTL);
+  }
+
+  const base = deepCopyTx(liveData);
   const sess = {
     txId: txId,
     idx: idx,
     uniqueKey: item.uniqueKey,
     committed: !!draft.committed,
     base: base,
-    draft: deepCopyTx(item.data),
+    draft: deepCopyTx(liveData),
     openedAt: Date.now(),
-    sheetFingerprint: draft.committed ? getSheetFingerprint(item.uniqueKey) : null,
+    sheetFingerprint: sheetFingerprint,
     sourceText: draft.sourceText || ""
   };
   putJsonCache(editSessKey(txId, idx), sess, EDIT_SESS_TTL);
@@ -864,11 +996,26 @@ function applyToEditSession(sess, patch) {
   return sess;
 }
 
-function getSheetFingerprint(uniqueKey) {
-  const row = getRowByUniqueKey(uniqueKey);
+function txDataFromSheetRow_(row) {
+  const status = row.status || "";
+  return {
+    ngay_gd: row.ngay_gd,
+    phan_loai: row.phan_loai,
+    so_tien: row.so_tien,
+    so_tien_abs: row.so_tien_abs !== undefined ? row.so_tien_abs : Math.abs(Number(row.so_tien) || 0),
+    vi: row.vi,
+    doi_tuong: row.doi_tuong,
+    danh_muc_con: row.danh_muc_con,
+    ghi_chu: row.ghi_chu || "",
+    status: status,
+    pass: !String(status).startsWith("CHECK")
+  };
+}
+
+function fingerprintFromRow_(row, uniqueKey) {
   if (!row) return null;
   return [
-    row.uniqueKey || uniqueKey,
+    row.uniqueKey || uniqueKey || "",
     String(row.ngay_gd || ""),
     String(row.phan_loai || ""),
     String(row.so_tien),
@@ -878,6 +1025,11 @@ function getSheetFingerprint(uniqueKey) {
     String(row.ghi_chu || ""),
     String(row.status || "")
   ].join("|");
+}
+
+function getSheetFingerprint(uniqueKey) {
+  const row = getRowByUniqueKey(uniqueKey);
+  return fingerprintFromRow_(row, uniqueKey);
 }
 
 /** Nạp lại draft đã ghi từ các sheet Log_MM_YYYY theo tiền tố TX_… */
@@ -892,7 +1044,8 @@ function loadDraftFromSheet(txId) {
       if (!name.startsWith("Log_") || name === "Log_Chuyen") continue;
       const lastRow = sh.getLastRow();
       if (lastRow < 3) continue;
-      const values = sh.getRange(3, 1, lastRow, 9).getValues();
+      // getRange(row, col, numRows, numCols) — số hàng = lastRow - 2
+      const values = sh.getRange(3, 1, lastRow - 2, 9).getValues();
       for (let i = 0; i < values.length; i++) {
         const key = values[i][MONTH_LOG_COL.UNIQUE_KEY] ? String(values[i][MONTH_LOG_COL.UNIQUE_KEY]) : "";
         if (!key || key.indexOf(txId) !== 0) continue;
@@ -922,6 +1075,7 @@ function loadDraftFromSheet(txId) {
     });
     return { txId: txId, sourceText: "", committed: true, items: items };
   } catch (e) {
+    logQuiet_('loadDraftFromSheet', e);
     return null;
   }
 }
@@ -1116,6 +1270,11 @@ function handleReplyShortcut(chatId, text, replyMsg) {
   const raw = (text || "").toString().trim();
   if (!raw) return false;
 
+  if (isTxLocked_(txId)) {
+    sendMessage(chatId, lockedTxNotice_(txId));
+    return true;
+  }
+
   let idx = 0;
   let cmd = raw;
   const idxMatch = raw.match(/^#(\d+)\s+(.+)$/i);
@@ -1131,15 +1290,24 @@ function handleReplyShortcut(chatId, text, replyMsg) {
       sendMessage(chatId, "🗑 Đã hủy lô <code>" + txId + "</code>.");
       return true;
     }
-    if (draft && draft.committed) {
-      const undo = getJsonCache("UNDO_" + txId);
-      if (undo && undo.keys) {
-        const removed = deleteRowsByUniqueKeys(undo.keys);
-        CacheService.getScriptCache().remove("UNDO_" + txId);
-        CacheService.getScriptCache().remove("DRAFT_" + txId);
-        sendMessage(chatId, "↩️ Đã hoàn tác lô <code>" + txId + "</code> (" + removed + " dòng).");
-        return true;
+    // Đã ghi / hết cache DRAFT_: vẫn thử undo từ UNDO_ hoặc Sheet (24h)
+    let keys = null;
+    const undo = getJsonCache("UNDO_" + txId);
+    if (undo && undo.keys && undo.keys.length) keys = undo.keys;
+    if (!keys) {
+      const fromSheet = loadDraftFromSheet(txId);
+      if (fromSheet && fromSheet.items && fromSheet.items.length) {
+        keys = fromSheet.items.map(function (it) { return it.uniqueKey; });
       }
+    }
+    if (keys && keys.length) {
+      const removed = deleteRowsByUniqueKeys(keys);
+      CacheService.getScriptCache().remove("UNDO_" + txId);
+      CacheService.getScriptCache().remove("DRAFT_" + txId);
+      sendMessage(chatId, "↩️ Đã hoàn tác lô <code>" + txId + "</code> (" + removed + " dòng).");
+      return true;
+    }
+    if (draft && draft.committed) {
       sendMessage(chatId, "⌛ Hết hạn hoàn tác cho <code>" + txId + "</code>.");
       return true;
     }
@@ -1361,13 +1529,19 @@ function getTelegramFileBase64(fileId) {
 }
 
 function putJsonCache(key, obj, ttlSec) {
-  CacheService.getScriptCache().put(key, JSON.stringify(obj), ttlSec || 600);
+  // CacheService cứng tối đa CACHE_TTL_MAX (6h); UNDO/EDIT > 6h dựa vào Sheet.
+  const want = Number(ttlSec) || 600;
+  const ttl = Math.min(Math.max(want, 1), CACHE_TTL_MAX);
+  CacheService.getScriptCache().put(key, JSON.stringify(obj), ttl);
 }
 
 function getJsonCache(key) {
   const raw = CacheService.getScriptCache().get(key);
   if (!raw) return null;
-  try { return JSON.parse(raw); } catch (e) { return null; }
+  try { return JSON.parse(raw); } catch (e) {
+    logQuiet_('getJsonCache', e);
+    return null;
+  }
 }
 
 function escapeHtml(str) {
@@ -1406,6 +1580,29 @@ function scheduleClearCommittedKeyboard(chatId, messageId) {
     try { lock.releaseLock(); } catch (e2) {}
   }
   ensureClearKeyboardTrigger();
+}
+
+function unscheduleClearCommittedKeyboard(chatId, messageId) {
+  if (!chatId || !messageId) return;
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(5000);
+    const raw = PROP.getProperty("PENDING_CLEAR_KEYBOARDS");
+    if (!raw) return;
+    let list = [];
+    try { list = JSON.parse(raw); if (!Array.isArray(list)) list = []; } catch (e) { return; }
+    const cId = String(chatId);
+    const mId = messageId;
+    const remaining = list.filter(function (item) {
+      const c = item && (item.c || item.chatId);
+      const m = item && (item.m || item.messageId);
+      return !(String(c) === cId && String(m) === String(mId));
+    });
+    PROP.setProperty("PENDING_CLEAR_KEYBOARDS", JSON.stringify(remaining));
+  } catch (e) {
+  } finally {
+    try { lock.releaseLock(); } catch (e2) {}
+  }
 }
 
 function ensureClearKeyboardTrigger() {

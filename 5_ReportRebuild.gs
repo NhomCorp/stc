@@ -65,17 +65,17 @@ function clearMonthsDirty_(monthKeys) {
 }
 
 /**
- * Sau khi Log đổi: đánh dirty. Rebuild ngay trừ khi opts.skipRebuild.
+ * Sau khi Log đổi: chỉ đánh dirty (+ badge Report).
+ * Không nấu báo cáo — nấu chỉ qua trigger / menu Sheet / Telegram /report.
  * Gọi SAU khi đã nhả LockService ghi Log.
  * @param {string[]} monthKeys
- * @param {{skipRebuild?: boolean}=} opts
+ * @param {*=} _opts giữ tham số cũ (bỏ qua); trước đây có skipRebuild
  */
-function notifyLogMonthsChanged_(monthKeys, opts) {
+function notifyLogMonthsChanged_(monthKeys, _opts) {
   const keys = (monthKeys || []).filter(Boolean);
-  if (!keys.length) return { rebuilt: [], errors: [] };
+  if (!keys.length) return { rebuilt: [], errors: [], skipped: true };
   markMonthsDirty_(keys);
-  if (opts && opts.skipRebuild) return { rebuilt: [], errors: [], skipped: true };
-  return rebuildMonthsNow_(keys);
+  return { rebuilt: [], errors: [], skipped: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +159,7 @@ function getCategoryParentMap_() {
 }
 
 function getCurrentMonthKey_() {
-  return Utilities.formatDate(new Date(), 'GMT+7', 'MM_yyyy');
+  return getMonthKeyFromDate(new Date());
 }
 
 function formatReportTimestamp_(date) {

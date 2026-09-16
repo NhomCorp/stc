@@ -11,11 +11,12 @@ Dự án được phân tách thành các module chuyên biệt:
 ├── 0_Config.gs         # Hằng số, GID, Tọa độ 9 cột, Cấu hình ScriptProperties, Quản lý Token & Menu GAS
 ├── 1_Telegram.gs       # Webhook Telegram (doPost), xử lý Text/Voice/Photo/Callback, Quick Edit, Undo 24h
 ├── 2_GeminiAI.gs       # Gọi Gemini API, trích xuất JSON, chuẩn hóa giao dịch (Alias, Sổ tay, AI Learning)
-├── 3_MailScanner.gs    # Quét Gmail ngân hàng tự động theo Rule/Regex & AI Fallback
+├── 3_MailScanner.gs    # Quét Gmail/Hotmail theo Rule/Regex & AI Fallback (chỉ PTTT thẻ Visa/Mastercard)
 ├── 4_SheetStore.gs     # Quản lý Sheet Shard tháng (Log_MM_YYYY, Report_MM_YYYY), Mục Lục, Dummy Row, CRUD data
 ├── 5_ReportRebuild.gs  # Hybrid báo cáo: dirty-set, rebuild Report tháng, timestamp, trigger dirty, /report
+├── 6_MetaBilling.gs    # Invoice CSV / Drive → Ads_Billing_Sync (hàng đợi) → Log (không còn Meta Graph API)
 ├── 7_MonthView.gs      # View_Log / View_Report, ẩn shard tháng, API sidebar viewui
-├── 8_OpsSidebar.gs     # Sidebar Quét Mail / Meta Billing (opsui.html)
+├── 8_OpsSidebar.gs     # Sidebar Quét Mail / CSV / Drive / Trigger (opsui.html)
 ├── 9_Tools.gs          # Tiện ích tạm: Đồng bộ giao diện, theme, format, viền cho Log & Report tháng từ Template
 ├── configui.html       # Dialog/WebApp: Model AI, API Keys, Chủ TK, Prompt
 ├── viewui.html         # Sidebar View tháng
@@ -29,10 +30,11 @@ Dự án được phân tách thành các module chuyên biệt:
   - Quản lý định danh `GID` cố định của các Sheet hệ thống.
   - Tọa độ chuẩn 9 cột `MONTH_LOG_COL`.
   - Cấu hình Web App qua `doGet`, khởi tạo Token bảo mật, menu tùy chỉnh trên Google Sheets (`Sổ Thu Chi AI`).
+  - TTL: `UNDO_TTL`/`EDIT_SESS_TTL` = 24h (UX); CacheService tối đa 6h — sau đó Undo/Sửa nạp lại từ Log.
 - **`1_Telegram.gs`**:
-  - Điểm tiếp nhận Webhook `doPost` (Lock Cache chống trùng).
+  - Điểm tiếp nhận Webhook `doPost` (Lock Cache chống trùng, BUSY TTL ≥ thời gian AI+ghi).
   - Bảo mật bắt buộc: `webhook_secret` + `admin_id` (text & callback).
-  - Voice / Photo / Text / Callback; Preview → Confirm → sửa theo field (EDITSESS_ + pick list) → Undo 24h.
+  - Voice / Photo / Text / Callback; Preview → Confirm → sửa theo field (EDITSESS_ + pick list) → Undo 24h (cache + fallback Sheet).
   - Lệnh: `/start`, `/help`, `/report` (+ nút Tháng / 3 tháng), `/scan`. Gỡ nút ✏️/↩️ sau 24h.
 - **`2_GeminiAI.gs`**:
   - Xoay vòng API Keys (`getShuffledKeys`).
@@ -40,18 +42,24 @@ Dự án được phân tách thành các module chuyên biệt:
   - `normalizeTransaction`: `matchDict` sổ tay + CHECK `thu_chi` / `vi` / `doi_tuong` / `danh_muc`.
   - `getLiveData`: DV Template_Log + Alias + AI_Learning.
 - **`3_MailScanner.gs`**:
-  - `scanMail`: Tự động tìm kiếm email ngân hàng theo khoảng ngày hoặc số ngày thiết lập.
-  - Bóc tách theo Rule từ tab `Quet Mail` và số tiền qua Regex; fallback sang Gemini AI nếu phức tạp.
+  - `scanMail`: Quét nhiều hộp theo `priority`; **quét xong 1 hộp → ghi Log ngay** (lô ≤ 10).
+  - Bóc tách theo Rule từ tab `Quet Mail` + Regex; fallback Gemini nếu không bắt được số tiền.
+  - Chỉ ghi mail có PTTT thẻ (Visa / Mastercard) — khớp nguồn Ads invoice hiện tại.
+  - Dedup: Log tháng đã có ∪ key đã nhận từ hộp trước trong cùng lần chạy (xem §4.4).
 - **`4_SheetStore.gs`**:
-  - `getOrCreateMonthSheets`: Tự động clone `Template_Log` & `Template_Report` khi sang tháng mới.
+  - `getOrCreateMonthSheets`: Tự động clone `Template_Log` & `Template_Report` khi sang tháng mới (không ẩn shard trên đường ghi).
   - `appendRowsToMonthLog`: Áp dụng quy tắc **Dummy Row** bảo toàn 100% format & validation dropdown.
   - `ensureMonthInMucLuc_`: Tự động cập nhật hyperlink tại tab `Mục Lục`.
   - Quản lý đồng bộ `AI_Learning`, sửa/xóa giao dịch theo `Unique Key`.
+  - `protectMonthLogB1_`: idempotent — không tạo Protected Range trùng mỗi lần mở file.
 - **`5_ReportRebuild.gs`**:
   - Hybrid: `rebuildReportMonth` nấu số tĩnh Report tháng (lọc CHECK + Chưa phân loại).
-  - Dirty-set + trigger 15’ chỉ tháng dirty; timestamp Report!D1 / Bao Cao!F1.
+  - Dirty-set + trigger định kỳ chỉ tháng dirty; timestamp Report!D1 / Bao Cao!F1.
   - `/report` và sau ghi Log: rebuild-before-read / nấu tháng đụng.
   - `ensureMonthLinkedOnBaoCao_`: gắn dòng link tháng mới trên Bao Cao v2.
+- **`6_MetaBilling.gs`**:
+  - Invoice Summary CSV (máy / Drive) → sheet `Ads_Billing_Sync` (STATUS trống | Đã ghi) → flush batch vào Log.
+  - Không còn Meta Graph API / token Facebook.
 - **`9_Tools.gs`**:
   - Tiện ích đồng bộ giao diện chạy tay từ menu / GAS Editor (không chạy tự động trong webhook).
   - `syncAllMonthLogTheme` / `syncOneMonthLogTheme`: Đồng bộ format Log tháng từ `Template_Log`.
@@ -130,7 +138,7 @@ Cột D: Nguồn tiền / Ví (Cash, Bank, Credit, ...)
 Cột E: Đối tượng (Bản thân, Couple, Khách hàng, ...)
 Cột F: Danh mục con (Ăn sáng, Cafe, Xăng xe, ADS, ...)
 Cột G: Ghi chú
-Cột H: Unique Key / Tracking ID (TX_* / MAIL_*)
+Cột H: Unique Key / Tracking ID (xem §4.3)
 Cột I: Trạng thái (`CHECK:reason,…` / rỗng khi OK)
 ```
 *(Bỏ hoàn toàn cột Danh mục cha vật lý trên sheet Log để tối giản dữ liệu; danh mục cha được tra cứu tự động qua bảng Master).*
@@ -140,6 +148,45 @@ Cột I: Trạng thái (`CHECK:reason,…` / rỗng khi OK)
 2. Chèn N dòng mới lên trên Dummy Row: `sheet.insertRowsBefore(dummyRow, N)`.
 3. Copy toàn bộ Format và Data Validation từ dòng Dummy xuống N dòng vừa tạo.
 4. Ghi giá trị vào vùng vừa chèn.
+
+### 4.3 UNIQUE_KEY (cột H) — chuẩn tham chiếu khi debug
+
+> Không có tiền tố `MAIL_*`. Mail/CSV dùng **ID giao dịch Facebook** (hoặc dự phòng bên dưới).
+
+| Nguồn | Dạng UNIQUE_KEY | Ví dụ | Ghi chú |
+| :--- | :--- | :--- | :--- |
+| **Telegram** | `TX_<epochMs>_<stt>` | `TX_1757800000000_0` | 1 tin → nhiều GD: `_0`, `_1`, … |
+| **Nhập tay Sheet** | `MAN_<yyyyMMdd>_<HHmmss>_<rand>` | `MAN_20260914_111400_A9F2K3QZ` | `onEdit` / Làm mới data cấp khi thiếu mã |
+| **Quét mail / Import CSV** | ID giao dịch Facebook (nguyên bản) | `28297833709901021-28325952603755796` | Nguồn chính Ads; mail + CSV dùng chung → chống trùng chéo |
+
+**Mail — thứ tự lấy mã** (`ingestMailItem_`):
+1. ID giao dịch Facebook (`extractMetaTransactionId_`) — ưu tiên.
+2. Số tham chiếu bank / FT (`extractBankReference_`) — nếu không có ID FB.
+3. Ghép `yyyyMMdd_ví_sốtiền` — khi Regex có tiền nhưng không có mã.
+4. AI fallback: ID FB trong body → hoặc `ma_giao_dich` AI → hoặc `AI_<ngày>_<sốtiền>`.
+
+**CSV Invoice**: chỉ nhận dòng có ID dạng FB (`số-số` hoặc dãy số dài) + PTTT thẻ; UNIQUE_KEY = đúng ID đó khi flush Sync → Log.
+
+**Đoán tháng từ key** (`guessMonthKeyFromUniqueKey_`): chỉ hiểu `TX_<timestamp>` và `yyyyMMdd_…`. Các dạng FB / `MAN_` / `AI_` / bank ref → phải quét các sheet `Log_` (vẫn đúng, chậm hơn khi sửa/xóa).
+
+### 4.4 Quét nhiều hộp thư — ghi sau mỗi hộp + dedup UNIQUE_KEY
+
+Một lần `scanMail` (không chỉ định 1 hộp) chạy theo `priority` tăng dần (Gmail thường trước):
+
+```
+Hộp 1 → quét xong → ghi Log ngay (lô ≤ 10 GD)
+Hộp 2 → chỉ nhận key chưa có trên Log ∪ đã ghi từ hộp 1 → ghi Log ngay
+Hộp n → chưa có trên Log ∪ hộp 1…n−1 → ghi Log ngay
+```
+
+Cơ chế:
+- `ctx.monthKeyCache` dùng chung cả lần quét.
+- Lần đầu đụng tháng → `ensureMonthUniqueKeys_` nạp cột H của `Log_MM_YYYY` vào `Set`.
+- Mỗi GD mới: `Set.has(key)` → bỏ; không thì push batch + `Set.add(key)`.
+- **Quét xong 1 hộp** → `flushMailBatchToLog_`: chia lô `MAIL_SCAN_FLUSH_BATCH_` (10) → `saveBatchToMonthShards` từng lô.
+- Hộp sau dựa vào `Set` (đã gồm key vừa ghi) nên không trùng hộp trước; hộp trước đã nằm trên Log nếu hộp sau lỗi giữa chừng.
+
+→ Cùng ID Facebook trên Gmail và Hotmail chỉ ghi **một dòng**. Quét lại ngày sau cũng bỏ vì key đã nằm trên Log.
 
 ---
 
@@ -156,10 +203,9 @@ Cột I: Trạng thái (`CHECK:reason,…` / rỗng khi OK)
 * `F1`: timestamp lần nấu thành công gần nhất.
 
 ### 5.3 Khi nào nấu Report
-* Sau ghi / sửa / xóa / undo (tháng đụng). `scanMail` chỉ ghi Log + dirty, không nấu ngay.
-* `/report` (ép tháng hiện tại rồi gửi Telegram + timestamp; nút Tháng này / 3 tháng đọc Bao Cao A3:A5).
-* Menu **Làm mới báo cáo**; trigger 15’ chỉ tháng dirty.
-* `onEdit` Log chỉ đánh dirty (không nấu trong simple trigger).
+* **Chỉ** khi: trigger báo cáo (tháng dirty) · menu **Làm mới báo cáo** / sidebar View · Telegram `/report`.
+* Mọi đường ghi Log (Tele ghi/sửa/undo, quét mail, import CSV, sửa tay Sheet) **chỉ đánh dirty** — không nấu ngay.
+* Report `D1` hiện badge dirty cho đến khi được nấu.
 
 ---
 
@@ -167,7 +213,7 @@ Cột I: Trạng thái (`CHECK:reason,…` / rỗng khi OK)
 
 | Tiêu chí | Hệ thống cũ | Hệ thống mới (v2) |
 | :--- | :--- | :--- |
-| **Kiến trúc Code** | 1 file `Code.gs` cồng kềnh (>4900 dòng) | **Modular hóa (7 file .gs + 1 html)** |
+| **Kiến trúc Code** | 1 file `Code.gs` cồng kềnh (>4900 dòng) | **Modular hóa (10 file .gs + HTML)** |
 | **Ghi dữ liệu** | Ghi 2 nơi (Giao dịch_v2 + Log tháng) | **Chỉ ghi 1 nơi duy nhất (`Log_MM_YYYY`)** |
 | **Tính toán Báo cáo** | Code rebuild tĩnh + trigger 15’ | **Hybrid**: Report = script (lọc CHECK); Bao Cao tháng = link; dirty + `/report` |
 | **Tốc độ phản hồi** | Chậm (3 - 6 giây do rebuild) | **Ghi sổ nhanh**; báo cáo nấu hẹp theo tháng đụng |

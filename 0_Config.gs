@@ -31,28 +31,28 @@ function getDynamicGid_(propKey) {
 const SHEET_NAMES = {
   MUC_LUC: 'Mục Lục',
   LOG_CHUYEN: 'Log_Chuyen',
+  LOI_VAN_HANH: 'Loi_Van_Hanh',
   AI_LEARNING: 'AI_Learning',
   ADS_BILLING_SYNC: 'Ads_Billing_Sync',
   VIEW_LOG: 'View_Log',
   VIEW_REPORT: 'View_Report'
 };
 
+const LOI_VAN_HANH_HEADERS = ['Thời gian', 'Mã lượt quét', 'Nguồn', 'Bước lỗi', 'Nội dung lỗi', 'Xử lý', 'Đã ghi OK'];
+
 // View_Log / View_Report: hàng 1 = banner, nội dung từ hàng 2.
 // Điều khiển (chọn tháng, Xem, Sửa) nằm ở sidebar `viewui.html` — xem 7_MonthView.gs.
-// Quét Mail / Invoice CSV: sidebar `opsui.html` — xem 8_OpsSidebar.gs.
-// Meta Billing API (Graph): false = tắt sync/check/lịch/telegram. Quét mail + upload CSV vẫn chạy.
-// Bật lại: đổi thành true — code không bị xóa.
-const META_BILLING_ENABLED = false;
+// Quét Mail / CSV máy / Drive CSV: sidebar `opsui.html` — xem 8_OpsSidebar.gs.
+// Ads_Billing_Sync = hàng đợi Invoice CSV (STATUS trống | Đã ghi). Không còn Meta Graph API.
 
-// 🗺️ CỘT Ads_Billing_Sync (INDEX 0) — đối soát Meta ↔ Mail
-// Unique Key = Meta txn id (= UNIQUE_KEY khi ghi Log)
+// 🗺️ Cột Ads_Billing_Sync (INDEX 0) — hàng đợi CSV → Log
 const ADS_BILLING_COL = {
-  META_TXN_ID: 0,  // Unique Key
+  META_TXN_ID: 0,  // Unique Key (= UNIQUE_KEY khi ghi Log)
   AD_ACCOUNT: 1,
   NGAY: 2,
   SO_TIEN: 3,
   CURRENCY: 4,
-  STATUS: 5,       // SEEN | MATCHED_MAIL | MISSING_MAIL | ALERTED | LOGGED_META
+  STATUS: 5,       // trống = chờ | Đã ghi
   UPDATED_AT: 6,
   GHI_CHU: 7,
   EVENT_TIME: 8
@@ -62,31 +62,19 @@ const ADS_BILLING_HEADERS = [
   'Trạng thái', 'Cập nhật', 'Ghi chú', 'Event Time'
 ];
 const ADS_BILLING_MONEY_FMT = '#,##0;[Red]-#,##0;0';
-const ADS_BILLING_TS_FMT = '@'; // Cập nhật / Event Time giữ chuỗi dd/MM/yyyy HH:mm:ss
+const ADS_BILLING_TS_FMT = '@';
 const ADS_BILLING_STATUS = {
-  SEEN: 'SEEN',
-  MATCHED_MAIL: 'MATCHED_MAIL',
-  MISSING_MAIL: 'MISSING_MAIL',
-  ALERTED: 'ALERTED',
-  LOGGED_META: 'LOGGED_META' // đã ghi Log tháng từ Meta (UNIQUE_KEY = Meta txn)
+  DONE: 'Đã ghi'
 };
-const META_GRAPH_API_VERSION = 'v26.0';
-const META_BILLING_AMOUNT_TOLERANCE = 1; // ±đ khi khớp ngày+tiền
-const META_BILLING_LOOKBACK_DAYS_DEFAULT = 60;
-// Sync định kỳ chỉ quét từ (watermark − buffer) thay vì full lookback
-const META_BILLING_WATERMARK_BUFFER_HOURS = 48;
-const META_BILLING_DATE_TOLERANCE_DAYS = 1; // lệch múi giờ UTC ↔ GMT+7
 
 // Lịch trigger (menu Set Trigger / opsui mode=trigger) — giờ theo timezone Apps Script
 const MAIL_SCAN_TRIGGER_HANDLER_ = 'runScheduledScanMail';
 const MAIL_SCAN_TRIGGER_INTERVAL_HOURS_DEFAULT = 2;  // chế độ "Mỗi N giờ"
 const MAIL_SCAN_TRIGGER_HOUR_DEFAULT = 8;            // chế độ "Mỗi ngày"
 const MAIL_SCAN_TRIGGER_MINUTE_DEFAULT = 0;
-const MAIL_SCAN_REBUILD_AFTER_PROP_ = 'MAIL_SCAN_REBUILD_AFTER'; // switch "nấu báo cáo sau quét"
+const MAIL_SCAN_REBUILD_AFTER_PROP_ = 'MAIL_SCAN_REBUILD_AFTER'; // legacy — không còn dùng (báo cáo chỉ trigger/menu|/report)
 const REPORT_TRIGGER_INTERVAL_HOURS_DEFAULT = 3;     // trigger báo cáo tự nấu
 const REPORT_AUTO_TRIGGER_OFF_PROP_ = 'REPORT_AUTO_TRIGGER_OFF'; // đã tắt trigger báo cáo từ sidebar
-const META_BILLING_TRIGGER_HOUR_DEFAULT = 8;
-const META_BILLING_TRIGGER_MINUTE_DEFAULT = 30;
 // Giá trị giờ hợp lệ cho everyHours() của Apps Script (ngoài ra sẽ báo lỗi / round khác)
 const TRIGGER_HOURS_ALLOWED = [1, 2, 3, 4, 5, 6, 8, 12, 24];
 
@@ -104,7 +92,7 @@ const MONTH_LOG_COL = {
   DOI_TUONG: 4,      // Bản thân, Couple, Khách lẻ...
   DANH_MUC_CON: 5,   // Ăn sáng, Cafe, Xăng xe, ADS...
   GHI_CHU: 6,        // Nội dung diễn giải
-  UNIQUE_KEY: 7,     // Mã tracking TX_*
+  UNIQUE_KEY: 7,     // TX_* | MAN_* | ID Facebook (mail/CSV) | dự phòng mail/AI
   STATUS: 8          // CHECK / OK
 };
 
@@ -117,12 +105,17 @@ const MUC_LUC_COL = {
 const MUC_LUC_DATA_START_ROW = 3;
 
 // ⏱️ THỜI GIAN HẾT HẠN (TTL)
+// CacheService tối đa 21600s (6h). UNDO/EDIT > 6h: cache hết → fallback Sheet (loadDraftFromSheet).
+const CACHE_TTL_MAX = 21600;
 const DRAFT_TTL = 600;        // 10 phút (chờ xác nhận)
-const UNDO_TTL = 86400;       // 24 giờ (hoàn tác / sửa)
-const EDIT_SESS_TTL = 86400;  // 24 giờ (đồng bộ phiên sửa nháp)
+const UNDO_TTL = 86400;       // 24 giờ (ý định UX / gỡ keyboard; cache chỉ giữ ≤6h)
+const EDIT_SESS_TTL = 86400;  // 24 giờ (ý định UX; cache ≤6h + nạp lại từ Sheet)
+const WEBHOOK_LOCK_BUSY_TTL = 300;  // chống Telegram retry lúc AI/ghi đang chạy
+const WEBHOOK_LOCK_DONE_TTL = 300;
 const OPTS_PAGE_SIZE = 6;     // Số nút mỗi trang khi chọn phân loại
 const SO_NGAY_QUET_DEFAULT = 1;
 const AI_MAIL_MAX_CALLS = 15;
+const MAIL_SCAN_FLUSH_BATCH_ = 10; // sau mỗi hộp: ghi Log theo lô ≤10 GD
 
 // Hộp thư: Gmail (tài khoản script) + Hotmail (Graph, cred email|password|refresh_token|client_id)
 const MAILBOX_ID_GMAIL = 'gmail-default';
@@ -389,14 +382,6 @@ function setupEnvironment() {
     if (!PROP.getProperty('admin_id')) {
       lines.push('WARN: chua co admin_id (Telegram chat ID).');
     }
-    if (!PROP.getProperty('META_ACCESS_TOKEN')) {
-      lines.push('INFO: Meta token chua set (configui muc 6).');
-    } else {
-      lines.push('OK META_ACCESS_TOKEN da co (len=' + String(PROP.getProperty('META_ACCESS_TOKEN')).length + ')');
-    }
-    if (PROP.getProperty('META_AD_ACCOUNT_IDS')) {
-      lines.push('OK META_AD_ACCOUNT_IDS=' + PROP.getProperty('META_AD_ACCOUNT_IDS'));
-    }
 
     try {
       const base = ScriptApp.getService().getUrl();
@@ -479,6 +464,13 @@ function maskApiKey(key) {
   return s.slice(0, 4) + '••••' + s.slice(-4);
 }
 
+/** Log lỗi không chặn luồng — thay cho catch {} rỗng ở đường nóng. */
+function logQuiet_(where, err) {
+  try {
+    Logger.log(String(where || '?') + ': ' + (err && err.message ? err.message : String(err || '')));
+  } catch (ignore) {}
+}
+
 function getConfigToUI(token) {
   if (token !== getConfigToken()) throw new Error('Token không hợp lệ');
   const props = PROP.getProperties();
@@ -543,76 +535,4 @@ function saveConfigFromUI(form, token) {
   props.setProperty('ai_key_labels', JSON.stringify(mergedLabels));
 
   return '✅ Đã lưu cấu hình thành công!';
-}
-
-/**
- * Check live Meta từ configui.
- * Trả về STRING thuần (tránh lỗi serialize object → "Đã xảy ra lỗi không xác định").
- * Prefix: OK: | ERR:
- */
-function checkMetaBillingFromUI(cfgToken, draft) {
-  try {
-    if (!META_BILLING_ENABLED) return 'ERR:' + metaBillingOffMsg_();
-    if (cfgToken !== getConfigToken()) {
-      return 'ERR:Token cấu hình không hợp lệ — đóng dialog, mở lại menu Cấu hình.';
-    }
-    draft = draft || {};
-
-    let accessToken = String(draft.meta_access_token || '').trim();
-    if (!accessToken || accessToken.indexOf('••••') !== -1) {
-      accessToken = String(PROP.getProperty('META_ACCESS_TOKEN') || '').trim();
-    } else {
-      // Token mới gõ trên form: lưu tạm để không phải gửi lại token dài lần sau
-      PROP.setProperty('META_ACCESS_TOKEN', accessToken);
-    }
-
-    const bidDraft = String(draft.meta_business_id || '').trim();
-    if (bidDraft) PROP.setProperty('META_BUSINESS_ID', bidDraft);
-
-    if (draft.meta_billing_lookback_days !== undefined && String(draft.meta_billing_lookback_days).trim() !== '') {
-      const lb = Math.max(1, parseInt(draft.meta_billing_lookback_days, 10) || META_BILLING_LOOKBACK_DAYS_DEFAULT);
-      PROP.setProperty('META_BILLING_LOOKBACK_DAYS', String(lb));
-    }
-
-    const accounts = getMetaAdAccountIds_();
-    Logger.log('checkMetaBillingFromUI: tokenLen=' + (accessToken ? accessToken.length : 0)
-      + ' accounts=' + accounts.join(','));
-
-    if (!accessToken) {
-      return 'ERR:Chua co Meta Access Token. Dan token roi bam Check (hoac Luu truoc).';
-    }
-    if (!accounts.length) {
-      return 'ERR:Chua co Ad Account — them ID TK (act_… / so) vao cot A sheet Quet Mail.';
-    }
-
-    // 1) Ping nhẹ — xác nhận token + quyền account
-    const ping = metaGraphGet_(accounts[0], { fields: 'id,name,account_id' }, accessToken);
-    const accName = (ping && ping.name) ? String(ping.name) : accounts[0];
-    Logger.log('checkMetaBillingFromUI: ping OK name=' + accName);
-
-    // 2) Thử lấy billing theo lookback đã cấu hình (tối thiểu 30 ngày khi check)
-    const lookback = Math.max(30, Math.min(90, getMetaBillingLookbackDays_()));
-    let nCharges = 0;
-    try {
-      const charges = fetchMetaBillingChargesWithToken_(accounts, lookback, accessToken);
-      nCharges = charges.length;
-    } catch (billErr) {
-      Logger.log('checkMetaBillingFromUI: billing warn: ' + (billErr && billErr.message));
-      const hint = (!getMetaBusinessId_() && String(billErr.message).toLowerCase().indexOf('business') !== -1)
-        ? ' | Thu set META_BUSINESS_ID'
-        : '';
-      return 'OK:Token+account hop le (' + accName + '). Billing: ' + String(billErr.message || billErr).slice(0, 160) + hint;
-    }
-
-    const msg = 'OK:Token+account hop le (' + accName + '). Billing charges: ' + nCharges
-      + ' (lookback ' + lookback + 'd'
-      + (getMetaBusinessId_() ? ', business_id=OK' : ', business_id=CHUA')
-      + '). Neu 0: chay debugMetaBillingActivities.';
-    Logger.log('checkMetaBillingFromUI: ' + msg);
-    return msg;
-  } catch (e) {
-    const m = (e && e.message) ? e.message : String(e);
-    Logger.log('checkMetaBillingFromUI ERROR: ' + m);
-    return 'ERR:' + m.slice(0, 300);
-  }
 }
