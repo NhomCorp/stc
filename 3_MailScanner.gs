@@ -278,11 +278,12 @@ function extractMailTransactionDate_(text) {
 function ingestMailItem_(item, rule, ctx) {
   const subject = item.subject || '';
   const fullText = subject + '\n' + (item.body || '');
-  const dateObj = extractMailTransactionDate_(fullText);
-  if (!dateObj) {
-    logOpsError_('MAIL_' + Date.now(), item.source, 'Ngày giao dịch',
-      'Không đọc được ngày giao dịch hợp lệ trong nội dung mail.',
-      'Bỏ qua; kiểm tra định dạng ngày rồi quét lại', 0);
+  // Ngày ghi sổ lấy từ ngày nhận mail, không bóc ngày trong nội dung.
+  const dateObj = item.date;
+  if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) {
+    logOpsError_('MAIL_' + Date.now(), item.source, 'Ngày nhận mail',
+      'Không đọc được ngày nhận mail hợp lệ.',
+      'Bỏ qua; kiểm tra ngày nhận mail rồi quét lại', 0);
     return;
   }
 
@@ -307,7 +308,7 @@ function ingestMailItem_(item, rule, ctx) {
       amount = extracted.so_tien;
       uniqueKey = extractMetaTransactionId_(fullText) || extracted.ma_giao_dich;
       if (extracted.phuong_thuc) paymentMethod = extracted.phuong_thuc;
-      // Ngày đã được kiểm tra từ nội dung; không thay bằng ngày AI suy đoán.
+      // Giữ ngày nhận mail; không thay bằng ngày AI bóc từ nội dung.
       fromAi = true;
     }
   }
@@ -481,7 +482,7 @@ function hotmailMessageToItem_(msg) {
   return {
     subject: msg.subject || '',
     body: body,
-    date: msg.receivedDateTime ? new Date(msg.receivedDateTime) : new Date(),
+    date: msg.receivedDateTime ? new Date(msg.receivedDateTime) : null,
     source: 'Hotmail'
   };
 }

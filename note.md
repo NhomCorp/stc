@@ -115,7 +115,7 @@ Cách dùng: ghi ý tưởng / bug / ý muốn vào đây trước. Khi đủ r�
 ## Đang làm
 
 - Update an toàn quét mail: đã bổ sung ghi phần đã đọc khi hộp lỗi, chia lô tối đa 10 cùng tháng, kiểm tra UNIQUE_KEY lại trong khóa ghi, đánh dirty trước append, nhật ký `Loi_Van_Hanh`.
-- Ngày mail: chỉ lấy ngày có nhãn trong nội dung (dd/MM/yyyy, dd-MM-yyyy, dd.MM.yyyy hoặc ngày … tháng … năm số); không dùng ngày nhận. Định dạng khác hiện bỏ qua và ghi lỗi, cần kiểm tra với mail thực tế.
+- Ngày mail: Lấy luôn ngày nhận mail, KHÔNG bóc ngày trong nội dung nữa để tránh lỗi miss format hóa đơn Meta.
 - Chưa hoàn tất: hàng đợi chung Mail/CSV + nút Chờ/Bỏ qua + worker/khôi phục lượt treo; mã lượt chạy và bộ đếm đã ghi chính xác trong nhật ký. Chưa kiểm thử GAS/deploy.
 
 
