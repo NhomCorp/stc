@@ -1,5 +1,16 @@
 * { box-sizing: border-box; }
 
+html {
+  color-scheme: light;
+  background: #ffffff;
+}
+
+html, body {
+  min-height: 100%;
+  background: #ffffff;
+  color: #0f172a;
+}
+
 button, input, select, textarea { font: inherit; }
 
 button, a { -webkit-tap-highlight-color: transparent; }

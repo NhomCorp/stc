@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deploy Sổ Thu Chi — stc.acdagency.net</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-main: #0f172a;
+      --bg-card: #1e293b;
+      --bg-code: #0b1120;
+      --border-color: #334155;
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent-primary: #38bdf8;
+      --accent-success: #10b981;
+      --accent-warning: #f59e0b;
+      --accent-danger: #ef4444;
+      --btn-bg: #334155;
+      --btn-hover: #475569;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-main);
+      color: var(--text-main);
+      line-height: 1.6;
+      padding: 2.5rem 1rem;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    .header {
+      margin-bottom: 2rem;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 1.25rem;
+    }
+    .header h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 0.75rem;
+    }
+    .pipeline-badge {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.25);
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 0.88rem;
+      color: var(--accent-primary);
+      font-weight: 500;
+      margin-bottom: 0.75rem;
+    }
+    .pipeline-arrow { color: var(--text-muted); font-weight: 400; }
+    .header-desc { color: var(--text-muted); font-size: 0.98rem; }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 10px;
+      margin: 1.25rem 0 0;
+    }
+    .meta-item {
+      background: #14223d;
+      border: 1px solid #1e3a8a;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.86rem;
+    }
+    .meta-item strong {
+      display: block;
+      color: var(--accent-primary);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 2px;
+    }
+    .meta-item code { font-family: 'Fira Code', monospace; color: #e2e8f0; }
+    .step-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.35rem 1.5rem;
+      margin-bottom: 1.35rem;
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 0.75rem;
+    }
+    .step-number {
+      background: var(--accent-primary);
+      color: #0f172a;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 0.9rem;
+      flex-shrink: 0;
+    }
+    .step-title { font-size: 1.15rem; font-weight: 600; color: #fff; }
+    p { color: #cbd5e1; margin-bottom: 0.65rem; font-size: 0.94rem; }
+    ul { color: #cbd5e1; margin: 0 0 0.75rem 1.2rem; font-size: 0.92rem; }
+    li { margin-bottom: 0.35rem; }
+    .code-wrapper {
+      position: relative;
+      background: var(--bg-code);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      margin: 0.6rem 0 1rem;
+      overflow: hidden;
+    }
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #151e32;
+      padding: 6px 14px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      border-bottom: 1px solid #1e293b;
+    }
+    pre {
+      margin: 0;
+      padding: 1rem 1.15rem;
+      overflow-x: auto;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      color: #e2e8f0;
+    }
+    .copy-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--btn-bg);
+      color: #e2e8f0;
+      border: 1px solid #475569;
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.78rem;
+      font-weight: 500;
+      cursor: pointer;
+    }
+    .copy-btn:hover { background: var(--btn-hover); color: #fff; }
+    .copy-btn.copied {
+      background: #065f46;
+      border-color: var(--accent-success);
+      color: #34d399;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      vertical-align: middle;
+      margin-left: 8px;
+    }
+    .badge-ok { background: rgba(16,185,129,0.15); color: #34d399; }
+    .badge-warn { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .badge-once { background: rgba(148,163,184,0.15); color: #94a3b8; }
+    .highlight-badge {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-primary);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.88em;
+    }
+    .note {
+      background: rgba(245, 158, 11, 0.08);
+      border-left: 3px solid var(--accent-warning);
+      padding: 0.75rem 1rem;
+      border-radius: 0 8px 8px 0;
+      margin: 0.75rem 0 0.5rem;
+      font-size: 0.9rem;
+      color: #fde68a;
+    }
+    .ok-box {
+      background: rgba(16, 185, 129, 0.08);
+      border-left: 3px solid var(--accent-success);
+      padding: 0.75rem 1rem;
+      border-radius: 0 8px 8px 0;
+      margin: 0.75rem 0 0.5rem;
+      font-size: 0.9rem;
+      color: #a7f3d0;
+    }
+    .quick-summary { background: #14223d; border: 1px solid #1e3a8a; }
+    .quick-summary .step-number { background: #60a5fa; }
+    .alert-box {
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin-top: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .alert-danger {
+      background: rgba(239, 68, 68, 0.1);
+      border-left: 4px solid var(--accent-danger);
+      border: 1px solid rgba(239, 68, 68, 0.2);
+      border-left-width: 4px;
+    }
+    .alert-title {
+      font-weight: 700;
+      color: #f87171;
+      margin-bottom: 0.5rem;
+    }
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #10b981;
+      color: white;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: all 0.25s ease-out;
+      pointer-events: none;
+      z-index: 1000;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+    a { color: var(--accent-primary); }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Deploy Sổ Thu Chi</h1>
+    <div class="pipeline-badge">
+      <span>Local git push</span><span class="pipeline-arrow">➔</span>
+      <span>VPS git pull</span><span class="pipeline-arrow">➔</span>
+      <span>docker-compose --build app</span><span class="pipeline-arrow">➔</span>
+      <span>https://stc.acdagency.net</span>
+    </div>
+    <p class="header-desc">
+      Quy trình chuẩn: <strong>push GitHub → pull trên VPS → rebuild app</strong>.
+      VPS đã clone repo <span class="highlight-badge">git@github.com:NhomCorp/stc.git</span> tại <code>/home/stcadmin/app</code>.
+      Dùng <span class="highlight-badge">docker-compose</span> — <strong>không</strong> dùng <code>docker compose</code>. Nginx/SSL đã có.
+    </p>
+    <div class="meta-grid">
+      <div class="meta-item"><strong>Domain</strong><code>stc.acdagency.net</code></div>
+      <div class="meta-item"><strong>App SSH</strong><code>ssh stc-vps</code> → user <code>stcadmin</code></div>
+      <div class="meta-item"><strong>Sudo / Nginx SSH</strong><code>ssh acd-vps</code> → user <code>acdadmin</code></div>
+      <div class="meta-item"><strong>App path</strong><code>/home/stcadmin/app</code> (đã có <code>.git</code>)</div>
+      <div class="meta-item"><strong>Branch</strong><code>main</code> ← <code>origin/main</code></div>
+      <div class="meta-item"><strong>Containers</strong><code>stc-app</code>, <code>stc-postgres</code></div>
+      <div class="meta-item"><strong>Port nội bộ</strong><code>127.0.0.1:3000</code></div>
+      <div class="meta-item"><strong>Nginx site</strong><code>so-thu-chi</code></div>
+      <div class="meta-item"><strong>Compose</strong><code>docker-compose</code> v5.x</div>
+    </div>
+  </div>
+
+  <!-- QUY TRÌNH CHUẨN -->
+  <section class="step-card quick-summary">
+    <div class="step-header">
+      <div class="step-number">⚡</div>
+      <h2 class="step-title">Quy trình chuẩn — mỗi lần up bản mới lên URL</h2>
+    </div>
+    <p>Chạy trong <strong>PowerShell</strong> tại thư mục dự án. Không đụng Nginx/SSL. Không ghi đè <code>.env</code> trên VPS.</p>
+
+    <p><strong>Bước 1 — Local: commit &amp; push GitHub</strong></p>
+    <div class="code-wrapper">
+      <div class="code-header">
+        <span>PowerShell — local</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><code>git status
+git add .
+git commit -m "mô tả ngắn"
+git push origin main</code></pre>
+    </div>
+
+    <p><strong>Bước 2 — VPS: pull + rebuild app + health</strong></p>
+    <div class="code-wrapper">
+      <div class="code-header">
+        <span>PowerShell — 1 lệnh SSH</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><code>ssh stc-vps "cd /home/stcadmin/app && git pull --ff-only origin main && docker-compose up -d --build app && docker-compose ps && curl -s http://127.0.0.1:3000/api/health"</code></pre>
+    </div>
+
+    <p><strong>Bước 3 — Kiểm tra URL công khai</strong></p>
+    <ul>
+      <li><a href="https://stc.acdagency.net/api/health" target="_blank">https://stc.acdagency.net/api/health</a> → phải có <code>"status":"ok"</code></li>
+      <li>Container: <code>stc-app</code> và <code>stc-postgres</code> đều <code>Up (healthy)</code></li>
+    </ul>
+
+    <div class="note">
+      Sai: <code>docker compose</code> (thiếu gạch) · <code>docker-compose down -v</code> · <code>git reset --hard</code> · commit/ghi đè <code>.env</code><br>
+      Đúng: luôn <code>git push</code> trước rồi mới <code>git pull</code> · SSH <code>stc-vps</code> · chỉ <code>--build app</code>
+    </div>
+  </section>
+
+  <!-- Đã làm một lần -->
+  <section class="step-card">
+    <div class="step-header">
+      <div class="step-number">✓</div>
+      <h2 class="step-title">Gắn git trên VPS <span class="badge badge-ok">ĐÃ XONG</span></h2>
+    </div>
+    <div class="ok-box">
+      Đã clone <code>NhomCorp/stc</code> vào <code>/home/stcadmin/app</code>, khôi phục <code>.env</code>, rebuild thành công.
+      Backup cũ còn trên server: <code>~/app.bak-tar</code>, <code>~/app.env.bak</code> — có thể xóa sau khi chắc chắn ổn.
+    </div>
+    <p><span class="badge badge-once">chỉ khi dựng máy mới</span> Làm lại như sau:</p>
+    <div class="code-wrapper">
+      <div class="code-header">
+        <span>stc-vps — one-time clone</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><code>cp /home/stcadmin/app/.env /home/stcadmin/app.env.bak
+mv /home/stcadmin/app /home/stcadmin/app.bak-tar
+git clone git@github.com:NhomCorp/stc.git /home/stcadmin/app
+cd /home/stcadmin/app && git checkout main
+cp /home/stcadmin/app.env.bak /home/stcadmin/app/.env
+docker-compose up -d --build app
+curl -s http://127.0.0.1:3000/api/health</code></pre>
+    </div>
+  </section>
+
+  <!-- Fallback tar -->
+  <section class="step-card">
+    <div class="step-header">
+      <div class="step-number">≈</div>
+      <h2 class="step-title">Dự phòng: tar + scp (khi không dùng git)</h2>
+    </div>
+    <p>Chỉ khi GitHub/git trên VPS lỗi. Không phải quy trình hàng ngày.</p>
+    <div class="code-wrapper">
+      <div class="code-header">
+        <span>Fallback — PowerShell</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><code>tar -czf deploy_bundle.tar.gz --exclude=.env --exclude=.git --exclude=node_modules --exclude=.next --exclude=data .
+scp deploy_bundle.tar.gz stc-vps:/home/stcadmin/app/
+ssh stc-vps "cd /home/stcadmin/app && tar -xzf deploy_bundle.tar.gz && docker-compose up -d --build app && curl -s http://127.0.0.1:3000/api/health"</code></pre>
+    </div>
+  </section>
+
+  <!-- One-time appendix -->
+  <section class="step-card">
+    <div class="step-header">
+      <div class="step-number">A</div>
+      <h2 class="step-title">Phụ lục: DNS / Nginx / SSL <span class="badge badge-ok">ĐÃ CÓ TRÊN VPS</span></h2>
+    </div>
+    <div class="ok-box">
+      Không cần chạy lại khi deploy thường ngày. Chỉ tham khảo khi dựng máy mới.
+    </div>
+    <ul>
+      <li>DNS A <code>stc</code> → <code>103.180.135.145</code> — đã trỏ đúng</li>
+      <li>Nginx site: <span class="highlight-badge">/etc/nginx/sites-available/so-thu-chi</span> (enabled), proxy → <code>127.0.0.1:3000</code></li>
+      <li>SSL Certbot: <code>stc.acdagency.net</code> — HTTPS 200</li>
+      <li>Sửa Nginx / Certbot: dùng <code>ssh acd-vps</code> (có sudo)</li>
+    </ul>
+    <p><span class="badge badge-once">chỉ máy mới</span> Tạo site (tên file thực tế: <code>so-thu-chi</code>):</p>
+    <div class="code-wrapper">
+      <div class="code-header">
+        <span>acd-vps — one-time</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><code>ssh acd-vps
+sudo nano /etc/nginx/sites-available/so-thu-chi
+sudo ln -sf /etc/nginx/sites-available/so-thu-chi /etc/nginx/sites-enabled/so-thu-chi
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d stc.acdagency.net</code></pre>
+    </div>
+  </section>
+
+  <div class="alert-box alert-danger">
+    <div class="alert-title">Không chạy trên production</div>
+    <div class="code-wrapper" style="margin-bottom:0;border-color:rgba(239,68,68,0.4)">
+      <pre style="color:#fca5a5"><code>docker-compose down -v
+git reset --hard
+docker volume prune
+docker system prune</code></pre>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast" class="toast">Đã sao chép!</div>
+<script>
+  function copyCode(btn) {
+    const code = btn.closest('.code-wrapper').querySelector('pre code').innerText;
+    navigator.clipboard.writeText(code).then(() => {
+      const original = btn.innerHTML;
+      btn.classList.add('copied');
+      btn.innerHTML = 'Đã copy!';
+      const toast = document.getElementById('toast');
+      toast.classList.add('show');
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        btn.innerHTML = original;
+        toast.classList.remove('show');
+      }, 1800);
+    });
+  }
+</script>
+</body>
+</html>

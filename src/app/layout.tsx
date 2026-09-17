@@ -14,7 +14,14 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi">
-      <body style={{ margin: 0, fontFamily: "system-ui, sans-serif" }}>
+      <body
+        style={{
+          margin: 0,
+          fontFamily: "system-ui, sans-serif",
+          background: "#ffffff",
+          color: "#0f172a",
+        }}
+      >
         {children}
       </body>
     </html>
