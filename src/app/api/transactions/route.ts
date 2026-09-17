@@ -159,3 +159,75 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ item: row }, { status: 201 });
 }
+
+export async function PUT(request: NextRequest) {
+  const user = await requireUser(request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await request.json();
+  const id = Number(body.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return NextResponse.json({ error: "Thiếu hoặc sai id giao dịch" }, { status: 400 });
+  }
+
+  const patch: Partial<typeof transactions.$inferInsert> = {
+    updatedAt: new Date(),
+  };
+
+  if (body.txType !== undefined) {
+    if (body.txType !== "thu" && body.txType !== "chi") {
+      return NextResponse.json({ error: "Loại giao dịch phải là thu hoặc chi" }, { status: 400 });
+    }
+    patch.txType = body.txType;
+  }
+
+  if (body.amount !== undefined) {
+    const amount = Number(body.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return NextResponse.json({ error: "Số tiền không hợp lệ" }, { status: 400 });
+    }
+    patch.amount = amount.toFixed(2);
+  }
+
+  if (body.txDate !== undefined) {
+    const txDate = new Date(body.txDate);
+    if (Number.isNaN(txDate.getTime())) {
+      return NextResponse.json({ error: "Ngày giao dịch không hợp lệ" }, { status: 400 });
+    }
+    patch.txDate = txDate;
+  }
+
+  if (body.customerId !== undefined) {
+    patch.customerId = body.customerId ? Number(body.customerId) : null;
+  }
+  if (body.walletId !== undefined) {
+    patch.walletId = body.walletId ? Number(body.walletId) : null;
+  }
+  if (body.categoryId !== undefined) {
+    patch.categoryId = body.categoryId ? Number(body.categoryId) : null;
+  }
+  if (body.note !== undefined) {
+    patch.note = body.note ? String(body.note).trim() : null;
+  }
+  if (body.status !== undefined) {
+    patch.status = String(body.status);
+  }
+  if (body.rawData !== undefined) {
+    patch.rawData = body.rawData;
+  }
+
+  const [updatedRow] = await db
+    .update(transactions)
+    .set(patch)
+    .where(eq(transactions.id, id))
+    .returning();
+
+  if (!updatedRow) {
+    return NextResponse.json({ error: "Không tìm thấy giao dịch" }, { status: 404 });
+  }
+
+  return NextResponse.json({ item: updatedRow });
+}
+
