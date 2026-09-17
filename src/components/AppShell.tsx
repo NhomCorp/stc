@@ -22,7 +22,7 @@ const styles: Record<string, React.CSSProperties> = {
   shell: {
     height: "100dvh",
     display: "flex",
-    flexDirection: "row",
+    flexDirection: "column",
     backgroundColor: "#f1f5f9",
     fontFamily: "system-ui, -apple-system, sans-serif",
     overflow: "hidden",
