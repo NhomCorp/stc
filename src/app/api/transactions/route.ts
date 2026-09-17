@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { desc, eq, sql, and, gte, lte } from "drizzle-orm";
+import { desc, eq, sql, and, gte, lte, or, ilike } from "drizzle-orm";
 import { db } from "@/db";
 import {
   transactions,
@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
   const categoryId = searchParams.get("categoryId");
   const status = searchParams.get("status");
   const sourceSheet = searchParams.get("sourceSheet");
+  const q = (searchParams.get("q") || "").trim();
 
   const conditions = [];
   if (txType === "thu" || txType === "chi") {
@@ -67,6 +68,18 @@ export async function GET(request: NextRequest) {
   if (sourceSheet) {
     conditions.push(eq(transactions.sourceSheet, sourceSheet));
   }
+  if (q) {
+    const pattern = `%${q}%`;
+    conditions.push(
+      or(
+        ilike(transactions.note, pattern),
+        ilike(transactions.sourceSheet, pattern),
+        ilike(customers.name, pattern),
+        ilike(wallets.name, pattern),
+        ilike(categories.name, pattern),
+      ),
+    );
+  }
 
   const where = conditions.length ? and(...conditions) : undefined;
 
@@ -96,6 +109,9 @@ export async function GET(request: NextRequest) {
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(transactions)
+      .leftJoin(customers, eq(transactions.customerId, customers.id))
+      .leftJoin(wallets, eq(transactions.walletId, wallets.id))
+      .leftJoin(categories, eq(transactions.categoryId, categories.id))
       .where(where),
   ]);
 

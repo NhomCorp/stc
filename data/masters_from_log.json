@@ -1,0 +1,100 @@
+{
+  "wallets": [
+    "Bank",
+    "Cash",
+    "Credit"
+  ],
+  "customers": [
+    "ADS Momx 03",
+    "ADS Momx 04",
+    "BSX Linh Đỗ",
+    "BSX Mạnh Vấn",
+    "Bản thân",
+    "Chinrin",
+    "Couple",
+    "FE02",
+    "FE04",
+    "Gia đình",
+    "HOCI 07/25",
+    "Hoa Sen Tuyết vay sg",
+    "Hoci 005",
+    "Hoci 006",
+    "Jeno 01",
+    "Jeno 03",
+    "Khách lẻ",
+    "Long Táo",
+    "MTM 003",
+    "MTM 004",
+    "MTM 005",
+    "MTM 006",
+    "MTM 007",
+    "Minh Nghĩa",
+    "Ngân Nguyễn 95",
+    "Phạm Store",
+    "Suri GNS 2024",
+    "Sơn Híp",
+    "Tuấn Tài Chính SG"
+  ],
+  "categories": [
+    {
+      "type": "Chi",
+      "name": "ADS"
+    },
+    {
+      "type": "Chi",
+      "name": "Cafe"
+    },
+    {
+      "type": "Chi",
+      "name": "Giải trí"
+    },
+    {
+      "type": "Chi",
+      "name": "Grab"
+    },
+    {
+      "type": "Chi",
+      "name": "Làm đẹp"
+    },
+    {
+      "type": "Chi",
+      "name": "Mua sắm"
+    },
+    {
+      "type": "Chi",
+      "name": "Phí quản lý"
+    },
+    {
+      "type": "Chi",
+      "name": "Quà tặng"
+    },
+    {
+      "type": "Chi",
+      "name": "Tài khoản"
+    },
+    {
+      "type": "Chi",
+      "name": "Xăng xe"
+    },
+    {
+      "type": "Chi",
+      "name": "Ăn sáng"
+    },
+    {
+      "type": "Chi",
+      "name": "Ăn trưa"
+    },
+    {
+      "type": "Chi",
+      "name": "Ăn tối"
+    },
+    {
+      "type": "Thu",
+      "name": "ADS"
+    },
+    {
+      "type": "Thu",
+      "name": "Tài khoản"
+    }
+  ]
+}

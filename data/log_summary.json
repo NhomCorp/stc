@@ -1,0 +1,96 @@
+[
+  {
+    "sheet": "Log_09_2026",
+    "rows": 160,
+    "types": {
+      "Chi": 143,
+      "Thu": 17
+    },
+    "sample": [
+      "2026-09-01 00:00:00",
+      "Chi",
+      "-50000.0",
+      "Bank",
+      "Bản thân",
+      "Ăn trưa",
+      "NGUYEN TRUNG HIEU chuyen tien",
+      "TX_1788518737159_0",
+      "None"
+    ]
+  },
+  {
+    "sheet": "Log_06_2026",
+    "rows": 195,
+    "types": {
+      "Thu": 22,
+      "Chi": 173
+    },
+    "sample": [
+      "2026-06-01 00:00:00",
+      "Thu",
+      "10000000.0",
+      "Bank",
+      "Khách lẻ",
+      "ADS",
+      "BSX Hoàng Anh",
+      "MAN_20260831_145002_2KN74FBKZAHO",
+      "None"
+    ]
+  },
+  {
+    "sheet": "Log_05_2026",
+    "rows": 3,
+    "types": {
+      "Chi": 3
+    },
+    "sample": [
+      "2026-05-31 00:00:00",
+      "Chi",
+      "-1512788.0",
+      "Bank",
+      "MTM 006",
+      "ADS",
+      "MasterCard ···· 6993",
+      "QEYA2RVPR2",
+      "None"
+    ]
+  },
+  {
+    "sheet": "Log_07_2026",
+    "rows": 242,
+    "types": {
+      "Thu": 46,
+      "Chi": 196
+    },
+    "sample": [
+      "2026-07-01 00:00:00",
+      "Thu",
+      "1608000.0",
+      "Bank",
+      "Khách lẻ",
+      "ADS",
+      "Dương Wheymen",
+      "MAN_20260831_224018_CVPSN7YKSFJD",
+      "None"
+    ]
+  },
+  {
+    "sheet": "Log_08_2026",
+    "rows": 269,
+    "types": {
+      "Chi": 235,
+      "Thu": 34
+    },
+    "sample": [
+      "2026-08-01 00:00:00",
+      "Chi",
+      "-40000.0",
+      "Bank",
+      "Bản thân",
+      "Ăn tối",
+      "Chuyển tiền đến LE THI THAO",
+      "TX_615818_0",
+      "None"
+    ]
+  }
+]

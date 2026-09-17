@@ -1,0 +1,50 @@
+---
+description: Quy tắc an toàn khi thao tác trên VPS
+alwaysApply: true
+---
+
+# Phạm vi dự án
+
+- Chỉ đọc, sửa, build, deploy và restart dịch vụ thuộc repository hiện tại.
+- Trước mọi thao tác trên VPS, phải xác nhận:
+  1. Tên dự án hiện tại.
+  2. Đường dẫn tuyệt đối của dự án.
+  3. Tên service/container cần tác động.
+  4. Port nội bộ và database liên quan.
+- Nếu không xác định chắc chắn đủ bốn thông tin trên: dừng và hỏi người dùng.
+
+# Không được tự ý
+
+- Không thao tác vào thư mục, service, container, volume, database hoặc file `.env` của dự án khác.
+- Không chạy lệnh từ thư mục dùng chung như `/opt/apps`, `/var/www` hoặc `/`.
+- Không dùng lệnh có phạm vi toàn máy:
+  - `docker system prune`
+  - `docker volume prune`
+  - `docker network prune`
+  - `docker stop $(docker ps -q)`
+  - `docker compose down` khi chưa xác nhận đúng thư mục/project
+  - `pm2 delete all`
+  - `pm2 restart all`
+  - `systemctl restart` dịch vụ không thuộc dự án
+  - wildcard hoặc lệnh đệ quy ngoài thư mục dự án
+- Không sửa cấu hình reverse proxy dùng chung nếu chưa trình bày chính xác virtual host bị thay đổi và được người dùng duyệt.
+- Không xóa volume, database, bản backup hoặc dữ liệu người dùng.
+- Không hiển thị, commit hoặc ghi secret/API key vào log.
+
+# Quy trình deploy
+
+1. Chạy `pwd`, kiểm tra repository và nhánh hiện tại.
+2. Kiểm tra thay đổi bằng `git status --short`.
+3. Chỉ build/test dự án hiện tại.
+4. Hiển thị kế hoạch gồm thư mục, branch, commit, service và port.
+5. Chờ người dùng xác nhận trước khi deploy lên VPS.
+6. Chỉ restart đúng service/container của dự án hiện tại.
+7. Kiểm tra health check và log của riêng service đó.
+8. Nếu triển khai thất bại, không tác động dự án khác để khắc phục.
+
+# Git
+
+- Không tự merge vào `main`.
+- Không tự push, force-push, reset, rebase hoặc xóa branch.
+- Không ghi đè thay đổi chưa commit.
+- Mỗi commit chỉ chứa thay đổi thuộc repository hiện tại.

@@ -1,2 +1,38 @@
+# OS files
 .DS_Store
+Thumbs.db
 *.rtf
+
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment files
+.env
+.env*.local
+.env.development
+.env.production
+.env.test
+!.env.example
+
+# Export dữ liệu tài chính (không commit)
+data/*.xlsx
+data/log_export.json
+data/tomtat_sample.json
+data/sheet_export.xlsx
+
+# Drizzle Kit cache
+.drizzle

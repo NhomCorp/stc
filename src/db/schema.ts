@@ -105,6 +105,7 @@ export const customers = pgTable("customers", {
   name: varchar("name", { length: 255 }).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
 });
 
 export const wallets = pgTable("wallets", {
@@ -113,6 +114,7 @@ export const wallets = pgTable("wallets", {
   name: varchar("name", { length: 255 }).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
 });
 
 /** Danh mục cha (Ăn uống, Công việc…) — khớp Tóm tắt_v2 */
@@ -122,6 +124,7 @@ export const categoryGroups = pgTable("category_groups", {
   name: varchar("name", { length: 255 }).notNull().unique(),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
 });
 
 /**
@@ -135,9 +138,11 @@ export const categories = pgTable("categories", {
   groupId: integer("group_id").references(() => categoryGroups.id, { onDelete: "set null" }),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  sortOrder: integer("sort_order").default(0).notNull(),
 }, (table) => {
   return {
     groupIdIdx: index("categories_group_id_idx").on(table.groupId),
+    sortOrderIdx: index("categories_sort_order_idx").on(table.sortOrder),
   };
 });
 

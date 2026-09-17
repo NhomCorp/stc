@@ -1,0 +1,27 @@
+---
+description: Cấu hình VPS của dự án
+alwaysApply: true
+---
+
+# Thông tin VPS dự án Sổ Thu Chi
+
+- **Domain/Host**: stc.acdagency.net (103.180.135.145)
+- **SSH Alias**: `stc-vps` (User: `stcadmin`, SSH config tại `~/.ssh/config`)
+- **Đường dẫn dự án**: `/home/stcadmin/app`
+- **Tên dự án/Container App**: `stc-app`
+- **Container Database**: `stc-postgres`
+- **App port nội bộ**: 3000 (127.0.0.1:3000->3000)
+- **Database port nội bộ**: 5432
+- **Database name**: `stc`
+
+# Quy trình Deploy
+1. Đồng bộ source code lên `/home/stcadmin/app` qua SSH alias `stc-vps` (bằng rsync hoặc deploy bundle tar.gz, giữ nguyên `.env`).
+2. Chạy migration cập nhật DB vào container `stc-postgres`.
+3. Rebuild và restart duy nhất container `stc-app`:
+   ```bash
+   ssh stc-vps "cd /home/stcadmin/app && docker compose up -d --build app"
+   ```
+4. Kiểm tra logs và health check:
+   ```bash
+   ssh stc-vps "docker ps -f name=stc-app && docker compose -f /home/stcadmin/app/docker-compose.yml logs --tail=20 app"
+   ```

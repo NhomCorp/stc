@@ -484,6 +484,11 @@ function refreshBaoCaoToday_() {
   const ts = formatReportTimestamp_(now);
   writeBaoCaoTimestamp_(ts);
   SpreadsheetApp.flush();
+  try {
+    pushBaoCaoV2ToWeb_();
+  } catch (e) {
+    console.warn('pushBaoCaoV2ToWeb_ after today:', e && e.message ? e.message : e);
+  }
   return { todayStr: todayStr, bucket: bucket, ts: ts };
 }
 
@@ -497,6 +502,55 @@ function refreshReportsForView_() {
     rebuild: rebuild,
     today: today,
     ts: (today && today.ts) || rebuild.ts || formatReportTimestamp_()
+  };
+}
+
+/**
+ * Đẩy khối Bao Cao v2 (A2:E5 + F1) lên web STC.
+ * Script Properties:
+ *   web_report_sync_url    = https://stc.acdagency.net/api/reports/summary
+ *   web_report_sync_secret = cùng REPORT_SYNC_SECRET trên VPS
+ */
+function pushBaoCaoV2ToWeb_() {
+  const url = String(PROP.getProperty('web_report_sync_url') || '').trim();
+  const secret = String(PROP.getProperty('web_report_sync_secret') || '').trim();
+  if (!url || !secret) return { skipped: true };
+
+  const baoCao = getSheetByGid(GID.BAO_CAO);
+  if (!baoCao) return { error: 'missing_bao_cao' };
+
+  const block = baoCao.getRange('A2:E5').getValues();
+  const tsCell = String(baoCao.getRange(BAO_CAO_TS_A1_).getDisplayValue() || '').trim();
+  const rows = [];
+  for (let i = 0; i < block.length; i++) {
+    const row = block[i];
+    if (!row || row[0] === '' || row[0] == null) continue;
+    const thu = Math.abs(Number(row[1]) || 0);
+    const chi = Math.abs(Number(row[2]) || 0);
+    const rong = Number(row[3]);
+    rows.push({
+      label: formatReportMonthLabel_(row[0]),
+      thu: thu,
+      chi: chi,
+      rong: isNaN(rong) ? (thu - chi) : rong,
+      checkCount: Number(row[4]) || 0
+    });
+  }
+
+  const res = UrlFetchApp.fetch(url, {
+    method: 'post',
+    contentType: 'application/json',
+    headers: { Authorization: 'Bearer ' + secret },
+    payload: JSON.stringify({
+      updatedAt: tsCell || null,
+      rows: rows
+    }),
+    muteHttpExceptions: true
+  });
+
+  return {
+    code: res.getResponseCode(),
+    body: res.getContentText()
   };
 }
 

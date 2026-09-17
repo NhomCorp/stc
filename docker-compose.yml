@@ -1,0 +1,55 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: stc-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-stc}
+      POSTGRES_USER: ${POSTGRES_USER:-stcadmin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-stcadmin123}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-stcadmin} -d ${POSTGRES_DB:-stc}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: .
+      target: migrator
+    container_name: stc-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://stcadmin:stcadmin123@postgres:5432/stc}
+    command: npm run db:migrate
+
+  app:
+    build:
+      context: .
+      target: runner
+    container_name: stc-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://stcadmin:stcadmin123@postgres:5432/stc}
+      PORT: 3000
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Đã gỡ Nginx container, sẽ dùng Nginx trên host
+
+volumes:
+  pgdata:
