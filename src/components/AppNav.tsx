@@ -1,13 +1,26 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  LayoutDashboard,
+  ArrowLeftRight,
+  FolderTree,
+  UploadCloud,
+  ShieldAlert,
+  LogOut,
+  User,
+  Sun,
+  Moon,
+  Wallet,
+} from "lucide-react";
 
 const links = [
-  { href: "/dashboard", label: "Báo cáo" },
-  { href: "/transactions", label: "Giao dịch" },
-  { href: "/master", label: "Danh mục" },
-  { href: "/import", label: "Import" },
+  { href: "/dashboard", label: "Báo cáo", icon: LayoutDashboard },
+  { href: "/transactions", label: "Giao dịch", icon: ArrowLeftRight },
+  { href: "/master", label: "Danh mục", icon: FolderTree },
+  { href: "/import", label: "Import", icon: UploadCloud },
 ];
 
 export function AppNav({
@@ -18,9 +31,34 @@ export function AppNav({
   isAdmin?: boolean;
 }) {
   const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(false);
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("theme");
+    if (saved === "dark") {
+      setTheme("dark");
+      document.documentElement.setAttribute("data-theme", "dark");
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "light" ? "dark" : "light";
+    setTheme(next);
+    if (next === "dark") {
+      document.documentElement.setAttribute("data-theme", "dark");
+      localStorage.setItem("theme", "dark");
+    } else {
+      document.documentElement.removeAttribute("data-theme");
+      localStorage.setItem("theme", "light");
+    }
+  };
 
   const allLinks = isAdmin
-    ? [...links, { href: "/admin/users", label: "Admin" }]
+    ? [
+        ...links,
+        { href: "/admin/users", label: "Admin", icon: ShieldAlert },
+      ]
     : links;
 
   const isActive = (href: string) =>
@@ -29,103 +67,86 @@ export function AppNav({
       : pathname === href || pathname.startsWith(href + "/");
 
   return (
-    <aside style={styles.sidebar}>
-      <Link href="/dashboard" style={styles.brand}>
-        Sổ Thu Chi
-      </Link>
-      <nav style={styles.nav}>
-        {allLinks.map((l) => (
-          <Link
-            key={l.href}
-            href={l.href}
-            style={{
-              ...styles.link,
-              ...(isActive(l.href) ? styles.linkActive : null),
-            }}
+    <header className="app-header">
+      <div className="app-header-inner">
+        <div className="app-brand-container">
+          <button
+            type="button"
+            className="app-hamburger"
+            onClick={() => setIsOpen(!isOpen)}
+            aria-label="Toggle menu"
           >
-            {l.label}
-          </Link>
-        ))}
-      </nav>
-      <div style={styles.bottom}>
-        <span style={styles.user}>{userLabel}</span>
-        <form action="/api/auth/logout" method="POST" style={{ margin: 0 }}>
-          <button type="submit" style={styles.logout}>
-            Đăng xuất
+            <svg
+              viewBox="0 0 24 24"
+              width="24"
+              height="24"
+              stroke="currentColor"
+              strokeWidth="2"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              {isOpen ? (
+                <>
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </>
+              ) : (
+                <>
+                  <line x1="3" y1="12" x2="21" y2="12" />
+                  <line x1="3" y1="6" x2="21" y2="6" />
+                  <line x1="3" y1="18" x2="21" y2="18" />
+                </>
+              )}
+            </svg>
           </button>
-        </form>
+          <Link href="/dashboard" className="app-brand">
+            <Wallet size={22} color="var(--primary)" />
+            <span>Sổ Thu Chi</span>
+          </Link>
+        </div>
+
+        <nav className={`app-nav-links ${isOpen ? "app-nav-open" : ""}`}>
+          <div className="app-nav-menu">
+            {allLinks.map((l) => {
+              const Icon = l.icon;
+              return (
+                <Link
+                  key={l.href}
+                  href={l.href}
+                  className={`app-nav-link ${isActive(l.href) ? "active" : ""}`}
+                  onClick={() => setIsOpen(false)}
+                >
+                  <Icon size={16} />
+                  <span>{l.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+          <div className="app-nav-right">
+            <button
+              type="button"
+              className="theme-toggle"
+              onClick={toggleTheme}
+              title={theme === "dark" ? "Chuyển giao diện sáng" : "Chuyển giao diện tối"}
+            >
+              {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+
+            <span className="app-user" title={userLabel}>
+              <User size={14} />
+              <span>{userLabel}</span>
+            </span>
+
+            <form action="/api/auth/logout" method="POST" style={{ margin: 0 }}>
+              <button type="submit" className="app-logout">
+                <LogOut size={14} />
+                <span>Đăng xuất</span>
+              </button>
+            </form>
+          </div>
+        </nav>
       </div>
-    </aside>
+    </header>
   );
 }
-
-const styles: Record<string, React.CSSProperties> = {
-  sidebar: {
-    width: 220,
-    flexShrink: 0,
-    height: "100dvh",
-    background: "#fff",
-    borderRight: "1px solid #e2e8f0",
-    padding: "16px 12px",
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-    overflow: "auto",
-  },
-  brand: {
-    fontWeight: 700,
-    fontSize: 16,
-    color: "#0f172a",
-    textDecoration: "none",
-    whiteSpace: "nowrap",
-    display: "block",
-    padding: "4px 8px",
-  },
-  nav: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-  },
-  link: {
-    display: "block",
-    padding: "8px 10px",
-    borderRadius: 6,
-    color: "#475569",
-    textDecoration: "none",
-    fontSize: 14,
-    whiteSpace: "nowrap",
-  },
-  linkActive: {
-    background: "#e2e8f0",
-    color: "#0f172a",
-    fontWeight: 600,
-  },
-  bottom: {
-    marginTop: "auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 10,
-  },
-  user: {
-    fontSize: 12,
-    color: "#334155",
-    background: "#f1f5f9",
-    padding: "3px 10px",
-    borderRadius: 999,
-    maxWidth: 160,
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-  },
-  logout: {
-    padding: "8px 10px",
-    background: "#ef4444",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: "pointer",
-    width: "100%",
-  },
-};

@@ -2,49 +2,53 @@
   max-width: 960px;
   margin: 0 auto;
   padding: 8px 0 40px;
+  width: 100%;
 }
 
 .header h1 {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 4px;
+  color: var(--foreground);
+  margin: 0 0 8px;
 }
 
 .header p {
-  color: #64748b;
+  color: var(--muted-foreground);
   font-size: 14px;
   margin: 0;
+  line-height: 1.5;
 }
 
 .tabs {
   display: flex;
   gap: 8px;
-  margin: 20px 0 16px;
-  border-bottom: 1px solid #e2e8f0;
-  padding-bottom: 12px;
+  margin: 24px 0 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 16px;
+  overflow-x: auto;
 }
 
 .tabs button {
   padding: 8px 16px;
   font-size: 14px;
   font-weight: 600;
-  color: #475569;
-  background: #f1f5f9;
+  color: var(--muted-foreground);
+  background: var(--muted);
   border: 1px solid transparent;
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .tabs button:hover:not(:disabled) {
-  background: #e2e8f0;
-  color: #0f172a;
+  color: var(--foreground);
+  background: var(--border);
 }
 
 .tabs button[aria-pressed="true"] {
-  background: #2563eb;
-  color: #ffffff;
+  background: var(--primary);
+  color: var(--primary-foreground);
 }
 
 .tabs button:disabled {
@@ -57,23 +61,24 @@
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  padding: 14px 18px;
+  gap: 16px;
+  background: var(--card);
+  border: 1px solid var(--card-border);
+  padding: 16px 20px;
   border-radius: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
 }
 
 .toolbar strong {
   font-size: 14px;
-  color: #1e293b;
+  color: var(--foreground);
 }
 
 .toolbar p {
-  font-size: 12px;
-  color: #64748b;
-  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--muted-foreground);
+  margin: 6px 0 0;
 }
 
 .actions {
@@ -83,20 +88,22 @@
 }
 
 .actions button {
-  padding: 6px 12px;
+  padding: 8px 12px;
   font-size: 13px;
   font-weight: 500;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
+  background: transparent;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #334155;
+  color: var(--foreground);
   cursor: pointer;
   transition: all 0.15s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .actions button:hover:not(:disabled) {
-  background: #f8fafc;
-  border-color: #94a3b8;
+  background: var(--muted);
 }
 
 .actions button:disabled {
@@ -106,67 +113,77 @@
 
 .actions button.primary,
 button.primary {
-  background: #2563eb;
-  color: #ffffff;
-  border: 1px solid #2563eb;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: 1px solid var(--primary);
   font-weight: 600;
 }
 
 .actions button.primary:hover:not(:disabled),
 button.primary:hover:not(:disabled) {
-  background: #1d4ed8;
-  border-color: #1d4ed8;
+  background: var(--primary-hover);
+  border-color: var(--primary-hover);
 }
 
 .notice {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1e40af;
-  padding: 10px 14px;
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
+  padding: 12px 16px;
   border-radius: 8px;
-  margin-bottom: 16px;
-  font-size: 13px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .editor {
-  background: #f8fafc;
-  border: 1.5px solid #3b82f6;
-  padding: 18px;
+  background: var(--muted);
+  border: 1px solid var(--primary);
+  padding: 20px;
   border-radius: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .editor h2 {
-  font-size: 16px;
+  font-size: 18px;
   margin: 0;
-  color: #1e293b;
+  color: var(--foreground);
 }
 
 .editor label {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: #334155;
+  color: var(--muted-foreground);
 }
 
 .editor input,
 .editor select {
-  padding: 8px 12px;
+  padding: 10px 14px;
   font-size: 14px;
-  border: 1px solid #cbd5e1;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #ffffff;
-  color: #0f172a;
+  background: var(--card);
+  color: var(--foreground);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.editor input:focus,
+.editor select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
 .editor small {
   font-size: 12px;
-  color: #64748b;
+  color: var(--muted-foreground);
   font-weight: normal;
 }
 
@@ -177,20 +194,21 @@ button.primary:hover:not(:disabled) {
 }
 
 .group {
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
+  background: var(--card);
+  border: 1px solid var(--card-border);
   border-radius: 10px;
   overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
 }
 
 .groupHeader {
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
-  padding: 8px 12px;
+  background: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
 }
 
 .groupHeader .row {
@@ -207,16 +225,22 @@ button.primary:hover:not(:disabled) {
   font-size: 14px;
   margin: 0;
   font-weight: 700;
-  color: #475569;
+  color: var(--foreground);
 }
 
 .groupHeader > button {
-  padding: 4px 10px;
+  padding: 6px 12px;
   font-size: 12px;
-  border: 1px solid #cbd5e1;
-  background: #fff;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--foreground);
   border-radius: 6px;
   cursor: pointer;
+}
+
+.groupHeader > button:hover {
+  background: var(--muted);
 }
 
 .children {
@@ -229,9 +253,9 @@ button.primary:hover:not(:disabled) {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
-  border-bottom: 1px solid #f1f5f9;
-  background: #ffffff;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card);
   transition: background-color 0.15s;
 }
 
@@ -240,12 +264,12 @@ button.primary:hover:not(:disabled) {
 }
 
 .row:hover {
-  background: #fafafa;
+  background: var(--muted);
 }
 
 .handle {
   cursor: grab;
-  color: #94a3b8;
+  color: var(--muted-foreground);
   font-size: 18px;
   user-select: none;
   padding: 0 4px;
@@ -258,7 +282,8 @@ button.primary:hover:not(:disabled) {
 .name {
   flex: 1;
   font-size: 14px;
-  color: #1e293b;
+  font-weight: 500;
+  color: var(--foreground);
   display: flex;
   align-items: center;
   gap: 10px;
@@ -266,15 +291,16 @@ button.primary:hover:not(:disabled) {
 
 .name small {
   font-size: 11px;
-  color: #64748b;
-  background: #f1f5f9;
-  padding: 2px 6px;
-  border-radius: 4px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+  background: var(--muted);
+  padding: 2px 8px;
+  border-radius: 999px;
 }
 
 .empty {
-  padding: 14px;
-  color: #94a3b8;
+  padding: 20px;
+  color: var(--muted-foreground);
   font-size: 13px;
   text-align: center;
   margin: 0;

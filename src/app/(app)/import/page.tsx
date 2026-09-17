@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
+import { toast } from "sonner";
+import { Upload, FileDown, CheckCircle2, AlertCircle, Loader2, Info } from "lucide-react";
 
 type ImportResult = {
   syncRunId: number;
@@ -20,13 +22,18 @@ export default function ImportPage() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [error, setError] = useState("");
 
   async function handlePaste(e: React.FormEvent) {
     e.preventDefault();
+    if (!text.trim()) {
+      toast.error("Vui lòng nhập dữ liệu cần import");
+      return;
+    }
+    
     setBusy(true);
-    setError("");
     setResult(null);
+    const loadingId = toast.loading("Đang import dữ liệu...");
+    
     try {
       const res = await fetch("/api/import/log", {
         method: "POST",
@@ -34,36 +41,51 @@ export default function ImportPage() {
         body: JSON.stringify({ text, sourceSheet: "paste_manual" }),
       });
       const data = await res.json();
+      
       if (!res.ok) throw new Error(data.error || "Import thất bại");
+      
       setResult(data);
       setText("");
+      toast.success(`Đã import thành công ${data.validRows} dòng`, { id: loadingId });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Lỗi");
+      toast.error(err instanceof Error ? err.message : "Lỗi import", { id: loadingId });
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto" }}>
-      <h1 style={{ margin: 0, fontSize: 20 }}>Import Log</h1>
-      <p style={{ color: "#64748b", fontSize: 13, lineHeight: 1.5, margin: "4px 0 0" }}>
+    <div style={{ maxWidth: 900, margin: "0 auto", width: "100%" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "var(--foreground)" }}>Import Log</h1>
+      </div>
+      
+      <p style={{ color: "var(--muted-foreground)", fontSize: 14, lineHeight: 1.6, margin: "0 0 20px" }}>
         Dán dữ liệu từ sheet Log (9 cột: Ngày, Thu/Chi, Số tiền, Ví, Đối tượng,
         Danh mục, Ghi chú, UNIQUE_KEY, Status). Danh mục dùng chung thu/chi;
         hệ thống tự tạo master còn thiếu và bỏ qua dòng trùng.
       </p>
 
       <div style={styles.hint}>
-        <strong>Import hàng loạt từ Google Sheet:</strong>
-        <pre style={styles.pre}>npm run db:import-log</pre>
-        (dùng file <code>data/log_export.json</code> đã export — 869 dòng từ
-        Log_05→09/2026)
+        <div style={{ display: 'flex', gap: 12 }}>
+          <Info size={20} color="#3b82f6" style={{ flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <strong style={{ display: 'block', marginBottom: 8 }}>Import hàng loạt từ Google Sheet:</strong>
+            <pre style={styles.pre}>npm run db:import-log</pre>
+            <div style={{ marginTop: 8, fontSize: 13, opacity: 0.9 }}>
+              (dùng file <code>data/log_export.json</code> đã export — 869 dòng từ Log_05→09/2026)
+            </div>
+          </div>
+        </div>
       </div>
 
-      <form onSubmit={handlePaste} style={styles.card}>
-        <label style={{ display: "block", fontWeight: 600, marginBottom: 8 }}>
-          Paste từ Excel / Google Sheets
-        </label>
+      <form onSubmit={handlePaste} className="card-container" style={styles.card}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+          <FileDown size={18} color="var(--primary)" />
+          <label style={{ fontWeight: 600, color: "var(--foreground)" }}>
+            Paste từ Excel / Google Sheets
+          </label>
+        </div>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -71,35 +93,77 @@ export default function ImportPage() {
           placeholder={"01/09/2026\tChi\t50000\tCash\tBản thân\tCafe\t...\tTX_...\tOK"}
           style={styles.textarea}
           required
+          disabled={busy}
         />
-        <button type="submit" disabled={busy} style={styles.primary}>
-          {busy ? "Đang import..." : "Import vào DB"}
+        <button type="submit" disabled={busy || !text.trim()} className="btn-primary" style={{ marginTop: 16 }}>
+          {busy ? (
+            <>
+              <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+              <span>Đang xử lý...</span>
+            </>
+          ) : (
+            <>
+              <Upload size={18} />
+              <span>Import vào DB</span>
+            </>
+          )}
         </button>
       </form>
 
-      {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
-
       {result && (
-        <div style={styles.card}>
-          <h3 style={{ marginTop: 0 }}>Kết quả #{result.syncRunId}</h3>
-          <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
-            <li>Tổng dòng: {result.totalRows}</li>
-            <li>Ghi mới: {result.validRows}</li>
-            <li>Trùng (bỏ qua): {result.duplicateRows}</li>
-            <li>Lỗi: {result.errorRows}</li>
-            <li>
-              Master mới: {result.masters.customersCreated} đối tượng,{" "}
-              {result.masters.walletsCreated} ví,{" "}
-              {result.masters.categoriesCreated} danh mục
-            </li>
-          </ul>
+        <div className="card-container" style={{ ...styles.card, marginTop: 20 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+            {result.errorRows > 0 ? (
+              <AlertCircle size={24} color="var(--danger)" />
+            ) : (
+              <CheckCircle2 size={24} color="var(--success)" />
+            )}
+            <h3 style={{ margin: 0, fontSize: 18 }}>Kết quả Import #{result.syncRunId}</h3>
+          </div>
+          
+          <div style={styles.statsGrid}>
+            <div style={styles.statBox}>
+              <div style={styles.statLabel}>Tổng dòng</div>
+              <div style={styles.statValue}>{result.totalRows}</div>
+            </div>
+            <div style={{ ...styles.statBox, borderColor: "var(--success)" }}>
+              <div style={styles.statLabel}>Ghi mới</div>
+              <div style={{ ...styles.statValue, color: "var(--success)" }}>{result.validRows}</div>
+            </div>
+            <div style={styles.statBox}>
+              <div style={styles.statLabel}>Trùng lặp (bỏ qua)</div>
+              <div style={styles.statValue}>{result.duplicateRows}</div>
+            </div>
+            <div style={{ ...styles.statBox, borderColor: result.errorRows > 0 ? "var(--danger)" : "var(--border)" }}>
+              <div style={styles.statLabel}>Lỗi</div>
+              <div style={{ ...styles.statValue, color: result.errorRows > 0 ? "var(--danger)" : "inherit" }}>
+                {result.errorRows}
+              </div>
+            </div>
+          </div>
+          
+          {(result.masters.customersCreated > 0 || result.masters.walletsCreated > 0 || result.masters.categoriesCreated > 0) && (
+            <div style={{ marginTop: 16, padding: "12px 16px", background: "var(--muted)", borderRadius: 8, fontSize: 14 }}>
+              <strong>Tự động tạo danh mục mới: </strong>
+              <span style={{ color: "var(--muted-foreground)" }}>
+                {result.masters.customersCreated} đối tượng,{" "}
+                {result.masters.walletsCreated} ví,{" "}
+                {result.masters.categoriesCreated} danh mục
+              </span>
+            </div>
+          )}
+
           {result.errors.length > 0 && (
-            <details style={{ marginTop: 12 }}>
-              <summary>Chi tiết lỗi ({result.errors.length})</summary>
-              <ul>
+            <details style={styles.details}>
+              <summary style={styles.summary}>
+                <span style={{ fontWeight: 600, color: "var(--danger)" }}>
+                  Chi tiết lỗi ({result.errors.length} dòng)
+                </span>
+              </summary>
+              <ul style={styles.errorList}>
                 {result.errors.map((e, i) => (
-                  <li key={i}>
-                    Dòng {e.row}: {e.message}
+                  <li key={i} style={{ marginBottom: 4 }}>
+                    <strong>Dòng {e.row}:</strong> {e.message}
                   </li>
                 ))}
               </ul>
@@ -113,47 +177,81 @@ export default function ImportPage() {
 
 const styles: Record<string, React.CSSProperties> = {
   card: {
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 10,
-    padding: 16,
+    padding: 20,
     marginTop: 16,
   },
   hint: {
-    background: "#eff6ff",
-    border: "1px solid #bfdbfe",
-    borderRadius: 10,
-    padding: 14,
+    background: "rgba(59, 130, 246, 0.1)",
+    border: "1px solid rgba(59, 130, 246, 0.3)",
+    borderRadius: 12,
+    padding: 16,
     marginTop: 16,
     fontSize: 14,
     color: "#1e3a8a",
   },
   pre: {
-    background: "#1e293b",
-    color: "#e2e8f0",
+    background: "var(--foreground)",
+    color: "var(--background)",
     padding: "8px 12px",
     borderRadius: 6,
-    margin: "8px 0 0",
+    margin: "0",
     overflowX: "auto",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+    fontSize: 13,
   },
   textarea: {
     width: "100%",
-    padding: 12,
-    border: "1px solid #cbd5e1",
+    padding: 14,
+    border: "1px solid var(--border)",
     borderRadius: 8,
-    fontFamily: "ui-monospace, monospace",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     fontSize: 13,
     resize: "vertical",
     boxSizing: "border-box",
+    background: "var(--background)",
+    color: "var(--foreground)",
+    outline: "none",
+    transition: "border-color 0.2s, box-shadow 0.2s",
   },
-  primary: {
-    marginTop: 12,
-    padding: "10px 16px",
-    background: "#2563eb",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-    fontWeight: 600,
+  statsGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+    gap: 12,
+    marginTop: 16,
+  },
+  statBox: {
+    padding: 12,
+    border: "1px solid var(--border)",
+    borderRadius: 8,
+    background: "var(--background)",
+  },
+  statLabel: {
+    fontSize: 12,
+    color: "var(--muted-foreground)",
+    marginBottom: 4,
+  },
+  statValue: {
+    fontSize: 20,
+    fontWeight: 700,
+    color: "var(--foreground)",
+  },
+  details: {
+    marginTop: 16,
+    border: "1px solid rgba(239, 68, 68, 0.3)",
+    borderRadius: 8,
+    background: "rgba(239, 68, 68, 0.05)",
+    overflow: "hidden",
+  },
+  summary: {
+    padding: "12px 16px",
     cursor: "pointer",
+    userSelect: "none",
   },
+  errorList: {
+    margin: 0,
+    padding: "0 16px 16px 36px",
+    lineHeight: 1.6,
+    fontSize: 14,
+    color: "var(--foreground)",
+  }
 };

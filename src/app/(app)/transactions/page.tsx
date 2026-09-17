@@ -1,6 +1,22 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { toast } from "sonner";
+import {
+  Search,
+  Filter,
+  FilterX,
+  Plus,
+  Loader2,
+  Calendar,
+  DollarSign,
+  Tag,
+  Hash,
+  AlertCircle,
+  CheckCircle2,
+  ListFilter,
+  Copy,
+} from "lucide-react";
 
 type TxItem = {
   id: number;
@@ -47,19 +63,21 @@ export default function TransactionsPage() {
   const [categoryText, setCategoryText] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
   const [customers, setCustomers] = useState<MasterItem[]>([]);
   const [wallets, setWallets] = useState<MasterItem[]>([]);
   const [categories, setCategories] = useState<MasterItem[]>([]);
 
   const [showForm, setShowForm] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [form, setForm] = useState({
     txDate: new Date().toISOString().slice(0, 10),
     txType: "chi",
     amount: "",
     note: "",
   });
+  
+  const formRef = useRef<HTMLFormElement>(null);
 
   const customerId = resolveMasterId(customers, customerText);
   const walletId = resolveMasterId(wallets, walletText);
@@ -81,13 +99,12 @@ export default function TransactionsPage() {
       setWallets(walData.items || []);
       setCategories(catData.items || []);
     } catch {
-      /* ignore */
+      toast.error("Không tải được danh mục");
     }
   }
 
   async function load() {
     setLoading(true);
-    setError("");
     try {
       const params = new URLSearchParams({ limit: "100" });
       if (q) params.set("q", q);
@@ -100,13 +117,15 @@ export default function TransactionsPage() {
       if (walletId) params.set("walletId", walletId);
       if (categoryId) params.set("categoryId", categoryId);
       if (status) params.set("status", status);
+      
       const res = await fetch(`/api/transactions?${params}`);
       if (!res.ok) throw new Error("Không tải được giao dịch");
+      
       const data = await res.json();
       setItems(data.items || []);
       setTotal(data.total || 0);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Lỗi");
+      toast.error(e instanceof Error ? e.message : "Lỗi tải giao dịch");
     } finally {
       setLoading(false);
     }
@@ -117,43 +136,43 @@ export default function TransactionsPage() {
   }, []);
 
   useEffect(() => {
-    const t = setTimeout(() => setQ(qInput.trim()), 300);
+    const t = setTimeout(() => setQ(qInput.trim()), 400);
     return () => clearTimeout(t);
   }, [qInput]);
 
   useEffect(() => {
     load();
   }, [
-    q,
-    type,
-    from,
-    to,
-    amountMin,
-    amountMax,
-    customerId,
-    walletId,
-    categoryId,
-    status,
+    q, type, from, to, amountMin, amountMax,
+    customerId, walletId, categoryId, status,
   ]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    const res = await fetch("/api/transactions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...form,
-        amount: Number(form.amount),
-      }),
-    });
-    if (!res.ok) {
-      const d = await res.json();
-      alert(d.error || "Không tạo được");
-      return;
+    const loadingToast = toast.loading("Đang lưu giao dịch...");
+    
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          amount: Number(form.amount),
+        }),
+      });
+      
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Không tạo được");
+      }
+      
+      toast.success("Đã thêm giao dịch thành công", { id: loadingToast });
+      setShowForm(false);
+      setForm({ ...form, amount: "", note: "" });
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Lỗi", { id: loadingToast });
     }
-    setShowForm(false);
-    setForm({ ...form, amount: "", note: "" });
-    load();
   }
 
   function clearFilters() {
@@ -168,34 +187,54 @@ export default function TransactionsPage() {
     setWalletText("");
     setCategoryText("");
     setStatus("");
+    toast.success("Đã xoá bộ lọc");
+  }
+  
+  function copyText(text: string) {
+    navigator.clipboard.writeText(text);
+    toast.success("Đã copy", { duration: 1500 });
   }
 
   return (
-    <div style={{ maxWidth: 1200, margin: "0 auto" }}>
+    <div style={styles.page}>
       <div style={styles.pageHead}>
         <div>
           <h1 style={styles.title}>Giao dịch</h1>
-          <p style={styles.subtitle}>{total.toLocaleString("vi-VN")} kết quả</p>
+          <p style={styles.subtitle}>
+            {total.toLocaleString("vi-VN")} kết quả {loading && <Loader2 size={12} style={{ display: 'inline', animation: 'spin 1s linear infinite' }} />}
+          </p>
         </div>
         <div style={styles.headActions}>
-          <button type="button" style={styles.ghostBtn} onClick={clearFilters}>
-            Xoá lọc
+          <button 
+            type="button" 
+            className="btn-ghost" 
+            onClick={() => setShowFilters(!showFilters)}
+            title="Hiện/Ẩn bộ lọc chi tiết"
+          >
+            <ListFilter size={16} />
+            <span>Lọc</span>
+          </button>
+          <button type="button" className="btn-ghost" onClick={clearFilters}>
+            <FilterX size={16} />
+            <span className="hidden-mobile">Xoá lọc</span>
           </button>
           <button
             type="button"
-            style={styles.primary}
-            onClick={() => setShowForm((v) => !v)}
+            className="btn-primary"
+            onClick={() => {
+              setShowForm(!showForm);
+              if (!showForm) setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+            }}
           >
-            {showForm ? "Đóng" : "Thêm giao dịch"}
+            <Plus size={16} />
+            <span>{showForm ? "Đóng form" : "Thêm"}</span>
           </button>
         </div>
       </div>
 
-      <div style={styles.filterCard}>
+      <div className="card-container" style={{ padding: 16, marginTop: 16 }}>
         <div style={styles.searchWrap}>
-          <span style={styles.searchIcon} aria-hidden>
-            ⌕
-          </span>
+          <Search size={18} style={styles.searchIcon} />
           <input
             type="search"
             value={qInput}
@@ -206,256 +245,317 @@ export default function TransactionsPage() {
           />
         </div>
 
-        <div style={styles.filterGrid}>
-          <label style={styles.field}>
-            <span style={styles.fieldLabel}>Loại</span>
-            <select
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              className="tx-filter-input"
-              style={styles.control}
-            >
-              <option value="">Tất cả</option>
-              <option value="thu">Thu</option>
-              <option value="chi">Chi</option>
-            </select>
-          </label>
+        {showFilters && (
+          <div style={styles.filterGrid}>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Loại</span>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className="tx-filter-input"
+                style={styles.control}
+              >
+                <option value="">Tất cả</option>
+                <option value="thu">Thu</option>
+                <option value="chi">Chi</option>
+              </select>
+            </label>
 
-          <label style={styles.field}>
-            <span style={styles.fieldLabel}>Từ ngày</span>
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="tx-filter-input"
-              style={styles.control}
-            />
-          </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Từ ngày</span>
+              <input
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="tx-filter-input"
+                style={styles.control}
+              />
+            </label>
 
-          <label style={styles.field}>
-            <span style={styles.fieldLabel}>Đến ngày</span>
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="tx-filter-input"
-              style={styles.control}
-            />
-          </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Đến ngày</span>
+              <input
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="tx-filter-input"
+                style={styles.control}
+              />
+            </label>
 
-          <label style={styles.field}>
-            <span style={styles.fieldLabel}>Tiền từ</span>
-            <input
-              type="number"
-              placeholder="0"
-              value={amountMin}
-              onChange={(e) => setAmountMin(e.target.value)}
-              className="tx-filter-input"
-              style={styles.control}
-            />
-          </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Tiền từ</span>
+              <input
+                type="number"
+                placeholder="0"
+                value={amountMin}
+                onChange={(e) => setAmountMin(e.target.value)}
+                className="tx-filter-input"
+                style={styles.control}
+              />
+            </label>
 
-          <label style={styles.field}>
-            <span style={styles.fieldLabel}>Tiền đến</span>
-            <input
-              type="number"
-              placeholder="—"
-              value={amountMax}
-              onChange={(e) => setAmountMax(e.target.value)}
-              className="tx-filter-input"
-              style={styles.control}
-            />
-          </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Tiền đến</span>
+              <input
+                type="number"
+                placeholder="—"
+                value={amountMax}
+                onChange={(e) => setAmountMax(e.target.value)}
+                className="tx-filter-input"
+                style={styles.control}
+              />
+            </label>
 
-          <label style={styles.field}>
-            <span style={styles.fieldLabel}>Đối tượng</span>
-            <input
-              list="customer-list"
-              value={customerText}
-              onChange={(e) => setCustomerText(e.target.value)}
-              placeholder="Tất cả"
-              className="tx-filter-input"
-              style={styles.control}
-            />
-            <datalist id="customer-list">
-              {customers.map((c) => (
-                <option key={c.id} value={c.name} />
-              ))}
-            </datalist>
-          </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Đối tượng</span>
+              <input
+                list="customer-list"
+                value={customerText}
+                onChange={(e) => setCustomerText(e.target.value)}
+                placeholder="Tất cả"
+                className="tx-filter-input"
+                style={styles.control}
+              />
+              <datalist id="customer-list">
+                {customers.map((c) => (
+                  <option key={c.id} value={c.name} />
+                ))}
+              </datalist>
+            </label>
 
-          <label style={styles.field}>
-            <span style={styles.fieldLabel}>Ví</span>
-            <input
-              list="wallet-list"
-              value={walletText}
-              onChange={(e) => setWalletText(e.target.value)}
-              placeholder="Tất cả"
-              className="tx-filter-input"
-              style={styles.control}
-            />
-            <datalist id="wallet-list">
-              {wallets.map((w) => (
-                <option key={w.id} value={w.name} />
-              ))}
-            </datalist>
-          </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Ví</span>
+              <input
+                list="wallet-list"
+                value={walletText}
+                onChange={(e) => setWalletText(e.target.value)}
+                placeholder="Tất cả"
+                className="tx-filter-input"
+                style={styles.control}
+              />
+              <datalist id="wallet-list">
+                {wallets.map((w) => (
+                  <option key={w.id} value={w.name} />
+                ))}
+              </datalist>
+            </label>
 
-          <label style={styles.field}>
-            <span style={styles.fieldLabel}>Danh mục</span>
-            <input
-              list="category-list"
-              value={categoryText}
-              onChange={(e) => setCategoryText(e.target.value)}
-              placeholder="Tất cả"
-              className="tx-filter-input"
-              style={styles.control}
-            />
-            <datalist id="category-list">
-              {categories.map((c) => (
-                <option key={c.id} value={c.name} />
-              ))}
-            </datalist>
-          </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Danh mục</span>
+              <input
+                list="category-list"
+                value={categoryText}
+                onChange={(e) => setCategoryText(e.target.value)}
+                placeholder="Tất cả"
+                className="tx-filter-input"
+                style={styles.control}
+              />
+              <datalist id="category-list">
+                {categories.map((c) => (
+                  <option key={c.id} value={c.name} />
+                ))}
+              </datalist>
+            </label>
 
-          <label style={styles.field}>
-            <span style={styles.fieldLabel}>Trạng thái</span>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="tx-filter-input"
-              style={styles.control}
-            >
-              <option value="">Tất cả</option>
-              <option value="ok">OK</option>
-              <option value="pending">Pending</option>
-              <option value="error">Lỗi</option>
-            </select>
-          </label>
-        </div>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Trạng thái</span>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="tx-filter-input"
+                style={styles.control}
+              >
+                <option value="">Tất cả</option>
+                <option value="ok">OK</option>
+                <option value="pending">Pending</option>
+                <option value="error">Lỗi</option>
+              </select>
+            </label>
+          </div>
+        )}
       </div>
 
       {showForm && (
-        <form onSubmit={handleCreate} style={styles.card}>
+        <form ref={formRef} onSubmit={handleCreate} className="card-container" style={{ padding: 20, marginTop: 16 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 16 }}>Thêm giao dịch mới</h3>
           <div style={styles.formGrid}>
-            <label>
-              Ngày
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Ngày</span>
               <input
                 type="date"
                 required
                 value={form.txDate}
                 onChange={(e) => setForm({ ...form, txDate: e.target.value })}
-                style={styles.input}
+                className="form-input"
+                style={styles.control}
               />
             </label>
-            <label>
-              Loại
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Loại</span>
               <select
                 value={form.txType}
                 onChange={(e) => setForm({ ...form, txType: e.target.value })}
-                style={styles.input}
+                className="form-input"
+                style={styles.control}
               >
                 <option value="chi">Chi</option>
                 <option value="thu">Thu</option>
               </select>
             </label>
-            <label>
-              Số tiền
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Số tiền</span>
               <input
                 type="number"
                 required
                 min={1}
                 value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                style={styles.input}
+                className="form-input"
+                style={styles.control}
               />
             </label>
-            <label style={{ gridColumn: "1 / -1" }}>
-              Ghi chú
+            <label style={{ ...styles.field, gridColumn: "1 / -1" }}>
+              <span style={styles.fieldLabel}>Ghi chú</span>
               <input
                 value={form.note}
                 onChange={(e) => setForm({ ...form, note: e.target.value })}
-                style={styles.input}
+                placeholder="Nhập ghi chú giao dịch..."
+                className="form-input"
+                style={styles.control}
               />
             </label>
           </div>
-          <button type="submit" style={{ ...styles.primary, marginTop: 12 }}>
-            Lưu
-          </button>
+          <div style={{ display: 'flex', gap: 12, marginTop: 16, justifyContent: 'flex-end' }}>
+            <button type="button" className="btn-ghost" onClick={() => setShowForm(false)}>
+              Huỷ
+            </button>
+            <button type="submit" className="btn-primary">
+              <CheckCircle2 size={16} />
+              <span>Lưu giao dịch</span>
+            </button>
+          </div>
         </form>
       )}
 
-      {error && <p style={{ color: "#b91c1c" }}>{error}</p>}
-      {loading ? (
-        <p>Đang tải...</p>
-      ) : (
-        <div
-          className="table-scroll"
-          style={{ ...styles.card, padding: 0, overflowX: "auto" }}
-        >
-          <style>{`
-            table.tx-table th, table.tx-table td {
-              padding: 10px 12px;
-              border-bottom: 1px solid #f1f5f9;
-              text-align: left;
-              white-space: nowrap;
-            }
-            table.tx-table th { background: #f8fafc; font-size: 12px; color: #64748b; }
-          `}</style>
-          <table className="tx-table" style={styles.table}>
-            <thead>
+      <div
+        className="card-container"
+        style={{ marginTop: 16, padding: 0, overflowX: "auto" }}
+      >
+        <style>{`
+          table.tx-table th, table.tx-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+            white-space: nowrap;
+          }
+          table.tx-table th { background: var(--muted); font-size: 13px; color: var(--muted-foreground); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+          .tx-row:hover { background: var(--muted); }
+          .tx-row { transition: background 0.15s; }
+          .copy-btn { opacity: 0; background: transparent; border: none; cursor: pointer; color: var(--muted-foreground); padding: 4px; border-radius: 4px; margin-left: 4px; display: inline-flex; }
+          .tx-row:hover .copy-btn { opacity: 1; }
+          .copy-btn:hover { background: var(--border); color: var(--foreground); }
+          @media (max-width: 600px) {
+            .hidden-mobile { display: none; }
+          }
+        `}</style>
+        <table className="tx-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          <thead>
+            <tr>
+              <th>Ngày</th>
+              <th>Loại</th>
+              <th>Số tiền</th>
+              <th>Đối tượng</th>
+              <th>Ví</th>
+              <th>Danh mục</th>
+              <th>Ghi chú</th>
+              <th>Nguồn</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading && items.length === 0 ? (
               <tr>
-                <th>Ngày</th>
-                <th>Loại</th>
-                <th>Số tiền</th>
-                <th>Đối tượng</th>
-                <th>Ví</th>
-                <th>Danh mục</th>
-                <th>Ghi chú</th>
-                <th>Nguồn</th>
+                <td colSpan={8} style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}>
+                  <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+                  Đang tải dữ liệu...
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {items.map((t) => (
-                <tr key={t.id}>
-                  <td>{new Date(t.txDate).toLocaleDateString("vi-VN")}</td>
-                  <td
-                    style={{
-                      color: t.txType === "thu" ? "#15803d" : "#b91c1c",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {t.txType === "thu" ? "Thu" : "Chi"}
+            ) : items.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={8}
+                  style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}
+                >
+                  <FilterX size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+                  Không có giao dịch khớp bộ lọc.
+                </td>
+              </tr>
+            ) : (
+              items.map((t) => (
+                <tr key={t.id} className="tx-row" style={t.status !== 'ok' ? { backgroundColor: 'var(--muted)' } : {}}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <Calendar size={14} color="var(--muted-foreground)" />
+                      <span>{new Date(t.txDate).toLocaleDateString("vi-VN")}</span>
+                    </div>
                   </td>
-                  <td>{formatMoney(t.amount)}</td>
+                  <td>
+                    <span style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      padding: '2px 8px',
+                      borderRadius: 999,
+                      fontSize: 12,
+                      fontWeight: 600,
+                      backgroundColor: t.txType === "thu" ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                      color: t.txType === "thu" ? 'var(--success)' : 'var(--danger)',
+                    }}>
+                      {t.txType === "thu" ? "Thu" : "Chi"}
+                    </span>
+                  </td>
+                  <td style={{ fontWeight: 600, color: "var(--foreground)" }}>
+                    {formatMoney(t.amount)}
+                  </td>
                   <td>{t.customerName || "—"}</td>
                   <td>{t.walletName || "—"}</td>
-                  <td>{t.categoryName || "—"}</td>
-                  <td>{t.note || "—"}</td>
-                  <td style={{ fontSize: 12, color: "#64748b" }}>
-                    {t.sourceSheet}
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {t.categoryName && <Tag size={14} color="var(--muted-foreground)" />}
+                      <span>{t.categoryName || "—"}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <span title={t.note || ""}>{t.note || "—"}</span>
+                      {t.note && (
+                        <button type="button" className="copy-btn" onClick={() => copyText(t.note!)} title="Copy">
+                          <Copy size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  <td style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <Hash size={12} />
+                      <span title={t.sourceSheet}>{t.sourceSheet.length > 15 ? t.sourceSheet.substring(0, 15) + "..." : t.sourceSheet}</span>
+                    </div>
                   </td>
                 </tr>
-              ))}
-              {items.length === 0 && (
-                <tr>
-                  <td
-                    colSpan={8}
-                    style={{ textAlign: "center", padding: 24, color: "#64748b" }}
-                  >
-                    Không có giao dịch khớp bộ lọc.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  page: {
+    maxWidth: 1200,
+    margin: "0 auto",
+    width: "100%",
+  },
   pageHead: {
     display: "flex",
     justifyContent: "space-between",
@@ -467,36 +567,20 @@ const styles: Record<string, React.CSSProperties> = {
     margin: 0,
     fontSize: 22,
     fontWeight: 700,
-    color: "#0f172a",
+    color: "var(--foreground)",
   },
   subtitle: {
     margin: "4px 0 0",
-    color: "#64748b",
+    color: "var(--muted-foreground)",
     fontSize: 13,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
   },
   headActions: {
     display: "flex",
     gap: 8,
     flexWrap: "wrap",
-  },
-  card: {
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 16,
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-  },
-  filterCard: {
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 14,
-    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)",
-    display: "flex",
-    flexDirection: "column",
-    gap: 14,
   },
   searchWrap: {
     position: "relative",
@@ -506,25 +590,25 @@ const styles: Record<string, React.CSSProperties> = {
   searchIcon: {
     position: "absolute",
     left: 12,
-    color: "#94a3b8",
-    fontSize: 16,
+    color: "var(--muted-foreground)",
     pointerEvents: "none",
-    lineHeight: 1,
   },
   search: {
     width: "100%",
-    padding: "11px 12px 11px 34px",
-    border: "1px solid #e2e8f0",
-    borderRadius: 10,
+    padding: "11px 12px 11px 38px",
+    border: "1px solid var(--border)",
+    borderRadius: 8,
     fontSize: 14,
-    background: "#f8fafc",
-    color: "#0f172a",
+    background: "var(--background)",
     outline: "none",
   },
   filterGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))",
+    gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
     gap: 12,
+    marginTop: 16,
+    paddingTop: 16,
+    borderTop: "1px dashed var(--border)",
   },
   field: {
     display: "flex",
@@ -535,55 +619,17 @@ const styles: Record<string, React.CSSProperties> = {
   fieldLabel: {
     fontSize: 12,
     fontWeight: 600,
-    color: "#64748b",
+    color: "var(--muted-foreground)",
   },
   control: {
     width: "100%",
-    padding: "9px 11px",
-    border: "1px solid #e2e8f0",
+    padding: "9px 12px",
     borderRadius: 8,
     fontSize: 14,
-    background: "#fff",
-    color: "#0f172a",
-    outline: "none",
   },
   formGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-    gap: 12,
-  },
-  input: {
-    display: "block",
-    width: "100%",
-    marginTop: 4,
-    padding: "8px 10px",
-    border: "1px solid #e2e8f0",
-    borderRadius: 8,
-    fontSize: 14,
-  },
-  primary: {
-    padding: "9px 14px",
-    background: "#2563eb",
-    color: "#fff",
-    border: "none",
-    borderRadius: 8,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontSize: 13,
-  },
-  ghostBtn: {
-    padding: "9px 14px",
-    background: "#fff",
-    color: "#475569",
-    border: "1px solid #e2e8f0",
-    borderRadius: 8,
-    fontWeight: 600,
-    cursor: "pointer",
-    fontSize: 13,
-  },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-    fontSize: 14,
+    gap: 16,
   },
 };

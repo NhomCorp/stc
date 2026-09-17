@@ -16,6 +16,19 @@ import {
   type ReportRow,
   type ReportSummary,
 } from "@/lib/reports";
+import ReportChart from "@/components/report-chart";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  TrendingUp,
+  Receipt,
+  Users,
+  FolderTree,
+  UploadCloud,
+  CheckCircle2,
+  AlertCircle,
+  FileSpreadsheet,
+} from "lucide-react";
 
 async function loadReportSummary(): Promise<ReportSummary> {
   try {
@@ -82,15 +95,20 @@ function MetricCell({
   label,
   value,
   color,
+  icon: Icon,
 }: {
   label: string;
   value: string;
   color?: string;
+  icon?: React.ComponentType<{ size: number; color?: string; style?: React.CSSProperties }>;
 }) {
   return (
     <div style={styles.metricCell}>
-      <div style={styles.metricLabel}>{label}</div>
-      <div style={{ ...styles.metricValue, color: color || "#0f172a" }}>
+      <div style={styles.metricLabel}>
+        {Icon && <Icon size={14} color={color || "var(--muted-foreground)"} />}
+        <span>{label}</span>
+      </div>
+      <div style={{ ...styles.metricValue, color: color || "var(--foreground)" }}>
         {value}
       </div>
     </div>
@@ -126,34 +144,49 @@ export default async function DashboardPage() {
     <div style={styles.page}>
       <div style={styles.kpiRow}>
         <Link href="/transactions" style={styles.kpi}>
-          <span style={styles.kpiLabel}>Giao dịch</span>
-          <span style={styles.kpiValue}>{stats.transactions}</span>
+          <div style={styles.kpiTop}>
+            <span style={styles.kpiLabel}>Giao dịch</span>
+            <Receipt size={18} color="var(--primary)" />
+          </div>
+          <span style={styles.kpiValue}>{stats.transactions.toLocaleString("vi-VN")}</span>
         </Link>
         <Link href="/master" style={styles.kpi}>
-          <span style={styles.kpiLabel}>Đối tượng</span>
-          <span style={styles.kpiValue}>{stats.customers}</span>
+          <div style={styles.kpiTop}>
+            <span style={styles.kpiLabel}>Đối tượng</span>
+            <Users size={18} color="#0284c7" />
+          </div>
+          <span style={styles.kpiValue}>{stats.customers.toLocaleString("vi-VN")}</span>
         </Link>
         <Link href="/master" style={styles.kpi}>
-          <span style={styles.kpiLabel}>Ví / Danh mục</span>
+          <div style={styles.kpiTop}>
+            <span style={styles.kpiLabel}>Ví / Danh mục</span>
+            <FolderTree size={18} color="#8b5cf6" />
+          </div>
           <span style={styles.kpiValue}>
             {stats.wallets} / {stats.categories}
           </span>
         </Link>
         <Link href="/import" style={styles.kpi}>
-          <span style={styles.kpiLabel}>Import Log</span>
-          <span style={{ ...styles.kpiValue, fontSize: 15 }}>Paste / CLI</span>
+          <div style={styles.kpiTop}>
+            <span style={styles.kpiLabel}>Import Log</span>
+            <UploadCloud size={18} color="#10b981" />
+          </div>
+          <span style={{ ...styles.kpiValue, fontSize: 16 }}>Paste / CLI</span>
         </Link>
       </div>
 
       <section style={styles.panel}>
         <div style={styles.panelHead}>
-          <h2 style={styles.panelTitle}>Báo cáo Sheet</h2>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <FileSpreadsheet size={20} color="var(--primary)" />
+            <h2 style={styles.panelTitle}>Báo cáo Sheet</h2>
+          </div>
           <p style={styles.panelMeta}>{syncNote}</p>
         </div>
 
         <div style={styles.todayBlock}>
           <div style={styles.todayLabel}>
-            Hôm nay
+            <span>Hôm nay</span>
             {report.today?.label ? (
               <span style={styles.todaySub}> · {report.today.label}</span>
             ) : null}
@@ -163,26 +196,34 @@ export default async function DashboardPage() {
               <MetricCell
                 label="Thu"
                 value={formatMoney(report.today.thu)}
-                color="#15803d"
+                color="var(--success)"
+                icon={ArrowDownLeft}
               />
               <MetricCell
                 label="Chi"
                 value={formatMoney(report.today.chi)}
-                color="#b91c1c"
+                color="var(--danger)"
+                icon={ArrowUpRight}
               />
               <MetricCell
                 label="Ròng"
                 value={formatRong(report.today.rong)}
+                icon={TrendingUp}
               />
               {report.today.checkCount > 0 && (
                 <div style={styles.warnChip}>
-                  Cần kiểm tra: {report.today.checkCount}
+                  <AlertCircle size={14} />
+                  <span>Cần kiểm tra: {report.today.checkCount}</span>
                 </div>
               )}
             </div>
           ) : (
             <p style={styles.muted}>Chưa có dữ liệu đồng bộ.</p>
           )}
+        </div>
+
+        <div style={{ padding: "16px 20px" }}>
+          <ReportChart rows={report.months} />
         </div>
 
         <div style={styles.tableWrap}>
@@ -199,13 +240,14 @@ export default async function DashboardPage() {
             <tbody>
               {report.months.length > 0 ? (
                 report.months.map((m, i) => (
-                  <tr key={`${m.label}-${i}`}>
-                    <td style={styles.td}>{m.label}</td>
+                  <tr key={`${m.label}-${i}`} style={styles.tr}>
+                    <td style={{ ...styles.td, fontWeight: 500 }}>{m.label}</td>
                     <td
                       style={{
                         ...styles.td,
                         textAlign: "right",
-                        color: "#15803d",
+                        color: "var(--success)",
+                        fontWeight: 600,
                       }}
                     >
                       {formatMoney(m.thu)}
@@ -214,26 +256,27 @@ export default async function DashboardPage() {
                       style={{
                         ...styles.td,
                         textAlign: "right",
-                        color: "#b91c1c",
+                        color: "var(--danger)",
+                        fontWeight: 600,
                       }}
                     >
                       {formatMoney(m.chi)}
                     </td>
-                    <td style={{ ...styles.td, textAlign: "right", fontWeight: 600 }}>
+                    <td style={{ ...styles.td, textAlign: "right", fontWeight: 700 }}>
                       {formatRong(m.rong)}
                     </td>
                     <td style={{ ...styles.td, textAlign: "right" }}>
                       {m.checkCount > 0 ? (
                         <span style={styles.warnText}>{m.checkCount}</span>
                       ) : (
-                        "—"
+                        <span style={{ color: "var(--muted-foreground)" }}>—</span>
                       )}
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={5} style={{ ...styles.td, color: "#94a3b8" }}>
+                  <td colSpan={5} style={{ ...styles.td, textAlign: "center", color: "var(--muted-foreground)", padding: 24 }}>
                     Chưa có số liệu tháng.
                   </td>
                 </tr>
@@ -248,117 +291,132 @@ export default async function DashboardPage() {
 
 const styles: Record<string, React.CSSProperties> = {
   page: {
-    maxWidth: 1100,
+    maxWidth: 1200,
     margin: "0 auto",
     display: "flex",
     flexDirection: "column",
-    gap: 16,
+    gap: 20,
+    width: "100%",
   },
   kpiRow: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-    gap: 12,
+    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+    gap: 16,
   },
   kpi: {
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 8,
-    padding: "12px 14px",
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: 12,
+    padding: "16px 18px",
     textDecoration: "none",
     color: "inherit",
     display: "flex",
     flexDirection: "column",
-    gap: 4,
+    gap: 8,
     minWidth: 0,
-    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.05)",
+    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
+    transition: "transform 0.15s, box-shadow 0.15s",
+  },
+  kpiTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
   kpiLabel: {
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: 500,
+    fontSize: 13,
+    color: "var(--muted-foreground)",
+    fontWeight: 600,
   },
   kpiValue: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: 700,
-    color: "#0f172a",
+    color: "var(--foreground)",
     lineHeight: 1.2,
   },
   panel: {
-    background: "#fff",
-    border: "1px solid #e2e8f0",
-    borderRadius: 8,
+    background: "var(--card)",
+    border: "1px solid var(--border)",
+    borderRadius: 12,
     overflow: "hidden",
-    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.04)",
   },
   panelHead: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "baseline",
+    alignItems: "center",
     gap: 12,
     flexWrap: "wrap",
-    padding: "12px 16px",
-    borderBottom: "1px solid #f1f5f9",
+    padding: "16px 20px",
+    borderBottom: "1px solid var(--border)",
   },
   panelTitle: {
     margin: 0,
     fontSize: 16,
     fontWeight: 700,
-    color: "#0f172a",
+    color: "var(--foreground)",
   },
   panelMeta: {
     margin: 0,
-    fontSize: 12,
-    color: "#64748b",
+    fontSize: 13,
+    color: "var(--muted-foreground)",
   },
   todayBlock: {
-    padding: "14px 16px",
-    background: "#f8fafc",
-    borderBottom: "1px solid #f1f5f9",
-    boxShadow: "inset 0 -1px 0 rgba(255, 255, 255, 0.1)",
+    padding: "16px 20px",
+    background: "var(--muted)",
+    borderBottom: "1px solid var(--border)",
   },
   todayLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 600,
-    color: "#334155",
-    marginBottom: 10,
+    color: "var(--foreground)",
+    marginBottom: 12,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
   },
   todaySub: {
     fontWeight: 400,
-    color: "#64748b",
+    color: "var(--muted-foreground)",
+    fontSize: 13,
   },
   todayMetrics: {
     display: "flex",
     flexWrap: "wrap",
-    gap: 24,
+    gap: 32,
     alignItems: "flex-end",
   },
   metricCell: {
-    minWidth: 100,
+    minWidth: 120,
   },
   metricLabel: {
-    fontSize: 11,
-    color: "#64748b",
-    marginBottom: 2,
-    textTransform: "uppercase",
-    letterSpacing: "0.03em",
+    fontSize: 12,
+    color: "var(--muted-foreground)",
+    marginBottom: 4,
+    fontWeight: 600,
+    display: "flex",
+    alignItems: "center",
+    gap: 4,
   },
   metricValue: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 700,
   },
   warnChip: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#b45309",
-    background: "#fffbeb",
+    background: "#fef3c7",
     border: "1px solid #fde68a",
-    borderRadius: 6,
-    padding: "4px 8px",
-    boxShadow: "0 1px 2px rgba(0, 0, 0, 0.1)",
+    borderRadius: 8,
+    padding: "6px 12px",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontWeight: 600,
   },
   muted: {
     margin: 0,
     fontSize: 13,
-    color: "#94a3b8",
+    color: "var(--muted-foreground)",
   },
   tableWrap: {
     overflowX: "auto",
@@ -366,28 +424,29 @@ const styles: Record<string, React.CSSProperties> = {
   table: {
     width: "100%",
     borderCollapse: "collapse",
-    fontSize: 13,
+    fontSize: 14,
   },
   th: {
-    padding: "10px 16px",
+    padding: "12px 20px",
     textAlign: "left",
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: 600,
-    color: "#64748b",
+    color: "var(--muted-foreground)",
     textTransform: "uppercase",
-    letterSpacing: "0.03em",
-    background: "#fff",
-    borderBottom: "1px solid #e2e8f0",
-    boxShadow: "inset 0 1px 0 rgba(255, 255, 255, 0.1)",
+    letterSpacing: "0.04em",
+    background: "var(--card)",
+    borderBottom: "1px solid var(--border)",
+  },
+  tr: {
+    borderBottom: "1px solid var(--border)",
   },
   td: {
-    padding: "10px 16px",
-    borderBottom: "1px solid #f1f5f9",
-    color: "#0f172a",
+    padding: "14px 20px",
+    color: "var(--foreground)",
     whiteSpace: "nowrap",
   },
   warnText: {
-    color: "#b45309",
-    fontWeight: 600,
-  }
+    color: "#d97706",
+    fontWeight: 700,
+  },
 };
