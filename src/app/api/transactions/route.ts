@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
 
   const where = conditions.length ? and(...conditions) : undefined;
 
-  const [rows, countRow] = await Promise.all([
+  const [rows, countRow, sumRows] = await Promise.all([
     db
       .select({
         id: transactions.id,
@@ -113,10 +113,30 @@ export async function GET(request: NextRequest) {
       .leftJoin(wallets, eq(transactions.walletId, wallets.id))
       .leftJoin(categories, eq(transactions.categoryId, categories.id))
       .where(where),
+    db
+      .select({
+        txType: transactions.txType,
+        total: sql<number>`sum(${transactions.amount})::numeric`,
+      })
+      .from(transactions)
+      .leftJoin(customers, eq(transactions.customerId, customers.id))
+      .leftJoin(wallets, eq(transactions.walletId, wallets.id))
+      .leftJoin(categories, eq(transactions.categoryId, categories.id))
+      .where(where)
+      .groupBy(transactions.txType),
   ]);
+
+  let totalIncome = 0;
+  let totalExpense = 0;
+  for (const row of sumRows) {
+    if (row.txType === "thu") totalIncome = Number(row.total);
+    if (row.txType === "chi") totalExpense = Number(row.total);
+  }
 
   return NextResponse.json({
     total: countRow[0]?.count ?? 0,
+    totalIncome,
+    totalExpense,
     limit,
     offset,
     items: rows,

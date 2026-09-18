@@ -312,53 +312,47 @@ export default function TransactionsPage() {
 
             <label style={styles.field}>
               <span style={styles.fieldLabel}>Đối tượng</span>
-              <input
-                list="customer-list"
+              <select
                 value={customerText}
                 onChange={(e) => setCustomerText(e.target.value)}
-                placeholder="Tất cả"
                 className="tx-filter-input"
                 style={styles.control}
-              />
-              <datalist id="customer-list">
+              >
+                <option value="">Tất cả</option>
                 {customers.map((c) => (
-                  <option key={c.id} value={c.name} />
+                  <option key={c.id} value={c.name}>{c.name}</option>
                 ))}
-              </datalist>
+              </select>
             </label>
 
             <label style={styles.field}>
               <span style={styles.fieldLabel}>Ví</span>
-              <input
-                list="wallet-list"
+              <select
                 value={walletText}
                 onChange={(e) => setWalletText(e.target.value)}
-                placeholder="Tất cả"
                 className="tx-filter-input"
                 style={styles.control}
-              />
-              <datalist id="wallet-list">
+              >
+                <option value="">Tất cả</option>
                 {wallets.map((w) => (
-                  <option key={w.id} value={w.name} />
+                  <option key={w.id} value={w.name}>{w.name}</option>
                 ))}
-              </datalist>
+              </select>
             </label>
 
             <label style={styles.field}>
               <span style={styles.fieldLabel}>Danh mục</span>
-              <input
-                list="category-list"
+              <select
                 value={categoryText}
                 onChange={(e) => setCategoryText(e.target.value)}
-                placeholder="Tất cả"
                 className="tx-filter-input"
                 style={styles.control}
-              />
-              <datalist id="category-list">
+              >
+                <option value="">Tất cả</option>
                 {categories.map((c) => (
-                  <option key={c.id} value={c.name} />
+                  <option key={c.id} value={c.name}>{c.name}</option>
                 ))}
-              </datalist>
+              </select>
             </label>
 
             <label style={styles.field}>

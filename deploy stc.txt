@@ -287,7 +287,7 @@ git push origin main</code></pre>
         <span>PowerShell — 1 lệnh SSH</span>
         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
-      <pre><code>ssh stc-vps "cd /home/stcadmin/app && git pull --ff-only origin main && docker-compose up -d --build app && docker-compose ps && curl -s http://127.0.0.1:3000/api/health"</code></pre>
+      <pre><code>ssh stc-vps "cd ~/app && git pull && docker-compose up -d --build app"</code></pre>
     </div>
 
     <p><strong>Bước 3 — Kiểm tra URL công khai</strong></p>
