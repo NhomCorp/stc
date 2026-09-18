@@ -75,8 +75,18 @@ export default function TransactionsPage() {
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState(() => {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    firstDay.setMinutes(firstDay.getMinutes() - firstDay.getTimezoneOffset());
+    return firstDay.toISOString().slice(0, 10);
+  });
+  const [to, setTo] = useState(() => {
+    const today = new Date();
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    lastDay.setMinutes(lastDay.getMinutes() - lastDay.getTimezoneOffset());
+    return lastDay.toISOString().slice(0, 10);
+  });
   const [amountMin, setAmountMin] = useState("");
   const [amountMax, setAmountMax] = useState("");
   const [customerText, setCustomerText] = useState("");
@@ -206,8 +216,15 @@ export default function TransactionsPage() {
     setQInput("");
     setQ("");
     setType("");
-    setFrom("");
-    setTo("");
+    
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    firstDay.setMinutes(firstDay.getMinutes() - firstDay.getTimezoneOffset());
+    lastDay.setMinutes(lastDay.getMinutes() - lastDay.getTimezoneOffset());
+    setFrom(firstDay.toISOString().slice(0, 10));
+    setTo(lastDay.toISOString().slice(0, 10));
+    
     setAmountMin("");
     setAmountMax("");
     setCustomerText("");
@@ -247,6 +264,39 @@ export default function TransactionsPage() {
     }
   }
   
+  function navigateMonth(direction: 'prev' | 'next') {
+    let baseDate = from ? new Date(from) : new Date();
+    baseDate.setMonth(baseDate.getMonth() + (direction === 'prev' ? -1 : 1));
+    const firstDay = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+    const lastDay = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
+    firstDay.setMinutes(firstDay.getMinutes() - firstDay.getTimezoneOffset());
+    lastDay.setMinutes(lastDay.getMinutes() - lastDay.getTimezoneOffset());
+    setFrom(firstDay.toISOString().slice(0, 10));
+    setTo(lastDay.toISOString().slice(0, 10));
+  }
+
+  function getCurrentMonthDisplay() {
+    if (!from || !to) return "Tất cả thời gian";
+    const fDate = new Date(from);
+    const tDate = new Date(to);
+    if (fDate.getMonth() === tDate.getMonth() && fDate.getFullYear() === tDate.getFullYear()) {
+      return `Tháng ${fDate.getMonth() + 1}, ${fDate.getFullYear()}`;
+    }
+    return "Tùy chỉnh";
+  }
+
+  const MonthNavigator = () => (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', background: 'var(--muted)', borderRadius: 12, marginBottom: 16 }}>
+      <button type="button" className="btn-ghost" onClick={() => navigateMonth('prev')} style={{ fontWeight: 500 }}>
+        &lt; Tháng trước
+      </button>
+      <div style={{ fontWeight: 600 }}>{getCurrentMonthDisplay()}</div>
+      <button type="button" className="btn-ghost" onClick={() => navigateMonth('next')} style={{ fontWeight: 500 }}>
+        Tháng sau &gt;
+      </button>
+    </div>
+  );
+
   function copyText(text: string) {
     navigator.clipboard.writeText(text);
     toast.success("Đã copy", { duration: 1500 });
@@ -857,6 +907,10 @@ export default function TransactionsPage() {
         </form>
       )}
 
+      <div style={{ marginTop: 16 }}>
+        <MonthNavigator />
+      </div>
+
       {viewMode === 'feed' ? (
         <div style={{ marginTop: 16 }}>
           {loading && items.length === 0 ? (
@@ -1025,6 +1079,12 @@ export default function TransactionsPage() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {items.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <MonthNavigator />
         </div>
       )}
     </div>
