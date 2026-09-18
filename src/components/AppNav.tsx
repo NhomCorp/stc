@@ -17,10 +17,10 @@ import {
 } from "lucide-react";
 
 const links = [
-  { href: "/dashboard", label: "Báo cáo", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Tổng quan", icon: LayoutDashboard },
   { href: "/transactions", label: "Giao dịch", icon: ArrowLeftRight },
   { href: "/master", label: "Danh mục", icon: FolderTree },
-  { href: "/import", label: "Import", icon: UploadCloud },
+  { href: "/import", label: "Nhập liệu", icon: UploadCloud },
 ];
 
 export function AppNav({
@@ -57,7 +57,7 @@ export function AppNav({
   const allLinks = isAdmin
     ? [
         ...links,
-        { href: "/admin/users", label: "Admin", icon: ShieldAlert },
+        { href: "/admin/users", label: "Quản trị", icon: ShieldAlert },
       ]
     : links;
 

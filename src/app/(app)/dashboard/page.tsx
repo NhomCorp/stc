@@ -168,10 +168,10 @@ export default async function DashboardPage() {
         </Link>
         <Link href="/import" style={styles.kpi}>
           <div style={styles.kpiTop}>
-            <span style={styles.kpiLabel}>Import Log</span>
+            <span style={styles.kpiLabel}>Nhập liệu</span>
             <UploadCloud size={18} color="#10b981" />
           </div>
-          <span style={{ ...styles.kpiValue, fontSize: 16 }}>Paste / CLI</span>
+          <span style={{ ...styles.kpiValue, fontSize: 16 }}>Dán dữ liệu</span>
         </Link>
       </div>
 
@@ -179,7 +179,7 @@ export default async function DashboardPage() {
         <div style={styles.panelHead}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <FileSpreadsheet size={20} color="var(--primary)" />
-            <h2 style={styles.panelTitle}>Báo cáo Sheet</h2>
+            <h2 style={styles.panelTitle}>Sổ thu chi</h2>
           </div>
           <p style={styles.panelMeta}>{syncNote}</p>
         </div>

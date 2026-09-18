@@ -36,7 +36,7 @@ type MasterItem = { id: number; name: string };
 function formatMoney(n: string | number) {
   const v = Number(n);
   if (!Number.isFinite(v)) return String(n);
-  return v.toLocaleString("vi-VN") + " đ";
+  return v.toLocaleString("vi-VN") + " ₫";
 }
 
 function resolveMasterId(list: MasterItem[], typed: string) {
@@ -75,6 +75,9 @@ export default function TransactionsPage() {
     txType: "chi",
     amount: "",
     note: "",
+    customerId: "",
+    walletId: "",
+    categoryId: "",
   });
   
   const formRef = useRef<HTMLFormElement>(null);
@@ -168,7 +171,7 @@ export default function TransactionsPage() {
       
       toast.success("Đã thêm giao dịch thành công", { id: loadingToast });
       setShowForm(false);
-      setForm({ ...form, amount: "", note: "" });
+      setForm({ ...form, amount: "", note: "", customerId: "", walletId: "", categoryId: "" });
       load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Lỗi", { id: loadingToast });
@@ -415,6 +418,48 @@ export default function TransactionsPage() {
                 style={styles.control}
               />
             </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Ví</span>
+              <select
+                value={form.walletId}
+                onChange={(e) => setForm({ ...form, walletId: e.target.value })}
+                className="form-input"
+                style={styles.control}
+              >
+                <option value="">-- Chọn ví --</option>
+                {wallets.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+              </select>
+            </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Đối tượng</span>
+              <select
+                value={form.customerId}
+                onChange={(e) => setForm({ ...form, customerId: e.target.value })}
+                className="form-input"
+                style={styles.control}
+              >
+                <option value="">-- Chọn đối tượng --</option>
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
+            <label style={styles.field}>
+              <span style={styles.fieldLabel}>Danh mục</span>
+              <select
+                value={form.categoryId}
+                onChange={(e) => setForm({ ...form, categoryId: e.target.value })}
+                className="form-input"
+                style={styles.control}
+              >
+                <option value="">-- Chọn danh mục --</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </label>
             <label style={{ ...styles.field, gridColumn: "1 / -1" }}>
               <span style={styles.fieldLabel}>Ghi chú</span>
               <input
@@ -462,14 +507,14 @@ export default function TransactionsPage() {
         <table className="tx-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
           <thead>
             <tr>
-              <th>Ngày</th>
-              <th>Loại</th>
-              <th>Số tiền</th>
+              <th style={{ textAlign: "center" }}>Ngày</th>
+              <th style={{ textAlign: "center" }}>Loại</th>
+              <th style={{ textAlign: "right" }}>Số tiền</th>
               <th>Đối tượng</th>
               <th>Ví</th>
               <th>Danh mục</th>
               <th>Ghi chú</th>
-              <th>Nguồn</th>
+              <th style={{ textAlign: "center" }}>Nguồn</th>
             </tr>
           </thead>
           <tbody>
@@ -493,13 +538,13 @@ export default function TransactionsPage() {
             ) : (
               items.map((t) => (
                 <tr key={t.id} className="tx-row" style={t.status !== 'ok' ? { backgroundColor: 'var(--muted)' } : {}}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <td style={{ textAlign: "center" }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                       <Calendar size={14} color="var(--muted-foreground)" />
                       <span>{new Date(t.txDate).toLocaleDateString("vi-VN")}</span>
                     </div>
                   </td>
-                  <td>
+                  <td style={{ textAlign: "center" }}>
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -507,14 +552,14 @@ export default function TransactionsPage() {
                       borderRadius: 999,
                       fontSize: 12,
                       fontWeight: 600,
-                      backgroundColor: t.txType === "thu" ? 'rgba(34, 197, 94, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                      color: t.txType === "thu" ? 'var(--success)' : 'var(--danger)',
+                      backgroundColor: t.txType === "thu" ? '#dcfce7' : '#fee2e2',
+                      color: t.txType === "thu" ? '#16a34a' : '#dc2626',
                     }}>
                       {t.txType === "thu" ? "Thu" : "Chi"}
                     </span>
                   </td>
-                  <td style={{ fontWeight: 600, color: "var(--foreground)" }}>
-                    {formatMoney(t.amount)}
+                  <td style={{ fontWeight: 600, color: "var(--foreground)", textAlign: "right" }}>
+                    {t.txType === "thu" ? "+" : "-"}{formatMoney(t.amount)}
                   </td>
                   <td>{t.customerName || "—"}</td>
                   <td>{t.walletName || "—"}</td>
@@ -534,8 +579,8 @@ export default function TransactionsPage() {
                       )}
                     </div>
                   </td>
-                  <td style={{ fontSize: 12, color: "var(--muted-foreground)" }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <td style={{ fontSize: 12, color: "var(--muted-foreground)", textAlign: "center" }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                       <Hash size={12} />
                       <span title={t.sourceSheet}>{t.sourceSheet.length > 15 ? t.sourceSheet.substring(0, 15) + "..." : t.sourceSheet}</span>
                     </div>

@@ -57,7 +57,7 @@ export default function ImportPage() {
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "var(--foreground)" }}>Import Log</h1>
+        <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "var(--foreground)" }}>Nhập liệu</h1>
       </div>
       
       <p style={{ color: "var(--muted-foreground)", fontSize: 14, lineHeight: 1.6, margin: "0 0 20px" }}>

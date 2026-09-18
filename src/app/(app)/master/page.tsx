@@ -59,6 +59,14 @@ export default function MasterPage() {
   
   useEffect(() => { void load(); return () => { generation.current++; }; }, [kind]);
 
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !busy) setEditor(null);
+    }
+    if (editor) window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [editor, busy]);
+
   async function mutate(action: () => Promise<unknown>, success: string) {
     if (locked.current) return;
     locked.current = true; setBusy(true);
@@ -169,33 +177,38 @@ export default function MasterPage() {
       </div>
     </div>
     
-    {editor && <form className={styles.editor} onSubmit={e => { e.preventDefault(); const draft = editor; void mutate(() => api(draft.id ? "PATCH" : "POST", { kind: draft.kind, id: draft.id, name: draft.name.trim(), ...(draft.kind === "categories" ? { groupId: draft.groupId ? Number(draft.groupId) : null } : {}) }), draft.id ? "Đã lưu thay đổi." : "Đã tạo mới."); }}>
-      <h2 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <Edit2 size={18} color="var(--primary)" />
-        <span>{editor.id ? "Chỉnh sửa" : "Tạo mới"} {editor.kind === "category_groups" ? "danh mục cha" : editor.kind === "categories" ? "danh mục con" : editor.kind === "wallets" ? "ví" : "đối tượng"}</span>
-      </h2>
-      <label>
-        Tên
-        <input autoFocus required maxLength={255} value={editor.name} disabled={busy} onChange={e => setEditor({ ...editor, name: e.target.value })} placeholder="Nhập tên..." />
-      </label>
-      {editor.kind === "categories" && (
-        <label>
-          Danh mục cha
-          <select value={editor.groupId} disabled={busy} onChange={e => setEditor({ ...editor, groupId: e.target.value })}>
-            <option value="">Không có danh mục cha</option>
-            {groups.map(g => <option key={g.id} value={g.id}>{g.name}{!g.isActive ? " (đã tắt)" : ""}</option>)}
-          </select>
-          <small>Đổi lựa chọn này để chuyển danh mục sang nhóm khác.</small>
-        </label>
-      )}
-      <div className={styles.actions} style={{ marginTop: 8 }}>
-        <button className={styles.primary} disabled={busy || !editor.name.trim()}>
-          {busy ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Edit2 size={16} />}
-          <span>{busy ? "Đang lưu…" : "Lưu"}</span>
-        </button>
-        <button type="button" disabled={busy} onClick={() => setEditor(null)}>Hủy</button>
+    {editor && (
+      <div className={styles.modalOverlay} onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) setEditor(null); }}>
+        <form className={styles.editor} onSubmit={e => { e.preventDefault(); const draft = editor; void mutate(() => api(draft.id ? "PATCH" : "POST", { kind: draft.kind, id: draft.id, name: draft.name.trim(), ...(draft.kind === "categories" ? { groupId: draft.groupId ? Number(draft.groupId) : null } : {}) }), draft.id ? "Đã lưu thay đổi." : "Đã tạo mới."); }}>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Edit2 size={18} color="var(--primary)" />
+            <span>{editor.id ? "Chỉnh sửa" : "Tạo mới"} {editor.kind === "category_groups" ? "danh mục cha" : editor.kind === "categories" ? "danh mục con" : editor.kind === "wallets" ? "ví" : "đối tượng"}</span>
+          </h2>
+          <label>
+            <span>Tên <span style={{ color: 'var(--danger)' }}>*</span></span>
+            <input autoFocus required maxLength={255} value={editor.name} disabled={busy} onChange={e => setEditor({ ...editor, name: e.target.value })} placeholder="Nhập tên..." />
+            {!editor.name.trim() && <small style={{ color: 'var(--danger)' }}>Vui lòng nhập tên.</small>}
+          </label>
+          {editor.kind === "categories" && (
+            <label>
+              Danh mục cha
+              <select value={editor.groupId} disabled={busy} onChange={e => setEditor({ ...editor, groupId: e.target.value })}>
+                <option value="">Không có danh mục cha</option>
+                {groups.map(g => <option key={g.id} value={g.id}>{g.name}{!g.isActive ? " (đã tắt)" : ""}</option>)}
+              </select>
+              <small>Đổi lựa chọn này để chuyển danh mục sang nhóm khác.</small>
+            </label>
+          )}
+          <div className={styles.actions} style={{ marginTop: 8, justifyContent: 'flex-end' }}>
+            <button type="button" disabled={busy} onClick={() => setEditor(null)}>Hủy</button>
+            <button className={styles.primary} disabled={busy || !editor.name.trim()}>
+              {busy ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Edit2 size={16} />}
+              <span>{busy ? "Đang lưu…" : "Lưu"}</span>
+            </button>
+          </div>
+        </form>
       </div>
-    </form>}
+    )}
     
     {loading ? (
       <div style={{ textAlign: 'center', padding: 40, color: 'var(--muted-foreground)' }}>
