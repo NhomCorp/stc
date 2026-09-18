@@ -257,7 +257,20 @@ export default function ReportChart({ rows }: { rows: ReportRow[] }) {
     fillArea,
   ]);
 
-  if (!rows || rows.length === 0) return null;
+  if (!rows || rows.length === 0) {
+    return (
+      <section style={styles.container}>
+        <div style={styles.header}>
+          <div style={styles.titleWrap}>
+            <span style={styles.title}>Minh hoạ số liệu</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: 300, background: "#f8fafc", borderRadius: 8, border: "1px dashed #cbd5e1", color: "#64748b", fontSize: 14 }}>
+          Chưa có dữ liệu tháng để vẽ biểu đồ.
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section style={styles.container}>
