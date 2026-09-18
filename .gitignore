@@ -36,3 +36,17 @@ data/sheet_export.xlsx
 
 # Drizzle Kit cache
 .drizzle
+
+# Build/deploy artifacts
+deploy_bundle.tar.gz
+deploy_bundle.zip
+project_up.tar.gz
+*.tar.gz
+*.zip
+
+# Local TypeScript build cache
+tsconfig.tsbuildinfo
+
+# Google Apps Script legacy snapshot (kept outside web app deploy)
+gas/
+archive/

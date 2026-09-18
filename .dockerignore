@@ -9,3 +9,10 @@ node_modules
 .env.test
 .cursor
 archive
+gas
+*.tar.gz
+*.zip
+deploy_bundle.tar.gz
+deploy_bundle.zip
+project_up.tar.gz
+tsconfig.tsbuildinfo
