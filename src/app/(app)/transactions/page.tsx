@@ -16,6 +16,17 @@ import {
   CheckCircle2,
   ListFilter,
   Copy,
+  TrendingUp,
+  TrendingDown,
+  MoreVertical,
+  Edit,
+  Trash2,
+  LayoutList,
+  Table as TableIcon,
+  CreditCard,
+  Banknote,
+  Smartphone,
+  CheckSquare
 } from "lucide-react";
 
 type TxItem = {
@@ -36,7 +47,7 @@ type MasterItem = { id: number; name: string };
 function formatMoney(n: string | number) {
   const v = Number(n);
   if (!Number.isFinite(v)) return String(n);
-  return v.toLocaleString("vi-VN") + " ₫";
+  return v.toLocaleString("vi-VN");
 }
 
 function resolveMasterId(list: MasterItem[], typed: string) {
@@ -48,9 +59,19 @@ function resolveMasterId(list: MasterItem[], typed: string) {
   return partial.length === 1 ? String(partial[0].id) : "";
 }
 
+function getWalletIcon(walletName: string | null) {
+  if (!walletName) return <CreditCard size={12} />;
+  const name = walletName.toLowerCase();
+  if (name.includes("momo") || name.includes("zalopay") || name.includes("vi")) return <Smartphone size={12} />;
+  if (name.includes("tiền mặt") || name.includes("cash")) return <Banknote size={12} />;
+  return <CreditCard size={12} />;
+}
+
 export default function TransactionsPage() {
   const [items, setItems] = useState<TxItem[]>([]);
   const [total, setTotal] = useState(0);
+  const [totalIncome, setTotalIncome] = useState(0);
+  const [totalExpense, setTotalExpense] = useState(0);
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [type, setType] = useState("");
@@ -63,6 +84,7 @@ export default function TransactionsPage() {
   const [categoryText, setCategoryText] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<"table" | "feed">("feed");
 
   const [customers, setCustomers] = useState<MasterItem[]>([]);
   const [wallets, setWallets] = useState<MasterItem[]>([]);
@@ -109,7 +131,7 @@ export default function TransactionsPage() {
   async function load() {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "100" });
+      const params = new URLSearchParams({ limit: "200" });
       if (q) params.set("q", q);
       if (type) params.set("type", type);
       if (from) params.set("from", from);
@@ -127,6 +149,8 @@ export default function TransactionsPage() {
       const data = await res.json();
       setItems(data.items || []);
       setTotal(data.total || 0);
+      setTotalIncome(data.totalIncome || 0);
+      setTotalExpense(data.totalExpense || 0);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Lỗi tải giao dịch");
     } finally {
@@ -193,13 +217,286 @@ export default function TransactionsPage() {
     toast.success("Đã xoá bộ lọc");
   }
   
+  function setQuickFilter(filter: string) {
+    if (filter === "all") {
+      clearFilters();
+    } else if (filter === "chi") {
+      clearFilters();
+      setType("chi");
+    } else if (filter === "thu") {
+      clearFilters();
+      setType("thu");
+    } else if (filter === "today") {
+      clearFilters();
+      const today = new Date();
+      today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+      const todayStr = today.toISOString().slice(0, 10);
+      setFrom(todayStr);
+      setTo(todayStr);
+    } else if (filter === "month") {
+      clearFilters();
+      const today = new Date();
+      const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+      const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      
+      firstDay.setMinutes(firstDay.getMinutes() - firstDay.getTimezoneOffset());
+      lastDay.setMinutes(lastDay.getMinutes() - lastDay.getTimezoneOffset());
+      
+      setFrom(firstDay.toISOString().slice(0, 10));
+      setTo(lastDay.toISOString().slice(0, 10));
+    }
+  }
+  
   function copyText(text: string) {
     navigator.clipboard.writeText(text);
     toast.success("Đã copy", { duration: 1500 });
   }
 
+  // Group items by date
+  const groupedItems = items.reduce((acc, item) => {
+    const date = new Date(item.txDate).toLocaleDateString("vi-VN");
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(item);
+    return acc;
+  }, {} as Record<string, TxItem[]>);
+  
+  const sortedDates = Object.keys(groupedItems).sort((a, b) => {
+    const dateA = a.split('/').reverse().join('-');
+    const dateB = b.split('/').reverse().join('-');
+    return dateB.localeCompare(dateA);
+  });
+
+  const getDayLabel = (dateStr: string) => {
+    const today = new Date().toLocaleDateString("vi-VN");
+    const yesterday = new Date(Date.now() - 86400000).toLocaleDateString("vi-VN");
+    if (dateStr === today) return `Hôm nay – ${dateStr}`;
+    if (dateStr === yesterday) return `Hôm qua – ${dateStr}`;
+    return dateStr;
+  };
+
+  const getDaySummary = (dayItems: TxItem[]) => {
+    const dayIncome = dayItems.filter(i => i.txType === 'thu').reduce((sum, i) => sum + Number(i.amount), 0);
+    const dayExpense = dayItems.filter(i => i.txType === 'chi').reduce((sum, i) => sum + Number(i.amount), 0);
+    if (dayExpense > 0 && dayIncome > 0) return `Thu: +${formatMoney(dayIncome)} ₫ | Chi: -${formatMoney(dayExpense)} ₫`;
+    if (dayIncome > 0) return `Tổng thu: +${formatMoney(dayIncome)} ₫`;
+    if (dayExpense > 0) return `Tổng chi: -${formatMoney(dayExpense)} ₫`;
+    return "";
+  };
+
+  const netFlow = totalIncome - totalExpense;
+
   return (
     <div style={styles.page}>
+      <style>{`
+        .tx-filter-input, .form-input {
+          border: 1px solid var(--border);
+          background: var(--background);
+          color: var(--foreground);
+        }
+        .tx-filter-input:focus, .form-input:focus {
+          border-color: var(--primary);
+          outline: none;
+        }
+        .mini-card {
+          flex: 1;
+          min-width: 250px;
+          padding: 16px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+        .mini-card-icon {
+          width: 48px;
+          height: 48px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .summary-title {
+          font-size: 13px;
+          font-weight: 500;
+          opacity: 0.8;
+          margin-bottom: 4px;
+        }
+        .summary-value {
+          font-size: 20px;
+          font-weight: 700;
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+        .chip {
+          padding: 6px 12px;
+          border-radius: 20px;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          border: 1px solid var(--border);
+          background: var(--background);
+          color: var(--foreground);
+          transition: all 0.2s;
+          white-space: nowrap;
+        }
+        .chip:hover {
+          background: var(--muted);
+        }
+        .chip.active {
+          background: var(--foreground);
+          color: var(--background);
+          border-color: var(--foreground);
+        }
+        
+        .tx-amount {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          white-space: nowrap;
+        }
+        .tx-amount.thu {
+          color: #16a34a;
+          font-weight: 600;
+        }
+        .tx-amount.chi {
+          color: #dc2626;
+        }
+        
+        .wallet-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 8px;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          font-size: 11px;
+          color: var(--muted-foreground);
+          background: var(--background);
+        }
+        
+        /* Feed View Styles */
+        .feed-group {
+          margin-bottom: 24px;
+        }
+        .feed-group-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 12px;
+          margin-bottom: 12px;
+          border-bottom: 2px solid var(--border);
+        }
+        .feed-date {
+          font-weight: 600;
+          font-size: 15px;
+          color: var(--foreground);
+        }
+        .feed-summary {
+          font-size: 13px;
+          font-weight: 500;
+          color: var(--muted-foreground);
+        }
+        .feed-item {
+          display: flex;
+          align-items: center;
+          padding: 12px 16px;
+          border-radius: 12px;
+          background: var(--background);
+          border: 1px solid var(--border);
+          margin-bottom: 8px;
+          transition: all 0.2s;
+          position: relative;
+        }
+        .feed-item:hover {
+          background: var(--muted);
+          border-color: var(--muted-foreground);
+        }
+        .feed-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-right: 16px;
+          flex-shrink: 0;
+        }
+        .feed-icon.thu {
+          background: #dcfce7;
+          color: #16a34a;
+        }
+        .feed-icon.chi {
+          background: #fee2e2;
+          color: #dc2626;
+        }
+        .feed-content {
+          flex: 1;
+          min-width: 0;
+        }
+        .feed-title {
+          font-weight: 600;
+          font-size: 15px;
+          color: var(--foreground);
+          margin-bottom: 4px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .feed-meta {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+          color: var(--muted-foreground);
+          flex-wrap: wrap;
+        }
+        .feed-right {
+          text-align: right;
+          display: flex;
+          flex-direction: column;
+          align-items: flex-end;
+          gap: 4px;
+        }
+        .feed-actions {
+          opacity: 0;
+          transition: opacity 0.2s;
+          display: flex;
+          gap: 4px;
+        }
+        .feed-item:hover .feed-actions {
+          opacity: 1;
+        }
+        .feed-action-btn {
+          background: transparent;
+          border: none;
+          padding: 4px;
+          border-radius: 4px;
+          cursor: pointer;
+          color: var(--muted-foreground);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        .feed-action-btn:hover {
+          background: var(--border);
+          color: var(--foreground);
+        }
+        
+        /* Table Styles */
+        table.tx-table th, table.tx-table td {
+          padding: 12px 16px;
+          border-bottom: 1px solid var(--border);
+          text-align: left;
+          white-space: nowrap;
+        }
+        table.tx-table th { background: var(--muted); font-size: 13px; color: var(--muted-foreground); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+        .tx-row:hover { background: var(--muted); }
+        .tx-row { transition: background 0.15s; }
+        .copy-btn { opacity: 0; background: transparent; border: none; cursor: pointer; color: var(--muted-foreground); padding: 4px; border-radius: 4px; margin-left: 4px; display: inline-flex; }
+        .tx-row:hover .copy-btn { opacity: 1; }
+        .copy-btn:hover { background: var(--border); color: var(--foreground); }
+        @media (max-width: 600px) {
+          .hidden-mobile { display: none; }
+          .mini-card { min-width: 100%; }
+        }
+      `}</style>
+      
       <div style={styles.pageHead}>
         <div>
           <h1 style={styles.title}>Giao dịch</h1>
@@ -208,6 +505,49 @@ export default function TransactionsPage() {
           </p>
         </div>
         <div style={styles.headActions}>
+          <div style={{ display: 'flex', background: 'var(--muted)', borderRadius: 8, padding: 2 }}>
+            <button
+              type="button"
+              style={{
+                background: viewMode === 'feed' ? 'var(--background)' : 'transparent',
+                border: 'none',
+                padding: '6px 10px',
+                borderRadius: 6,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                boxShadow: viewMode === 'feed' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                color: viewMode === 'feed' ? 'var(--foreground)' : 'var(--muted-foreground)'
+              }}
+              onClick={() => setViewMode('feed')}
+              title="Chế độ Danh sách"
+            >
+              <LayoutList size={16} />
+              <span className="hidden-mobile" style={{ fontSize: 13, fontWeight: 500 }}>Danh sách</span>
+            </button>
+            <button
+              type="button"
+              style={{
+                background: viewMode === 'table' ? 'var(--background)' : 'transparent',
+                border: 'none',
+                padding: '6px 10px',
+                borderRadius: 6,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                boxShadow: viewMode === 'table' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                color: viewMode === 'table' ? 'var(--foreground)' : 'var(--muted-foreground)'
+              }}
+              onClick={() => setViewMode('table')}
+              title="Chế độ Bảng"
+            >
+              <TableIcon size={16} />
+              <span className="hidden-mobile" style={{ fontSize: 13, fontWeight: 500 }}>Bảng</span>
+            </button>
+          </div>
+          
           <button 
             type="button" 
             className="btn-ghost" 
@@ -215,11 +555,7 @@ export default function TransactionsPage() {
             title="Hiện/Ẩn bộ lọc chi tiết"
           >
             <ListFilter size={16} />
-            <span>Lọc</span>
-          </button>
-          <button type="button" className="btn-ghost" onClick={clearFilters}>
-            <FilterX size={16} />
-            <span className="hidden-mobile">Xoá lọc</span>
+            <span className="hidden-mobile">Lọc</span>
           </button>
           <button
             type="button"
@@ -235,7 +571,51 @@ export default function TransactionsPage() {
         </div>
       </div>
 
+      {/* Mini Summary Cards */}
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 16 }}>
+        <div className="mini-card" style={{ background: 'rgba(22, 163, 74, 0.1)', border: '1px solid rgba(22, 163, 74, 0.2)' }}>
+          <div className="mini-card-icon" style={{ background: 'rgba(22, 163, 74, 0.2)', color: '#16a34a' }}>
+            <TrendingUp size={24} />
+          </div>
+          <div>
+            <div className="summary-title" style={{ color: '#16a34a' }}>Tổng thu</div>
+            <div className="summary-value" style={{ color: '#16a34a' }}>+{formatMoney(totalIncome)} ₫</div>
+          </div>
+        </div>
+        
+        <div className="mini-card" style={{ background: 'rgba(220, 38, 38, 0.1)', border: '1px solid rgba(220, 38, 38, 0.2)' }}>
+          <div className="mini-card-icon" style={{ background: 'rgba(220, 38, 38, 0.2)', color: '#dc2626' }}>
+            <TrendingDown size={24} />
+          </div>
+          <div>
+            <div className="summary-title" style={{ color: '#dc2626' }}>Tổng chi</div>
+            <div className="summary-value" style={{ color: '#dc2626' }}>-{formatMoney(totalExpense)} ₫</div>
+          </div>
+        </div>
+        
+        <div className="mini-card" style={{ background: 'var(--muted)', border: '1px solid var(--border)' }}>
+          <div className="mini-card-icon" style={{ background: 'var(--background)', color: 'var(--foreground)' }}>
+            <DollarSign size={24} />
+          </div>
+          <div>
+            <div className="summary-title" style={{ color: 'var(--foreground)' }}>Dòng tiền ròng (Net)</div>
+            <div className="summary-value" style={{ color: netFlow > 0 ? '#16a34a' : (netFlow < 0 ? '#dc2626' : 'var(--foreground)') }}>
+              {netFlow > 0 ? '+' : ''}{formatMoney(netFlow)} ₫
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="card-container" style={{ padding: 16, marginTop: 16 }}>
+        {/* Quick Filter Chips */}
+        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--border)', flexWrap: 'nowrap' }}>
+          <div className={`chip ${!type && !from && !to ? 'active' : ''}`} onClick={() => setQuickFilter('all')}>Tất cả</div>
+          <div className={`chip ${type === 'chi' ? 'active' : ''}`} onClick={() => setQuickFilter('chi')}>Chỉ khoản Chi</div>
+          <div className={`chip ${type === 'thu' ? 'active' : ''}`} onClick={() => setQuickFilter('thu')}>Chỉ khoản Thu</div>
+          <div className={`chip ${from === new Date().toISOString().slice(0, 10) && to === new Date().toISOString().slice(0, 10) ? 'active' : ''}`} onClick={() => setQuickFilter('today')}>Hôm nay</div>
+          <div className={`chip ${from && to && from !== to && new Date(from).getDate() === 1 ? 'active' : ''}`} onClick={() => setQuickFilter('month')}>Tháng này</div>
+        </div>
+        
         <div style={styles.searchWrap}>
           <Search size={18} style={styles.searchIcon} />
           <input
@@ -477,114 +857,176 @@ export default function TransactionsPage() {
         </form>
       )}
 
-      <div
-        className="card-container"
-        style={{ marginTop: 16, padding: 0, overflowX: "auto" }}
-      >
-        <style>{`
-          table.tx-table th, table.tx-table td {
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border);
-            text-align: left;
-            white-space: nowrap;
-          }
-          table.tx-table th { background: var(--muted); font-size: 13px; color: var(--muted-foreground); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
-          .tx-row:hover { background: var(--muted); }
-          .tx-row { transition: background 0.15s; }
-          .copy-btn { opacity: 0; background: transparent; border: none; cursor: pointer; color: var(--muted-foreground); padding: 4px; border-radius: 4px; margin-left: 4px; display: inline-flex; }
-          .tx-row:hover .copy-btn { opacity: 1; }
-          .copy-btn:hover { background: var(--border); color: var(--foreground); }
-          @media (max-width: 600px) {
-            .hidden-mobile { display: none; }
-          }
-        `}</style>
-        <table className="tx-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: "center" }}>Ngày</th>
-              <th style={{ textAlign: "center" }}>Loại</th>
-              <th style={{ textAlign: "right" }}>Số tiền</th>
-              <th>Đối tượng</th>
-              <th>Ví</th>
-              <th>Danh mục</th>
-              <th>Ghi chú</th>
-              <th style={{ textAlign: "center" }}>Nguồn</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading && items.length === 0 ? (
+      {viewMode === 'feed' ? (
+        <div style={{ marginTop: 16 }}>
+          {loading && items.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}>
+              <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+              Đang tải dữ liệu...
+            </div>
+          ) : items.length === 0 ? (
+            <div style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}>
+              <FilterX size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+              Không có giao dịch khớp bộ lọc.
+            </div>
+          ) : (
+            sortedDates.map((date) => (
+              <div key={date} className="feed-group">
+                <div className="feed-group-header">
+                  <div className="feed-date">{getDayLabel(date)}</div>
+                  <div className="feed-summary">{getDaySummary(groupedItems[date])}</div>
+                </div>
+                <div>
+                  {groupedItems[date].map((t) => (
+                    <div key={t.id} className="feed-item" style={t.status !== 'ok' ? { opacity: 0.7 } : {}}>
+                      <div className={`feed-icon ${t.txType}`}>
+                        {t.txType === 'thu' ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
+                      </div>
+                      <div className="feed-content">
+                        <div className="feed-title">{t.note || t.categoryName || "Giao dịch không tên"}</div>
+                        <div className="feed-meta">
+                          {t.customerName && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <CheckSquare size={12} /> {t.customerName}
+                            </span>
+                          )}
+                          {t.walletName && (
+                            <span className="wallet-badge">
+                              {getWalletIcon(t.walletName)}
+                              {t.walletName}
+                            </span>
+                          )}
+                          {t.categoryName && (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <Tag size={12} /> {t.categoryName}
+                            </span>
+                          )}
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                            <Hash size={12} /> {t.sourceSheet.length > 10 ? t.sourceSheet.substring(0, 10) + "..." : t.sourceSheet}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="feed-right">
+                        <div className={`tx-amount ${t.txType}`} style={{ fontSize: 16 }}>
+                          {t.txType === 'thu' ? '+' : '-'}{formatMoney(t.amount)} ₫
+                        </div>
+                        <div className="feed-actions">
+                          {t.note && (
+                            <button className="feed-action-btn" title="Copy Ghi chú" onClick={() => copyText(t.note!)}>
+                              <Copy size={14} />
+                            </button>
+                          )}
+                          <button className="feed-action-btn" title="Sửa (Coming soon)">
+                            <Edit size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="card-container" style={{ marginTop: 16, padding: 0, overflowX: "auto" }}>
+          <table className="tx-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+            <thead>
               <tr>
-                <td colSpan={8} style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}>
-                  <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
-                  Đang tải dữ liệu...
-                </td>
+                <th style={{ textAlign: "center" }}>Ngày</th>
+                <th style={{ textAlign: "center" }}>Loại</th>
+                <th style={{ textAlign: "right" }}>Số tiền</th>
+                <th>Đối tượng</th>
+                <th>Ví</th>
+                <th>Danh mục</th>
+                <th>Ghi chú</th>
+                <th style={{ textAlign: "center" }}>Nguồn</th>
               </tr>
-            ) : items.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={8}
-                  style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}
-                >
-                  <FilterX size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
-                  Không có giao dịch khớp bộ lọc.
-                </td>
-              </tr>
-            ) : (
-              items.map((t) => (
-                <tr key={t.id} className="tx-row" style={t.status !== 'ok' ? { backgroundColor: 'var(--muted)' } : {}}>
-                  <td style={{ textAlign: "center" }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                      <Calendar size={14} color="var(--muted-foreground)" />
-                      <span>{new Date(t.txDate).toLocaleDateString("vi-VN")}</span>
-                    </div>
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <span style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      padding: '2px 8px',
-                      borderRadius: 999,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      backgroundColor: t.txType === "thu" ? '#dcfce7' : '#fee2e2',
-                      color: t.txType === "thu" ? '#16a34a' : '#dc2626',
-                    }}>
-                      {t.txType === "thu" ? "Thu" : "Chi"}
-                    </span>
-                  </td>
-                  <td style={{ fontWeight: 600, color: "var(--foreground)", textAlign: "right" }}>
-                    {t.txType === "thu" ? "+" : "-"}{formatMoney(t.amount)}
-                  </td>
-                  <td>{t.customerName || "—"}</td>
-                  <td>{t.walletName || "—"}</td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {t.categoryName && <Tag size={14} color="var(--muted-foreground)" />}
-                      <span>{t.categoryName || "—"}</span>
-                    </div>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      <span title={t.note || ""}>{t.note || "—"}</span>
-                      {t.note && (
-                        <button type="button" className="copy-btn" onClick={() => copyText(t.note!)} title="Copy">
-                          <Copy size={12} />
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                  <td style={{ fontSize: 12, color: "var(--muted-foreground)", textAlign: "center" }}>
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                      <Hash size={12} />
-                      <span title={t.sourceSheet}>{t.sourceSheet.length > 15 ? t.sourceSheet.substring(0, 15) + "..." : t.sourceSheet}</span>
-                    </div>
+            </thead>
+            <tbody>
+              {loading && items.length === 0 ? (
+                <tr>
+                  <td colSpan={8} style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}>
+                    <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
+                    Đang tải dữ liệu...
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              ) : items.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}
+                  >
+                    <FilterX size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
+                    Không có giao dịch khớp bộ lọc.
+                  </td>
+                </tr>
+              ) : (
+                items.map((t) => (
+                  <tr key={t.id} className="tx-row" style={t.status !== 'ok' ? { backgroundColor: 'var(--muted)' } : {}}>
+                    <td style={{ textAlign: "center" }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                        <Calendar size={14} color="var(--muted-foreground)" />
+                        <span>{new Date(t.txDate).toLocaleDateString("vi-VN")}</span>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        fontSize: 12,
+                        fontWeight: 600,
+                        backgroundColor: t.txType === "thu" ? '#dcfce7' : '#fee2e2',
+                        color: t.txType === "thu" ? '#16a34a' : '#dc2626',
+                      }}>
+                        {t.txType === "thu" ? "Thu" : "Chi"}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <span className={`tx-amount ${t.txType}`}>
+                        {t.txType === "thu" ? "+" : "-"}{formatMoney(t.amount)} ₫
+                      </span>
+                    </td>
+                    <td>{t.customerName || "—"}</td>
+                    <td>
+                      {t.walletName ? (
+                        <span className="wallet-badge" style={{ padding: '4px 8px' }}>
+                          {getWalletIcon(t.walletName)}
+                          {t.walletName}
+                        </span>
+                      ) : "—"}
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {t.categoryName && <Tag size={14} color="var(--muted-foreground)" />}
+                        <span>{t.categoryName || "—"}</span>
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <span title={t.note || ""}>{t.note || "—"}</span>
+                        {t.note && (
+                          <button type="button" className="copy-btn" onClick={() => copyText(t.note!)} title="Copy">
+                            <Copy size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                    <td style={{ fontSize: 12, color: "var(--muted-foreground)", textAlign: "center" }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                        <Hash size={12} />
+                        <span title={t.sourceSheet}>{t.sourceSheet.length > 15 ? t.sourceSheet.substring(0, 15) + "..." : t.sourceSheet}</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
@@ -620,6 +1062,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     gap: 8,
     flexWrap: "wrap",
+    alignItems: "center"
   },
   searchWrap: {
     position: "relative",
