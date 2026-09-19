@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import Link from "next/link";
+import { Shield, KeyRound, UserCheck, Lock } from "lucide-react";
 
 export default async function AdminUsersPage() {
   const user = await getCurrentUser();
@@ -10,95 +11,183 @@ export default async function AdminUsersPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+    <div style={styles.container}>
       <div style={styles.headerRow}>
-        <h1 style={styles.pageTitle}>Danh sách người dùng nội bộ</h1>
-        <Link href="/admin/users/create" style={styles.createBtn}>
-          + Tạo tài khoản mới
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={styles.iconWrapper}>
+            <Shield size={24} color="var(--primary)" />
+          </div>
+          <div>
+            <h1 style={styles.pageTitle}>Quản trị tài khoản</h1>
+            <p style={styles.subTitle}>
+              Hệ thống vận hành chế độ 1 người dùng duy nhất (Single User) để bảo vệ dữ liệu riêng tư.
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div style={styles.tableContainer}>
-        <table style={styles.table}>
-          <thead style={styles.thead}>
-            <tr>
-              <th style={styles.th}>Tên đăng nhập</th>
-              <th style={styles.th}>Họ và tên</th>
-              <th style={styles.th}>Email</th>
-              <th style={styles.th}>Vai trò</th>
-              <th style={styles.th}>Trạng thái</th>
-              <th style={styles.th}>Phải đổi MK</th>
-              <th style={styles.th}>Ngày tạo</th>
-              <th style={styles.th}>Thao tác</th>
-            </tr>
-          </thead>
-          <tbody style={styles.tbody}>
-            <tr>
-              <td colSpan={8} style={styles.empty}>
-                Đang tải danh sách người dùng...
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div style={styles.card}>
+        <div style={styles.cardHeader}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <UserCheck size={18} color="var(--primary)" />
+            <h2 style={styles.cardTitle}>Thông tin tài khoản quản trị</h2>
+          </div>
+          <span style={styles.badgeActive}>Đang hoạt động</span>
+        </div>
+
+        <div style={styles.grid}>
+          <div style={styles.fieldItem}>
+            <span style={styles.fieldLabel}>Tên đăng nhập</span>
+            <span style={styles.fieldValue}>{user.username}</span>
+          </div>
+
+          <div style={styles.fieldItem}>
+            <span style={styles.fieldLabel}>Họ và tên</span>
+            <span style={styles.fieldValue}>{user.fullName || "Chưa đặt"}</span>
+          </div>
+
+          <div style={styles.fieldItem}>
+            <span style={styles.fieldLabel}>Email</span>
+            <span style={styles.fieldValue}>{user.email || "Chưa đặt"}</span>
+          </div>
+
+          <div style={styles.fieldItem}>
+            <span style={styles.fieldLabel}>Vai trò</span>
+            <span style={styles.fieldValue}>Chủ sở hữu hệ thống (Admin)</span>
+          </div>
+        </div>
+
+        <div style={styles.divider} />
+
+        <div style={styles.actionRow}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 14 }}>
+              <Lock size={16} color="var(--muted-foreground)" />
+              Bảo mật & Đăng nhập
+            </div>
+            <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "var(--muted-foreground)" }}>
+              Nên đổi mật khẩu định kỳ để đảm bảo chỉ có bạn truy cập được vào sổ thu chi.
+            </p>
+          </div>
+          <Link href="/change-password" style={styles.changePasswordBtn}>
+            <KeyRound size={16} />
+            Đổi mật khẩu
+          </Link>
+        </div>
       </div>
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  container: {
+    maxWidth: 800,
+    margin: "0 auto",
+    padding: "16px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 20,
+  },
   headerRow: {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
-    gap: 12,
-    flexWrap: "wrap",
+    borderBottom: "1px solid var(--border)",
+    paddingBottom: 16,
+  },
+  iconWrapper: {
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: "var(--muted)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   pageTitle: {
     fontSize: 20,
     fontWeight: 700,
-    color: "#0f172a",
+    color: "var(--foreground)",
     margin: 0,
   },
-  createBtn: {
-    padding: "8px 16px",
-    backgroundColor: "#2563eb",
-    color: "#ffffff",
-    borderRadius: 6,
-    textDecoration: "none",
+  subTitle: {
     fontSize: 13,
+    color: "var(--muted-foreground)",
+    margin: "4px 0 0 0",
+  },
+  card: {
+    backgroundColor: "var(--card)",
+    border: "1px solid var(--card-border)",
+    borderRadius: 12,
+    padding: 24,
+    display: "flex",
+    flexDirection: "column",
+    gap: 20,
+  },
+  cardHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  cardTitle: {
+    fontSize: 16,
     fontWeight: 600,
+    color: "var(--foreground)",
+    margin: 0,
   },
-  tableContainer: {
-    backgroundColor: "#ffffff",
-    borderRadius: 8,
-    overflow: "hidden",
-    border: "1px solid #e2e8f0",
-  },
-  table: {
-    width: "100%",
-    borderCollapse: "collapse",
-  },
-  thead: {
-    backgroundColor: "#f8fafc",
-    borderBottom: "2px solid #e2e8f0",
-  },
-  th: {
-    padding: "12px 14px",
-    textAlign: "left",
+  badgeActive: {
+    display: "inline-block",
+    padding: "4px 10px",
+    borderRadius: 9999,
     fontSize: 12,
     fontWeight: 600,
-    color: "#475569",
-    textTransform: "uppercase",
-    letterSpacing: "0.4px",
+    backgroundColor: "rgba(22, 163, 74, 0.15)",
+    color: "var(--success)",
   },
-  tbody: {
-    fontSize: 14,
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: 16,
   },
-  empty: {
-    padding: "40px 20px",
-    textAlign: "center",
-    color: "#64748b",
+  fieldItem: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 4,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: "var(--background)",
+    border: "1px solid var(--border)",
+  },
+  fieldLabel: {
+    fontSize: 12,
+    color: "var(--muted-foreground)",
+    fontWeight: 500,
+  },
+  fieldValue: {
     fontSize: 14,
+    fontWeight: 600,
+    color: "var(--foreground)",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "var(--border)",
+  },
+  actionRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 16,
+  },
+  changePasswordBtn: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "10px 20px",
+    backgroundColor: "var(--primary)",
+    color: "var(--primary-foreground)",
+    borderRadius: 8,
+    textDecoration: "none",
+    fontSize: 14,
+    fontWeight: 600,
   },
 };

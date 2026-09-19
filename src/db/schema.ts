@@ -160,8 +160,15 @@ export const paymentMethods = pgTable("payment_methods", {
 // ==========================================
 
 // ==========================================
-// 6. Snapshot Báo cáo (đồng bộ từ Bao Cao v2)
+// 7. Cấu hình hệ thống (Settings)
 // ==========================================
+
+export const settings = pgTable("settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 
 export const reportSnapshots = pgTable("report_snapshots", {
   id: serial("id").primaryKey(),

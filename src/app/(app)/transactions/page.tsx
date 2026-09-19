@@ -12,13 +12,11 @@ import {
   DollarSign,
   Tag,
   Hash,
-  AlertCircle,
   CheckCircle2,
   ListFilter,
   Copy,
   TrendingUp,
   TrendingDown,
-  MoreVertical,
   Edit,
   Trash2,
   LayoutList,
@@ -37,6 +35,9 @@ type TxItem = {
   note: string | null;
   status: string;
   sourceSheet: string;
+  customerId: number | null;
+  walletId: number | null;
+  categoryId: number | null;
   customerName: string | null;
   walletName: string | null;
   categoryName: string | null;
@@ -101,6 +102,7 @@ export default function TransactionsPage() {
   const [categories, setCategories] = useState<MasterItem[]>([]);
 
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [form, setForm] = useState({
     txDate: new Date().toISOString().slice(0, 10),
@@ -186,13 +188,15 @@ export default function TransactionsPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    const loadingToast = toast.loading("Đang lưu giao dịch...");
+    const loadingToast = toast.loading(editingId ? "Đang cập nhật..." : "Đang lưu giao dịch...");
     
     try {
+      const isPut = !!editingId;
       const res = await fetch("/api/transactions", {
-        method: "POST",
+        method: isPut ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          ...(isPut ? { id: editingId } : {}),
           ...form,
           amount: Number(form.amount),
         }),
@@ -200,16 +204,59 @@ export default function TransactionsPage() {
       
       if (!res.ok) {
         const d = await res.json();
-        throw new Error(d.error || "Không tạo được");
+        throw new Error(d.error || (isPut ? "Không cập nhật được" : "Không tạo được"));
       }
       
-      toast.success("Đã thêm giao dịch thành công", { id: loadingToast });
+      toast.success(isPut ? "Đã cập nhật giao dịch" : "Đã thêm giao dịch thành công", { id: loadingToast });
       setShowForm(false);
+      setEditingId(null);
       setForm({ ...form, amount: "", note: "", customerId: "", walletId: "", categoryId: "" });
       load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Lỗi", { id: loadingToast });
     }
+  }
+
+  async function handleDelete(id: number) {
+    if (!confirm("Bạn có chắc chắn muốn xoá giao dịch này?")) return;
+    
+    const loadingToast = toast.loading("Đang xoá giao dịch...");
+    try {
+      const res = await fetch(`/api/transactions?id=${id}`, {
+        method: "DELETE",
+      });
+      
+      if (!res.ok) {
+        const d = await res.json();
+        throw new Error(d.error || "Không xoá được");
+      }
+      
+      toast.success("Đã xoá giao dịch", { id: loadingToast });
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Lỗi", { id: loadingToast });
+    }
+  }
+
+  function handleEditClick(item: TxItem) {
+    setEditingId(item.id);
+    setForm({
+      txDate: item.txDate ? new Date(item.txDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+      txType: item.txType,
+      amount: String(item.amount),
+      note: item.note || "",
+      customerId: item.customerId ? String(item.customerId) : "",
+      walletId: item.walletId ? String(item.walletId) : "",
+      categoryId: item.categoryId ? String(item.categoryId) : "",
+    });
+    setShowForm(true);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  }
+
+  function handleCancelForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm({ ...form, amount: "", note: "", customerId: "", walletId: "", categoryId: "" });
   }
 
   function clearFilters() {
@@ -611,12 +658,16 @@ export default function TransactionsPage() {
             type="button"
             className="btn-primary"
             onClick={() => {
-              setShowForm(!showForm);
-              if (!showForm) setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+              if (showForm && editingId) {
+                handleCancelForm();
+              } else {
+                setShowForm(!showForm);
+                if (!showForm) setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+              }
             }}
           >
             <Plus size={16} />
-            <span>{showForm ? "Đóng form" : "Thêm"}</span>
+            <span>{showForm ? (editingId ? "Đóng sửa" : "Đóng form") : "Thêm"}</span>
           </button>
         </div>
       </div>
@@ -805,7 +856,9 @@ export default function TransactionsPage() {
 
       {showForm && (
         <form ref={formRef} onSubmit={handleCreate} className="card-container" style={{ padding: 20, marginTop: 16 }}>
-          <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 16 }}>Thêm giao dịch mới</h3>
+          <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 16 }}>
+            {editingId ? `Chỉnh sửa giao dịch #${editingId}` : "Thêm giao dịch mới"}
+          </h3>
           <div style={styles.formGrid}>
             <label style={styles.field}>
               <span style={styles.fieldLabel}>Ngày</span>
@@ -896,12 +949,12 @@ export default function TransactionsPage() {
             </label>
           </div>
           <div style={{ display: 'flex', gap: 12, marginTop: 16, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn-ghost" onClick={() => setShowForm(false)}>
+            <button type="button" className="btn-ghost" onClick={handleCancelForm}>
               Huỷ
             </button>
             <button type="submit" className="btn-primary">
               <CheckCircle2 size={16} />
-              <span>Lưu giao dịch</span>
+              <span>{editingId ? "Cập nhật giao dịch" : "Lưu giao dịch"}</span>
             </button>
           </div>
         </form>
@@ -970,8 +1023,20 @@ export default function TransactionsPage() {
                               <Copy size={14} />
                             </button>
                           )}
-                          <button className="feed-action-btn" title="Sửa (Coming soon)">
+                          <button
+                            className="feed-action-btn"
+                            title="Sửa giao dịch"
+                            onClick={() => handleEditClick(t)}
+                          >
                             <Edit size={14} />
+                          </button>
+                          <button
+                            className="feed-action-btn"
+                            title="Xoá giao dịch"
+                            onClick={() => handleDelete(t.id)}
+                            style={{ color: "#dc2626" }}
+                          >
+                            <Trash2 size={14} />
                           </button>
                         </div>
                       </div>
@@ -995,12 +1060,13 @@ export default function TransactionsPage() {
                 <th>Danh mục</th>
                 <th>Ghi chú</th>
                 <th style={{ textAlign: "center" }}>Nguồn</th>
+                <th style={{ textAlign: "center" }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
               {loading && items.length === 0 ? (
                 <tr>
-                  <td colSpan={8} style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}>
+                  <td colSpan={9} style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}>
                     <Loader2 size={24} style={{ animation: 'spin 1s linear infinite', margin: '0 auto 8px' }} />
                     Đang tải dữ liệu...
                   </td>
@@ -1008,7 +1074,7 @@ export default function TransactionsPage() {
               ) : items.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={8}
+                    colSpan={9}
                     style={{ textAlign: "center", padding: 40, color: "var(--muted-foreground)" }}
                   >
                     <FilterX size={32} style={{ margin: '0 auto 12px', opacity: 0.5 }} />
@@ -1072,6 +1138,16 @@ export default function TransactionsPage() {
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                         <Hash size={12} />
                         <span title={t.sourceSheet}>{t.sourceSheet.length > 15 ? t.sourceSheet.substring(0, 15) + "..." : t.sourceSheet}</span>
+                      </div>
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <div className="feed-actions" style={{ justifyContent: "center" }}>
+                        <button className="feed-action-btn" title="Sửa giao dịch" onClick={() => handleEditClick(t)}>
+                          <Edit size={14} />
+                        </button>
+                        <button className="feed-action-btn" title="Xoá giao dịch" onClick={() => handleDelete(t.id)} style={{ color: "#dc2626" }}>
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>

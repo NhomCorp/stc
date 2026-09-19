@@ -243,16 +243,16 @@
     <h1>Deploy Sổ Thu Chi</h1>
     <div class="pipeline-badge">
       <span>Local push</span><span class="pipeline-arrow">➔</span>
-      <span>VPS git pull</span><span class="pipeline-arrow">➔</span>
+      <span>VPS reset → origin/main</span><span class="pipeline-arrow">➔</span>
       <span>docker-compose --build app</span><span class="pipeline-arrow">➔</span>
-      <span>https://stc.acdagency.net</span>
+      <span>verify SHA + health</span>
     </div>
     <p class="header-desc">
-      Quy trình chuẩn: <strong>push GitHub → pull trên VPS → rebuild app</strong>.
+      Nguyên tắc chắc chắn: <strong>GitHub <code>main</code> là nguồn sự thật</strong> → VPS luôn khớp đúng commit đó (không giữ sửa tay trên server) → rebuild → đối chiếu SHA + health.
       Repo VPS: <span class="highlight-badge">git@github.com:NhomCorp/stc.git</span> tại <code>/home/stcadmin/app</code>.
       Luôn dùng <span class="highlight-badge">docker-compose</span> (có gạch) — <strong>không</strong> dùng <code>docker compose</code>.
     </p>
-    <p class="updated">Cập nhật 19/09/2026 — bổ sung đúc kết sự cố rebuild 18/09 và Plan B (host build).</p>
+    <p class="updated">Cập nhật 19/09/2026 — quy trình chắc chắn: <code>fetch + reset --hard origin/main</code> (giữ <code>.env</code>).</p>
     <div class="meta-grid">
       <div class="meta-item"><strong>Domain</strong><code>stc.acdagency.net</code></div>
       <div class="meta-item"><strong>App SSH</strong><code>ssh stc-vps</code> → <code>stcadmin</code></div>
@@ -285,21 +285,28 @@
     </div>
   </section>
 
-  <!-- QUY TRÌNH CHUẨN -->
+  <!-- QUY TRÌNH CHẮC CHẮN -->
   <section class="step-card quick-summary">
     <div class="step-header">
       <div class="step-number">⚡</div>
-      <h2 class="step-title">Quy trình chuẩn — mỗi lần up bản mới lên URL</h2>
+      <h2 class="step-title">Quy trình chắc chắn nhất — mỗi lần up public</h2>
     </div>
-    <p>Chạy trong <strong>PowerShell</strong> tại thư mục dự án. Không đụng Nginx/SSL. Không ghi đè <code>.env</code> trên VPS. Không đụng container/project khác trên cùng máy.</p>
+    <p>
+      Mục tiêu: public = đúng commit trên GitHub <code>main</code>, không bị file bẩn trên VPS chặn pull / lẫn vào image.
+      Không đụng Nginx/SSL. <strong>Luôn giữ <code>.env</code></strong>. Không đụng container dự án khác.
+    </p>
+    <div class="ok-box">
+      Dùng <code>git fetch</code> + <code>git reset --hard origin/main</code> thay vì <code>git pull</code>.
+      Pull có thể abort khi VPS còn sửa local; reset buộc tree khớp remote (xoá sửa tay trên VPS — đúng ý “server không phải nơi code”).
+    </div>
 
-    <p><strong>0 — Xác nhận phạm vi (bắt buộc)</strong></p>
+    <p><strong>0 — Phạm vi</strong></p>
     <ul>
-      <li>Dự án: Sổ Thu Chi · Path: <code>/home/stcadmin/app</code></li>
-      <li>Service: <code>stc-app</code> · Port: <code>3000</code> · DB: <code>stc-postgres</code> / DB name <code>stc</code></li>
+      <li>Dự án: Sổ Thu Chi · <code>/home/stcadmin/app</code></li>
+      <li>Service: <code>stc-app</code> · Port: <code>3000</code> · DB: <code>stc-postgres</code> / <code>stc</code></li>
     </ul>
 
-    <p><strong>1 — Local: commit &amp; push GitHub</strong></p>
+    <p><strong>1 — Local: sạch + đã push (ghi nhận SHA)</strong></p>
     <div class="code-wrapper">
       <div class="code-header">
         <span>PowerShell — local</span>
@@ -308,43 +315,54 @@
       <pre><code>git status
 git add .
 git commit -m "mô tả ngắn"
-git push origin main</code></pre>
-    </div>
-
-    <p><strong>2 — VPS: pull sạch + rebuild app</strong></p>
-    <div class="code-wrapper">
-      <div class="code-header">
-        <span>PowerShell — 1 lệnh SSH</span>
-        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-      </div>
-      <pre><code>ssh stc-vps "cd /home/stcadmin/app && git status --short && git pull origin main && docker-compose up -d --build app"</code></pre>
+git push origin main
+git rev-parse --short HEAD
+git log -1 --oneline</code></pre>
     </div>
     <div class="note">
-      Nếu <code>git status --short</code> có file lạ (vd. <code>next.config.js</code>): dọn trước khi build —
-      <code>rm -f next.config.js</code> và/hoặc <code>git checkout -- package-lock.json</code>.
-      Không để file untracked lẫn vào Docker build context.
+      Chỉ deploy khi local <code>main</code> đã push xong và <code>git status</code> sạch (không còn thay đổi chưa commit cần đưa lên).
     </div>
 
-    <p><strong>3 — Theo dõi build (quan trọng trên VPS RAM thấp)</strong></p>
-    <ul>
-      <li>Build Next thường mất vài phút; log có thể im ở bước optimize — <strong>kiểm tra CPU time</strong> của process trong container build.</li>
-      <li><strong>Huỷ và chuyển Plan B</strong> nếu CPU time không tăng ~2 phút (treo thật).</li>
-      <li>Không dùng: <code>docker compose</code> · <code>docker-compose down -v</code> · prune toàn máy.</li>
-    </ul>
-
-    <p><strong>4 — Kiểm tra sau deploy</strong></p>
+    <p><strong>2 — VPS: khớp cứng origin/main → rebuild</strong></p>
     <div class="code-wrapper">
       <div class="code-header">
-        <span>PowerShell</span>
+        <span>PowerShell — lệnh chắc chắn (giữ .env)</span>
         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
-      <pre><code>curl.exe -sS https://stc.acdagency.net/api/health
-ssh stc-vps "docker ps -f name=stc-app --format '{{.Names}} {{.Status}}' && cd /home/stcadmin/app && git log -1 --oneline"</code></pre>
+      <pre><code>ssh stc-vps "cd /home/stcadmin/app && test -f .env || { echo 'MISSING .env'; exit 1; } && git fetch origin main && git reset --hard origin/main && git clean -fd -e .env -e .env.local -e .env.production && git status --short && git log -1 --oneline && docker-compose up -d --build app"</code></pre>
     </div>
     <ul>
-      <li>Health phải <code>"status":"ok"</code></li>
-      <li><code>stc-app</code> = <code>Up (healthy)</code>, <code>stc-postgres</code> vẫn healthy</li>
-      <li>Commit trên VPS khớp local <code>main</code></li>
+      <li><code>test -f .env</code> — dừng nếu mất env (tránh app chạy thiếu secret).</li>
+      <li><code>reset --hard origin/main</code> — xoá mọi sửa tracked trên VPS; không còn lỗi “would be overwritten by merge”.</li>
+      <li><code>git clean -fd -e .env ...</code> — xoá file/thư mục untracked (vd. <code>next.config.js</code> lạ), <strong>không</strong> xoá <code>.env</code>.</li>
+      <li>Sau đó mới <code>docker-compose up -d --build app</code>.</li>
+    </ul>
+
+    <p><strong>3 — Theo dõi build</strong></p>
+    <ul>
+      <li>Log có thể im ở optimize — xem CPU time process build; im ~2 phút → huỷ, sang Plan B.</li>
+      <li>Không: <code>docker compose</code> · <code>docker-compose down -v</code> · prune toàn máy.</li>
+    </ul>
+
+    <p><strong>4 — Xác nhận chắc chắn đã lên đúng bản</strong></p>
+    <div class="code-wrapper">
+      <div class="code-header">
+        <span>PowerShell — đối chiếu SHA + health</span>
+        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+      </div>
+      <pre><code># Local SHA (đã push)
+git rev-parse --short HEAD
+
+# VPS SHA + container
+ssh stc-vps "cd /home/stcadmin/app && git rev-parse --short HEAD && git status --short && docker ps -f name=stc-app --format '{{.Names}} {{.Status}}'"
+
+# Public
+curl.exe -sS https://stc.acdagency.net/api/health</code></pre>
+    </div>
+    <ul>
+      <li>SHA local = SHA VPS</li>
+      <li><code>git status --short</code> trên VPS trống</li>
+      <li><code>stc-app</code> Up (healthy), health public <code>"status":"ok"</code></li>
     </ul>
   </section>
 
@@ -444,12 +462,16 @@ ssh stc-vps "cd /home/stcadmin/app && tar -xzf deploy_bundle.tar.gz && rm -f dep
     <div class="alert-title">Không chạy trên production</div>
     <div class="code-wrapper" style="margin-bottom:0;border-color:rgba(239,68,68,0.4)">
       <pre style="color:#fca5a5"><code>docker-compose down -v
-git reset --hard
+git reset --hard          # thiếu origin/main — nguy hiểm / mơ hồ
+git clean -fd             # không -e .env → có thể xoá nhầm nếu .env bị track
 docker volume prune
 docker system prune
 docker stop $(docker ps -q)
 pm2 restart all</code></pre>
     </div>
+    <p style="color:#fca5a5;margin:0.75rem 0 0;font-size:0.9rem">
+      Ngoại lệ an toàn (đã ghi ở quy trình): chỉ <code>git reset --hard origin/main</code> sau <code>git fetch</code>, trong <code>/home/stcadmin/app</code>, và luôn có <code>test -f .env</code> + <code>git clean ... -e .env</code>.
+    </p>
   </div>
 
 </div>

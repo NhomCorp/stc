@@ -14,6 +14,7 @@ import {
   Sun,
   Moon,
   Wallet,
+  Bot,
 } from "lucide-react";
 
 const links = [
@@ -57,14 +58,13 @@ export function AppNav({
   const allLinks = isAdmin
     ? [
         ...links,
-        { href: "/admin/users", label: "Quản trị", icon: ShieldAlert },
+        { href: "/admin/users", label: "Người dùng", icon: ShieldAlert },
+        { href: "/admin/ai-config", label: "Cấu hình AI", icon: Bot },
       ]
     : links;
 
   const isActive = (href: string) =>
-    href.startsWith("/admin")
-      ? pathname.startsWith("/admin")
-      : pathname === href || pathname.startsWith(href + "/");
+    pathname === href || pathname.startsWith(href + "/");
 
   return (
     <header className="app-header">

@@ -1,0 +1,18 @@
+---
+description: Kiến trúc cốt lõi và nguyên tắc phát triển dự án VPS (độc lập Sheet, 1 user, bảo vệ code)
+globs: *
+---
+# Kiến trúc cốt lõi dự án VPS (Phiên bản v3)
+
+1. **Bảo vệ mã nguồn đã ổn định**
+   - Các tính năng đã hoạt động (Hạ tầng Docker, Auth đăng nhập, Danh mục, Giao dịch List/Lọc, Nhập liệu Import paste, Dashboard, PWA) đang ở trạng thái ổn định.
+   - **Tuyệt đối không tự ý refactor, cấu trúc lại, hoặc sửa code/API đã chạy ổn định** trừ khi người dùng chỉ định rõ ràng (ví dụ: "Sửa UI nút xóa", "Chỉnh lại layout").
+
+2. **Dự án VPS độc lập 100%**
+   - VPS không đồng bộ/ghi đè lên Google Sheets cũ. Mọi dữ liệu và báo cáo đều truy xuất từ PostgreSQL nội bộ.
+   - Hệ thống Sheet cũ và mã nguồn trong thư mục `gas/` (Google Apps Script) chỉ đóng vai trò lưu trữ (Archive) và làm tài liệu tham khảo. Không sửa hay deploy code GAS.
+
+3. **Cơ chế Tài khoản (Single User)**
+   - Hệ thống vận hành cho **1 người dùng duy nhất**.
+   - Mục đích của tính năng Đăng nhập / Session chỉ là **khóa cửa** để ngăn người lạ xem số liệu.
+   - Không thiết kế phân quyền phức tạp (admin/member), không làm multi-tenant/kho riêng trong giai đoạn này. Chuyện đó tính sau nếu có nhu cầu thương mại hóa.

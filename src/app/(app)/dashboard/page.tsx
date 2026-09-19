@@ -1,10 +1,9 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/auth";
 import { db } from "@/db";
 import {
-  reportSnapshots,
   transactions,
   customers,
   wallets,
@@ -16,6 +15,7 @@ import {
   type ReportRow,
   type ReportSummary,
 } from "@/lib/reports";
+import { aggregateTransactionReport } from "@/lib/report-aggregation";
 import ReportChart from "@/components/report-chart";
 import {
   ArrowDownLeft,
@@ -32,38 +32,11 @@ import {
 
 async function loadReportSummary(): Promise<ReportSummary> {
   try {
-    const [row] = await db
-      .select()
-      .from(reportSnapshots)
-      .where(eq(reportSnapshots.key, "bao_cao_v2"))
-      .limit(1);
-
-    if (!row) {
-      return {
-        key: "bao_cao_v2",
-        updatedAt: null,
-        today: null,
-        months: [],
-        syncedAt: null,
-      };
-    }
-
-    const payload = row.payload as {
-      updatedAt?: string | null;
-      today?: ReportRow | null;
-      months?: ReportRow[];
-    };
-
+    return await aggregateTransactionReport();
+  } catch (error) {
+    console.error("Dashboard report aggregation failed:", error);
     return {
-      key: "bao_cao_v2",
-      updatedAt: payload.updatedAt ?? null,
-      today: payload.today ?? null,
-      months: Array.isArray(payload.months) ? payload.months : [],
-      syncedAt: row.syncedAt?.toISOString() ?? null,
-    };
-  } catch {
-    return {
-      key: "bao_cao_v2",
+      key: "postgres_transactions",
       updatedAt: null,
       today: null,
       months: [],
@@ -131,14 +104,9 @@ export default async function DashboardPage() {
     loadDbStats(),
   ]);
 
-  const syncNote = [
-    report.updatedAt || null,
-    report.syncedAt
-      ? `Sync web: ${new Date(report.syncedAt).toLocaleString("vi-VN")}`
-      : "Chưa sync — cấu hình báo cáo từ Apps Script.",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const syncNote = report.updatedAt
+    ? `Tính toán trực tiếp: ${new Date(report.updatedAt).toLocaleString("vi-VN")}`
+    : "Chưa có số liệu.";
 
   return (
     <div style={styles.page}>

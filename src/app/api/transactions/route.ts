@@ -94,6 +94,9 @@ export async function GET(request: NextRequest) {
         status: transactions.status,
         sourceSheet: transactions.sourceSheet,
         sourceKeyHash: transactions.sourceKeyHash,
+        customerId: transactions.customerId,
+        walletId: transactions.walletId,
+        categoryId: transactions.categoryId,
         customerName: customers.name,
         walletName: wallets.name,
         categoryName: categories.name,
@@ -249,5 +252,29 @@ export async function PUT(request: NextRequest) {
   }
 
   return NextResponse.json({ item: updatedRow });
+}
+
+export async function DELETE(request: NextRequest) {
+  const user = await requireUser(request);
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const id = Number(searchParams.get("id"));
+  if (!Number.isInteger(id) || id <= 0) {
+    return NextResponse.json({ error: "Thiếu hoặc sai id giao dịch" }, { status: 400 });
+  }
+
+  const [deletedRow] = await db
+    .delete(transactions)
+    .where(eq(transactions.id, id))
+    .returning();
+
+  if (!deletedRow) {
+    return NextResponse.json({ error: "Không tìm thấy giao dịch" }, { status: 404 });
+  }
+
+  return NextResponse.json({ success: true, item: deletedRow });
 }
 
