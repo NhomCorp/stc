@@ -15,13 +15,18 @@ alwaysApply: true
 - **Database name**: `stc`
 
 # Quy trình Deploy
-1. Đồng bộ source code lên `/home/stcadmin/app` qua SSH alias `stc-vps` (bằng rsync hoặc deploy bundle tar.gz, giữ nguyên `.env`).
-2. Chạy migration cập nhật DB vào container `stc-postgres`.
-3. Rebuild và restart duy nhất container `stc-app`:
-   ```bash
-   ssh stc-vps "cd /home/stcadmin/app && docker compose up -d --build app"
-   ```
-4. Kiểm tra logs và health check:
-   ```bash
-   ssh stc-vps "docker ps -f name=stc-app && docker compose -f /home/stcadmin/app/docker-compose.yml logs --tail=20 app"
-   ```
+1. Push code mới lên nhánh `main` của repository GitHub.
+2. GitHub Actions sẽ tự động build và push image lên GHCR (`ghcr.io/nhomcorp/stc-app` và `stc-migrate`).
+3. Đợi GitHub Actions chạy xong.
+4. SSH vào VPS và pull image mới, sau đó restart container:
+ ```bash
+ ssh stc-vps "cd /home/stcadmin/app && docker-compose pull && docker-compose up -d"
+ ```
+5. (Tuỳ chọn) Nếu có thay đổi database, chạy migration:
+ ```bash
+ ssh stc-vps "cd /home/stcadmin/app && docker-compose up migrate"
+ ```
+6. Kiểm tra logs và health check:
+ ```bash
+ ssh stc-vps "docker ps -f name=stc-app && docker-compose -f /home/stcadmin/app/docker-compose.yml logs --tail=20 app"
+ ```

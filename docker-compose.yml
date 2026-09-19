@@ -18,9 +18,7 @@ services:
       retries: 5
 
   migrate:
-    build:
-      context: .
-      target: migrator
+    image: ghcr.io/nhomcorp/stc-migrate:latest
     container_name: stc-migrate
     depends_on:
       postgres:
@@ -30,9 +28,7 @@ services:
     command: npm run db:migrate
 
   app:
-    build:
-      context: .
-      target: runner
+    image: ghcr.io/nhomcorp/stc-app:latest
     container_name: stc-app
     restart: unless-stopped
     depends_on:
