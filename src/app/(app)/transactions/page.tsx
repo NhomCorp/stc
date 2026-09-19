@@ -97,6 +97,8 @@ export default function TransactionsPage() {
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"table" | "feed">("feed");
+  const [pageSize, setPageSize] = useState(20);
+  const [page, setPage] = useState(1);
 
   const [customers, setCustomers] = useState<MasterItem[]>([]);
   const [wallets, setWallets] = useState<MasterItem[]>([]);
@@ -150,7 +152,7 @@ export default function TransactionsPage() {
   async function load() {
     setLoading(true);
     try {
-      const params = new URLSearchParams({ limit: "200" });
+      const params = new URLSearchParams({ limit: String(pageSize), offset: String((page - 1) * pageSize) });
       if (q) params.set("q", q);
       if (type) params.set("type", type);
       if (from) params.set("from", from);
@@ -238,10 +240,14 @@ export default function TransactionsPage() {
   }, [qInput]);
 
   useEffect(() => {
+    setPage(1);
+  }, [q, type, from, to, amountMin, amountMax, customerId, walletId, categoryId, status, pageSize]);
+
+  useEffect(() => {
     load();
   }, [
     q, type, from, to, amountMin, amountMax,
-    customerId, walletId, categoryId, status,
+    customerId, walletId, categoryId, status, page, pageSize,
   ]);
 
   async function handleCreate(e: React.FormEvent) {
@@ -327,12 +333,28 @@ export default function TransactionsPage() {
     setForm({
       txDate: item.txDate ? new Date(item.txDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
       txType: item.txType,
-      amount: String(item.amount),
+      amount: item.amount ? String(Number(item.amount)) : "",
       note: item.note || "",
       customerId: item.customerId ? String(item.customerId) : "",
       walletId: item.walletId ? String(item.walletId) : "",
       categoryId: item.categoryId ? String(item.categoryId) : "",
     });
+  }
+
+  function handleDuplicate(item: TxItem) {
+    setEditingId(null);
+    setPopupTxId(null);
+    setPopupIsEditing(false);
+    setForm({
+      txDate: new Date().toISOString().slice(0, 10),
+      txType: item.txType,
+      amount: item.amount ? String(Number(item.amount)) : "",
+      note: item.note || "",
+      customerId: item.customerId ? String(item.customerId) : "",
+      walletId: item.walletId ? String(item.walletId) : "",
+      categoryId: item.categoryId ? String(item.categoryId) : "",
+    });
+    setShowForm(true);
   }
 
   function handleRowClick(item: TxItem) {
@@ -662,7 +684,7 @@ export default function TransactionsPage() {
           display: flex;
           gap: 4px;
         }
-        .feed-item:hover .feed-actions {
+        .feed-item:hover .feed-actions, .tx-row:hover .feed-actions {
           opacity: 1;
         }
         .feed-action-btn {
@@ -679,6 +701,38 @@ export default function TransactionsPage() {
         .feed-action-btn:hover {
           background: var(--border);
           color: var(--foreground);
+        }
+
+        /* Drawer Styles */
+        .drawer-overlay {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0, 0, 0, 0.4);
+          z-index: 1000;
+          backdrop-filter: blur(2px);
+          display: flex;
+          justify-content: flex-end;
+          animation: fadeIn 0.15s ease-out;
+        }
+        .drawer-content {
+          background: var(--card);
+          border-left: 1px solid var(--border);
+          width: 100%;
+          max-width: 460px;
+          height: 100%;
+          overflow-y: auto;
+          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+          display: flex;
+          flex-direction: column;
+          animation: slideInRight 0.2s ease-out;
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideInRight {
+          from { transform: translateX(100%); }
+          to { transform: translateX(0); }
         }
 
         /* Popup Styles */
@@ -722,12 +776,13 @@ export default function TransactionsPage() {
           text-align: left;
           white-space: nowrap;
         }
-        table.tx-table th { background: var(--muted); font-size: 14px; color: var(--muted-foreground); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
+        table.tx-table th { background: var(--muted); font-size: 14px; color: var(--muted-foreground); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 2; }
         .tx-row:hover { background: var(--muted); }
         .tx-row { transition: background 0.15s; }
         .copy-btn { opacity: 0; background: transparent; border: none; cursor: pointer; color: var(--muted-foreground); padding: 4px; border-radius: 4px; margin-left: 4px; display: inline-flex; }
         .tx-row:hover .copy-btn { opacity: 1; }
         .copy-btn:hover { background: var(--border); color: var(--foreground); }
+        .text-right { text-align: right !important; }
         @media (max-width: 600px) {
           .hidden-mobile { display: none; }
           .mini-card { min-width: 100%; }
@@ -742,73 +797,96 @@ export default function TransactionsPage() {
           </p>
         </div>
         <div style={styles.headActions}>
-          <div style={{ display: 'flex', background: 'var(--muted)', borderRadius: 8, padding: 2 }}>
-            <button
-              type="button"
-              style={{
-                background: viewMode === 'feed' ? 'var(--background)' : 'transparent',
-                border: 'none',
-                padding: '6px 10px',
-                borderRadius: 6,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                boxShadow: viewMode === 'feed' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                color: viewMode === 'feed' ? 'var(--foreground)' : 'var(--muted-foreground)'
-              }}
-              onClick={() => setViewMode('feed')}
-              title="Chế độ Danh sách"
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ ...styles.searchWrap, minWidth: 200, margin: 0 }}>
+              <Search size={18} style={styles.searchIcon} />
+              <input
+                type="search"
+                value={qInput}
+                onChange={(e) => setQInput(e.target.value)}
+                placeholder="Tìm ghi chú, đối tượng..."
+                className="tx-filter-input"
+                style={{ ...styles.search, width: '100%' }}
+              />
+            </div>
+            
+            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', flexWrap: 'nowrap' }}>
+              <div className={`chip ${!type && !from && !to ? 'active' : ''}`} onClick={() => setQuickFilter('all')}>Tất cả</div>
+              <div className={`chip ${type === 'chi' ? 'active' : ''}`} onClick={() => setQuickFilter('chi')}>Chi</div>
+              <div className={`chip ${type === 'thu' ? 'active' : ''}`} onClick={() => setQuickFilter('thu')}>Thu</div>
+              <div className={`chip ${from === new Date().toISOString().slice(0, 10) && to === new Date().toISOString().slice(0, 10) ? 'active' : ''}`} onClick={() => setQuickFilter('today')}>Hôm nay</div>
+              <div className={`chip ${from && to && from !== to && new Date(from).getDate() === 1 ? 'active' : ''}`} onClick={() => setQuickFilter('month')}>Tháng này</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', background: 'var(--muted)', borderRadius: 8, padding: 2 }}>
+              <button
+                type="button"
+                style={{
+                  background: viewMode === 'feed' ? 'var(--background)' : 'transparent',
+                  border: 'none',
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: viewMode === 'feed' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                  color: viewMode === 'feed' ? 'var(--foreground)' : 'var(--muted-foreground)'
+                }}
+                onClick={() => setViewMode('feed')}
+                title="Danh sách"
+              >
+                <LayoutList size={16} />
+                <span className="hidden-mobile" style={{ fontSize: 13, fontWeight: 500 }}>Danh sách</span>
+              </button>
+              <button
+                type="button"
+                style={{
+                  background: viewMode === 'table' ? 'var(--background)' : 'transparent',
+                  border: 'none',
+                  padding: '6px 10px',
+                  borderRadius: 6,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: viewMode === 'table' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+                  color: viewMode === 'table' ? 'var(--foreground)' : 'var(--muted-foreground)'
+                }}
+                onClick={() => setViewMode('table')}
+                title="Bảng"
+              >
+                <TableIcon size={16} />
+                <span className="hidden-mobile" style={{ fontSize: 13, fontWeight: 500 }}>Bảng</span>
+              </button>
+            </div>
+            
+            <button 
+              type="button" 
+              className="btn-ghost" 
+              onClick={() => setShowFilters(!showFilters)}
+              title="Lọc nâng cao"
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              <LayoutList size={16} />
-              <span className="hidden-mobile" style={{ fontSize: 13, fontWeight: 500 }}>Danh sách</span>
+              <ListFilter size={16} />
+              <span className="hidden-mobile">Lọc nâng cao</span>
             </button>
+            
             <button
               type="button"
-              style={{
-                background: viewMode === 'table' ? 'var(--background)' : 'transparent',
-                border: 'none',
-                padding: '6px 10px',
-                borderRadius: 6,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 6,
-                boxShadow: viewMode === 'table' ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
-                color: viewMode === 'table' ? 'var(--foreground)' : 'var(--muted-foreground)'
+              className="btn-primary"
+              onClick={() => {
+                handleCancelForm();
+                setShowForm(true);
               }}
-              onClick={() => setViewMode('table')}
-              title="Chế độ Bảng"
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
             >
-              <TableIcon size={16} />
-              <span className="hidden-mobile" style={{ fontSize: 13, fontWeight: 500 }}>Bảng</span>
+              <Plus size={16} />
+              <span>Thêm mới</span>
             </button>
           </div>
-          
-          <button 
-            type="button" 
-            className="btn-ghost" 
-            onClick={() => setShowFilters(!showFilters)}
-            title="Hiện/Ẩn bộ lọc chi tiết"
-          >
-            <ListFilter size={16} />
-            <span className="hidden-mobile">Lọc</span>
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => {
-              if (showForm && editingId) {
-                handleCancelForm();
-              } else {
-                setShowForm(!showForm);
-                if (!showForm) setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-              }
-            }}
-          >
-            <Plus size={16} />
-            <span>{showForm ? (editingId ? "Đóng sửa" : "Đóng form") : "Thêm"}</span>
-          </button>
         </div>
       </div>
 
@@ -834,12 +912,18 @@ export default function TransactionsPage() {
           </div>
         </div>
         
-        <div className="mini-card" style={{ background: 'var(--muted)', border: '1px solid var(--border)' }}>
-          <div className="mini-card-icon" style={{ background: 'var(--background)', color: 'var(--foreground)' }}>
+        <div className="mini-card" style={{ 
+          background: netFlow > 0 ? 'rgba(22, 163, 74, 0.1)' : (netFlow < 0 ? 'rgba(220, 38, 38, 0.1)' : 'var(--muted)'), 
+          border: netFlow > 0 ? '1px solid rgba(22, 163, 74, 0.2)' : (netFlow < 0 ? '1px solid rgba(220, 38, 38, 0.2)' : '1px solid var(--border)') 
+        }}>
+          <div className="mini-card-icon" style={{ 
+            background: netFlow > 0 ? 'rgba(22, 163, 74, 0.2)' : (netFlow < 0 ? 'rgba(220, 38, 38, 0.2)' : 'var(--background)'), 
+            color: netFlow > 0 ? '#16a34a' : (netFlow < 0 ? '#dc2626' : 'var(--foreground)') 
+          }}>
             <DollarSign size={24} />
           </div>
           <div>
-            <div className="summary-title" style={{ color: 'var(--foreground)' }}>Dòng tiền ròng (Net)</div>
+            <div className="summary-title" style={{ color: netFlow > 0 ? '#16a34a' : (netFlow < 0 ? '#dc2626' : 'var(--foreground)') }}>Dòng tiền ròng (Net)</div>
             <div className="summary-value" style={{ color: netFlow > 0 ? '#16a34a' : (netFlow < 0 ? '#dc2626' : 'var(--foreground)') }}>
               {netFlow > 0 ? '+' : ''}{formatMoney(netFlow)} ₫
             </div>
@@ -847,28 +931,7 @@ export default function TransactionsPage() {
         </div>
       </div>
 
-      <div className="card-container" style={{ padding: 16, marginTop: 16 }}>
-        {/* Quick Filter Chips */}
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 12, marginBottom: 12, borderBottom: '1px solid var(--border)', flexWrap: 'nowrap' }}>
-          <div className={`chip ${!type && !from && !to ? 'active' : ''}`} onClick={() => setQuickFilter('all')}>Tất cả</div>
-          <div className={`chip ${type === 'chi' ? 'active' : ''}`} onClick={() => setQuickFilter('chi')}>Chỉ khoản Chi</div>
-          <div className={`chip ${type === 'thu' ? 'active' : ''}`} onClick={() => setQuickFilter('thu')}>Chỉ khoản Thu</div>
-          <div className={`chip ${from === new Date().toISOString().slice(0, 10) && to === new Date().toISOString().slice(0, 10) ? 'active' : ''}`} onClick={() => setQuickFilter('today')}>Hôm nay</div>
-          <div className={`chip ${from && to && from !== to && new Date(from).getDate() === 1 ? 'active' : ''}`} onClick={() => setQuickFilter('month')}>Tháng này</div>
-        </div>
-        
-        <div style={styles.searchWrap}>
-          <Search size={18} style={styles.searchIcon} />
-          <input
-            type="search"
-            value={qInput}
-            onChange={(e) => setQInput(e.target.value)}
-            placeholder="Tìm theo ghi chú, đối tượng, ví, danh mục..."
-            className="tx-filter-input"
-            style={styles.search}
-          />
-        </div>
-
+      <div className="card-container" style={{ padding: 16, marginTop: 16, borderTop: showFilters ? 'none' : undefined, borderRadius: showFilters ? '0 0 12px 12px' : 12 }}>
         {showFilters && (
           <div style={styles.filterGrid}>
             <label style={styles.field}>
@@ -910,10 +973,11 @@ export default function TransactionsPage() {
             <label style={styles.field}>
               <span style={styles.fieldLabel}>Tiền từ</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 placeholder="0"
-                value={amountMin}
-                onChange={(e) => setAmountMin(e.target.value)}
+                value={amountMin ? Number(amountMin).toLocaleString("vi-VN") : ""}
+                onChange={(e) => setAmountMin(e.target.value.replace(/[^\d]/g, ""))}
                 className="tx-filter-input"
                 style={styles.control}
               />
@@ -922,10 +986,11 @@ export default function TransactionsPage() {
             <label style={styles.field}>
               <span style={styles.fieldLabel}>Tiền đến</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 placeholder="—"
-                value={amountMax}
-                onChange={(e) => setAmountMax(e.target.value)}
+                value={amountMax ? Number(amountMax).toLocaleString("vi-VN") : ""}
+                onChange={(e) => setAmountMax(e.target.value.replace(/[^\d]/g, ""))}
                 className="tx-filter-input"
                 style={styles.control}
               />
@@ -995,9 +1060,9 @@ export default function TransactionsPage() {
       </div>
 
       {(showForm || popupIsEditing) && (
-        <div className="popup-overlay" onMouseDown={handleCancelForm}>
-        <form ref={formRef} onSubmit={handleCreate} className="popup-content" onMouseDown={(e) => e.stopPropagation()} style={{ padding: 20 }}>
-          <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 16 }}>
+        <div className="drawer-overlay" onMouseDown={handleCancelForm}>
+        <form ref={formRef} onSubmit={handleCreate} className="drawer-content" onMouseDown={(e) => e.stopPropagation()} style={{ padding: 24 }}>
+          <h3 style={{ marginTop: 0, marginBottom: 20, fontSize: 18, borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
             {(editingId || popupIsEditing) ? `Chỉnh sửa giao dịch #${popupTxId || editingId}` : "Thêm giao dịch mới"}
           </h3>
           <div style={styles.formGrid}>
@@ -1027,12 +1092,12 @@ export default function TransactionsPage() {
             <label style={styles.field}>
               <span style={styles.fieldLabel}>Số tiền</span>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 required
-                min={1}
                 autoFocus
-                value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                value={form.amount ? Number(form.amount).toLocaleString("vi-VN") : ""}
+                onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/[^\d]/g, "") })}
                 className="form-input"
                 style={styles.control}
               />
@@ -1233,7 +1298,7 @@ export default function TransactionsPage() {
               <tr>
                 <th style={{ textAlign: "center" }}>Ngày</th>
                 <th style={{ textAlign: "center" }}>Loại</th>
-                <th style={{ textAlign: "right" }}>Số tiền</th>
+                <th className="text-right">Số tiền</th>
                 <th>Đối tượng</th>
                 <th>Ví</th>
                 <th>Danh mục</th>
@@ -1288,7 +1353,7 @@ export default function TransactionsPage() {
                         {t.txType === "thu" ? "Thu" : "Chi"}
                       </span>
                     </td>
-                    <td style={{ textAlign: "right" }}>
+                    <td className="text-right">
                       <span className={`tx-amount ${t.txType}`}>
                         {t.txType === "thu" ? "+" : "-"}{formatMoney(t.amount)} ₫
                       </span>
@@ -1325,9 +1390,12 @@ export default function TransactionsPage() {
                       </div>
                     </td>
                     <td style={{ textAlign: "center" }}>
-                      <div className="feed-actions" style={{ justifyContent: "center" }}>
+                      <div className="feed-actions" style={{ justifyContent: "center", opacity: 1 }}>
                         <button className="feed-action-btn" title="Sửa giao dịch" onClick={(e) => { e.stopPropagation(); handleEditClick(t); }}>
                           <Edit size={14} />
+                        </button>
+                        <button className="feed-action-btn" title="Sao chép giao dịch" onClick={(e) => { e.stopPropagation(); handleDuplicate(t); }}>
+                          <Copy size={14} />
                         </button>
                         <button className="feed-action-btn" title="Xoá giao dịch" onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} style={{ color: "#dc2626" }}>
                           <Trash2 size={14} />
@@ -1339,6 +1407,51 @@ export default function TransactionsPage() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {items.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 16, padding: '12px 16px', background: 'var(--card)', borderRadius: 12, border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--muted-foreground)' }}>
+            <span>Hiển thị</span>
+            <select 
+              value={pageSize} 
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(1);
+              }}
+              className="tx-filter-input"
+              style={{ padding: '4px 8px', borderRadius: 6 }}
+            >
+              <option value="20">20</option>
+              <option value="50">50</option>
+              <option value="100">100</option>
+            </select>
+            <span>dòng mỗi trang · Tổng <b>{total.toLocaleString("vi-VN")}</b> dòng</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <button 
+              type="button" 
+              className="btn-ghost" 
+              disabled={page <= 1 || loading}
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              style={{ padding: '6px 12px', fontSize: 13 }}
+            >
+              Trang trước
+            </button>
+            <span style={{ fontSize: 13, fontWeight: 600 }}>Trang {page} / {Math.ceil(total / pageSize) || 1}</span>
+            <button 
+              type="button" 
+              className="btn-ghost" 
+              disabled={page >= Math.ceil(total / pageSize) || loading}
+              onClick={() => setPage(p => p + 1)}
+              style={{ padding: '6px 12px', fontSize: 13 }}
+            >
+              Trang sau
+            </button>
+          </div>
         </div>
       )}
 

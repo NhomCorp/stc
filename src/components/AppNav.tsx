@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   ArrowLeftRight,
+  BarChart3,
   FolderTree,
   UploadCloud,
   ShieldAlert,
@@ -22,6 +23,7 @@ import {
 const links = [
   { href: "/dashboard", label: "Tổng quan", icon: LayoutDashboard },
   { href: "/transactions", label: "Giao dịch", icon: ArrowLeftRight },
+  { href: "/reports", label: "Báo cáo", icon: BarChart3 },
   { href: "/master", label: "Danh mục", icon: FolderTree },
   { href: "/import", label: "Nhập liệu", icon: UploadCloud },
 ];

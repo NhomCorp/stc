@@ -158,11 +158,11 @@ export default function HomePage() {
               <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>Số tiền</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   required
-                  min={1}
-                  value={form.amount}
-                  onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                  value={form.amount ? Number(form.amount).toLocaleString("vi-VN") : ""}
+                  onChange={(e) => setForm({ ...form, amount: e.target.value.replace(/[^\d]/g, "") })}
                   placeholder="0"
                   style={{ padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14 }}
                 />

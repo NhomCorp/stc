@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { 
   FolderTree, 
@@ -35,7 +36,10 @@ async function api(method: string, body?: object, kind?: Kind) {
 }
 
 export default function MasterPage() {
-  const [kind, setKind] = useState<Kind>("categories");
+  const searchParams = useSearchParams();
+  const requestedKind = searchParams.get("tab");
+  const initialKind: Kind = requestedKind === "customers" || requestedKind === "wallets" ? requestedKind : "categories";
+  const [kind, setKind] = useState<Kind>(initialKind);
   const [items, setItems] = useState<Item[]>([]);
   const [groups, setGroups] = useState<Item[]>([]);
   const [editor, setEditor] = useState<Editor | null>(null);
