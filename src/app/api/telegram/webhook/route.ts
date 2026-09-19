@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { sendMessage, getFile } from "@/lib/telegram";
-import { callGeminiAPI } from "@/lib/ai-parser";
+import { sendMessage, editMessage, getFile } from "@/lib/telegram";
+import { callGeminiAPI, transcribeVoiceGemini } from "@/lib/ai-parser";
 import { db } from "@/db";
 import { transactions, wallets, customers, categories } from "@/db/schema";
-import { eq, ilike } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import crypto from "crypto";
 import { getTelegramConfig } from "@/lib/telegram-config";
 
@@ -17,51 +17,84 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json();
 
-    // 1. Chỉ xử lý Message có nội dung
-    const message = body.message;
-    if (!message) {
+    // -- XỬ LÝ CALLBACK QUERY (Nút bấm) --
+    if (body.callback_query) {
+      const cq = body.callback_query;
+      const chatId = cq.message?.chat?.id;
+      if (config.adminId && String(chatId) !== String(config.adminId)) {
+        return NextResponse.json({ ok: true });
+      }
+
+      const data = cq.data || "";
+      const messageId = cq.message?.message_id;
+
+      if (data.startsWith("CONFIRM_")) {
+        const txIds = data.replace("CONFIRM_", "").split(",").map(Number);
+        await db.update(transactions).set({ status: "valid" }).where(inArray(transactions.id, txIds));
+        await editMessage(chatId, messageId, cq.message.text.replace("⚠️ CẦN XÁC NHẬN", "✅ Đã ghi sổ"), { reply_markup: { inline_keyboard: [] } });
+      } else if (data.startsWith("CANCEL_")) {
+        const txIds = data.replace("CANCEL_", "").split(",").map(Number);
+        await db.delete(transactions).where(inArray(transactions.id, txIds));
+        await editMessage(chatId, messageId, "❌ Đã hủy giao dịch.", { reply_markup: { inline_keyboard: [] } });
+      } else if (data.startsWith("UNDO_")) {
+        const txIds = data.replace("UNDO_", "").split(",").map(Number);
+        await db.delete(transactions).where(inArray(transactions.id, txIds));
+        await editMessage(chatId, messageId, "↩️ Đã hoàn tác (xóa) giao dịch.", { reply_markup: { inline_keyboard: [] } });
+      }
+
       return NextResponse.json({ ok: true });
     }
+
+    // -- XỬ LÝ TIN NHẮN (Text / Photo) --
+    const message = body.message;
+    if (!message) return NextResponse.json({ ok: true });
 
     const chatId = message.chat.id;
     if (config.adminId && String(chatId) !== String(config.adminId)) {
-      return NextResponse.json({ ok: true }); // Bỏ qua tin nhắn không phải của admin
-    }
-
-    let text = message.text || message.caption || "";
-
-    // Lấy ảnh nếu có
-    let base64Image: string | undefined = undefined;
-    if (message.photo && message.photo.length > 0) {
-      const highestResPhoto = message.photo[message.photo.length - 1];
-      const base64 = await getFile(highestResPhoto.file_id);
-      if (base64) {
-        base64Image = base64;
-      }
-    }
-
-    if (!text && !base64Image) {
       return NextResponse.json({ ok: true });
     }
 
-    // Gửi phản hồi tạm thời
-    await sendMessage(chatId, "🧠 Đang xử lý giao dịch qua Gemini AI...");
+    let text = message.text || message.caption || "";
+    let base64Image: string | undefined = undefined;
 
-    // 2. Bóc tách bằng Gemini AI
+    if (message.voice) {
+      const voiceFile = await getFile(message.voice.file_id);
+      if (voiceFile) {
+        const transcribeResult = await transcribeVoiceGemini(voiceFile, message.voice.mime_type || "audio/ogg");
+        if (transcribeResult.error) {
+          await sendMessage(chatId, `❌ Lỗi nghe giọng nói: ${transcribeResult.error}`);
+          return NextResponse.json({ ok: true });
+        }
+        text = transcribeResult.text || "";
+      }
+    }
+
+    if (message.photo && message.photo.length > 0) {
+      const highestResPhoto = message.photo[message.photo.length - 1];
+      const base64 = await getFile(highestResPhoto.file_id);
+      if (base64) base64Image = base64;
+    }
+
+    if (!text && !base64Image) return NextResponse.json({ ok: true });
+
+    // Thông báo chờ
+    const pendingMsg = await sendMessage(chatId, "🧠 Đang phân tích giao dịch qua Gemini AI...");
+    const pendingMsgId = pendingMsg?.result?.message_id;
+
+    // AI Phân tích
     const parseResult = await callGeminiAPI(text, base64Image);
-
     if (parseResult.error) {
-      await sendMessage(chatId, `❌ Lỗi AI: ${parseResult.error}`);
+      if (pendingMsgId) await editMessage(chatId, pendingMsgId, `❌ Lỗi AI: ${parseResult.error}`);
       return NextResponse.json({ ok: true });
     }
 
     const txList = parseResult.giao_dich || [];
     if (txList.length === 0) {
-      await sendMessage(chatId, "⚠️ Không tìm thấy giao dịch nào.");
+      if (pendingMsgId) await editMessage(chatId, pendingMsgId, "⚠️ Không tìm thấy giao dịch nào hợp lệ trong tin nhắn.");
       return NextResponse.json({ ok: true });
     }
 
-    // 3. Cache các bảng danh mục để map ID
+    // Load Master Data
     const [allWallets, allCustomers, allCategories] = await Promise.all([
       db.select().from(wallets),
       db.select().from(customers),
@@ -69,28 +102,31 @@ export async function POST(req: NextRequest) {
     ]);
 
     const createdTxs = [];
+    let hasCheck = false;
+    let replyMsg = "";
 
-    // 4. Lưu từng giao dịch vào DB
     for (const item of txList) {
-      const type = (item.phan_loai || "").toLowerCase().includes("thu") ? "thu" : "chi";
+      let isUnknown = false;
+      const phanLoai = (item.phan_loai || "").toLowerCase();
+      let type = phanLoai.includes("thu") ? "thu" : "chi";
+      
+      if (phanLoai.includes("không rõ") || phanLoai.includes("khong ro")) {
+        type = "chi"; // Mặc định là chi nếu không rõ
+        isUnknown = true;
+        hasCheck = true;
+      }
+
       const amount = Number(item.so_tien) || 0;
 
-      // Tìm walletId
-      const matchedWallet = allWallets.find(
-        (w) => w.name.toLowerCase() === (item.vi || "").toLowerCase()
-      );
+      const matchedWallet = allWallets.find(w => w.name.toLowerCase() === (item.vi || "").toLowerCase());
+      const matchedCustomer = allCustomers.find(c => c.name.toLowerCase() === (item.doi_tuong || "").toLowerCase());
+      const matchedCategory = allCategories.find(c => c.name.toLowerCase() === (item.danh_muc_con || "").toLowerCase());
 
-      // Tìm customerId
-      const matchedCustomer = allCustomers.find(
-        (c) => c.name.toLowerCase() === (item.doi_tuong || "").toLowerCase()
-      );
+      if (!matchedWallet && item.vi && item.vi.toLowerCase() !== "chưa phân loại") hasCheck = true;
+      if (!matchedCustomer && item.doi_tuong && item.doi_tuong.toLowerCase() !== "chưa phân loại") hasCheck = true;
+      if (!matchedCategory && item.danh_muc_con && item.danh_muc_con.toLowerCase() !== "chưa phân loại") hasCheck = true;
 
-      // Tìm categoryId
-      const matchedCategory = allCategories.find(
-        (c) => c.name.toLowerCase() === (item.danh_muc_con || "").toLowerCase()
-      );
-
-      // Parse date (dd/MM/yyyy) hoặc fallback hôm nay
+      // Parse date (dd/MM/yyyy) hoặc hôm nay
       let txDate = new Date();
       if (item.ngay_gd && item.ngay_gd.includes("/")) {
         const parts = item.ngay_gd.split("/");
@@ -99,7 +135,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Hash chống trùng đơn giản
       const hashContent = `${txDate.toISOString()}_${type}_${amount}_${item.ghi_chu || ""}`;
       const hash = crypto.createHash("sha256").update(hashContent).digest("hex");
 
@@ -116,30 +151,59 @@ export async function POST(req: NextRequest) {
           categoryId: matchedCategory?.id || null,
           note: item.ghi_chu || "",
           rawData: item,
-          status: "valid",
+          status: hasCheck ? "draft" : "valid",
         })
         .returning();
 
-      createdTxs.push({
-        ...item,
-        id: newTx?.id,
-      });
-    }
+      createdTxs.push(newTx);
 
-    // 5. Gửi thông báo thành công về Telegram
-    let replyMsg = `✅ <b>Đã ghi nhận ${createdTxs.length} giao dịch:</b>\n`;
-    for (const tx of createdTxs) {
-      replyMsg += `\n• <b>${tx.phan_loai.toUpperCase()}:</b> ${Number(tx.so_tien).toLocaleString()} đ`;
-      replyMsg += `\n  - Ví: ${tx.vi || "N/A"}`;
-      replyMsg += `\n  - Danh mục: ${tx.danh_muc_con || "N/A"}`;
-      replyMsg += `\n  - Đối tượng: ${tx.doi_tuong || "N/A"}`;
-      if (tx.ghi_chu) replyMsg += `\n  - Ghi chú: ${tx.ghi_chu}`;
+      replyMsg += `\n• <b>${type.toUpperCase()}</b>: ${amount.toLocaleString()} đ ${isUnknown ? "❓ (Không rõ)" : ""}`;
+      replyMsg += `\n  - Ví: ${matchedWallet ? matchedWallet.name : `⚠️ ${item.vi || "Trống"}`}`;
+      replyMsg += `\n  - Danh mục: ${matchedCategory ? matchedCategory.name : `⚠️ ${item.danh_muc_con || "Trống"}`}`;
+      replyMsg += `\n  - Đối tượng: ${matchedCustomer ? matchedCustomer.name : `⚠️ ${item.doi_tuong || "Trống"}`}`;
+      if (item.ghi_chu) replyMsg += `\n  - Ghi chú: ${item.ghi_chu}`;
       replyMsg += "\n";
     }
 
-    await sendMessage(chatId, replyMsg);
+    const txIds = createdTxs.map(t => t.id).join(",");
 
-    return NextResponse.json({ ok: true, data: createdTxs });
+    if (hasCheck) {
+      const finalMsg = `⚠️ <b>CẦN XÁC NHẬN (${createdTxs.length} GD):</b>\n${replyMsg}\n<i>AI không chắc chắn về phân loại hoặc danh mục không có trong sổ tay.</i>`;
+      if (pendingMsgId) {
+        await editMessage(chatId, pendingMsgId, finalMsg, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "✅ Ghi sổ", callback_data: `CONFIRM_${txIds}` }, { text: "❌ Hủy", callback_data: `CANCEL_${txIds}` }]
+            ]
+          }
+        });
+      } else {
+        await sendMessage(chatId, finalMsg, {
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "✅ Ghi sổ", callback_data: `CONFIRM_${txIds}` }, { text: "❌ Hủy", callback_data: `CANCEL_${txIds}` }]
+            ]
+          }
+        });
+      }
+    } else {
+      const finalMsg = `✅ <b>Đã ghi nhận ${createdTxs.length} GD:</b>\n${replyMsg}`;
+      if (pendingMsgId) {
+        await editMessage(chatId, pendingMsgId, finalMsg, {
+          reply_markup: {
+            inline_keyboard: [[{ text: "↩️ Hoàn tác", callback_data: `UNDO_${txIds}` }]]
+          }
+        });
+      } else {
+        await sendMessage(chatId, finalMsg, {
+          reply_markup: {
+            inline_keyboard: [[{ text: "↩️ Hoàn tác", callback_data: `UNDO_${txIds}` }]]
+          }
+        });
+      }
+    }
+
+    return NextResponse.json({ ok: true });
   } catch (error: any) {
     console.error("Telegram Webhook Error:", error);
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

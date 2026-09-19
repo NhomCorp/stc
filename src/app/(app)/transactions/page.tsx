@@ -316,9 +316,14 @@ export default function TransactionsPage() {
     }
   }
 
-  function handleEditClick(item: TxItem) {
-    setPopupTxId(item.id);
-    setPopupIsEditing(true);
+  function handleEditClick(item: TxItem, fromDetail = false) {
+    if (fromDetail) {
+      setPopupTxId(item.id);
+      setPopupIsEditing(true);
+    } else {
+      setEditingId(item.id);
+      setShowForm(true);
+    }
     setForm({
       txDate: item.txDate ? new Date(item.txDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
       txType: item.txType,
@@ -336,6 +341,7 @@ export default function TransactionsPage() {
   }
 
   function handleCancelForm() {
+    if (popupIsEditing) setPopupIsEditing(false);
     setShowForm(false);
     setEditingId(null);
     setForm({ ...form, amount: "", note: "", customerId: "", walletId: "", categoryId: "" });
@@ -989,7 +995,7 @@ export default function TransactionsPage() {
       </div>
 
       {(showForm || popupIsEditing) && (
-        <div className="popup-overlay" onMouseDown={() => { if (popupIsEditing) setPopupIsEditing(false); else handleCancelForm(); }}>
+        <div className="popup-overlay" onMouseDown={handleCancelForm}>
         <form ref={formRef} onSubmit={handleCreate} className="popup-content" onMouseDown={(e) => e.stopPropagation()} style={{ padding: 20 }}>
           <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 16 }}>
             {(editingId || popupIsEditing) ? `Chỉnh sửa giao dịch #${popupTxId || editingId}` : "Thêm giao dịch mới"}
@@ -1024,6 +1030,7 @@ export default function TransactionsPage() {
                 type="number"
                 required
                 min={1}
+                autoFocus
                 value={form.amount}
                 onChange={(e) => setForm({ ...form, amount: e.target.value })}
                 className="form-input"
@@ -1089,7 +1096,7 @@ export default function TransactionsPage() {
             </button>
             <button type="submit" className="btn-primary">
               <CheckCircle2 size={16} />
-              <span>{editingId ? "Cập nhật giao dịch" : "Lưu giao dịch"}</span>
+              <span>{(editingId || popupIsEditing) ? "Cập nhật giao dịch" : "Lưu giao dịch"}</span>
             </button>
           </div>
         </form>
@@ -1116,7 +1123,7 @@ export default function TransactionsPage() {
               </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 24 }}>
                 <button type="button" className="btn-ghost" onClick={() => handleDelete(popupData.id)}>Xóa</button>
-                <button type="button" className="btn-primary" onClick={() => handleEditClick(popupData)}><Edit size={16} /> Sửa</button>
+                <button type="button" className="btn-primary" onClick={() => handleEditClick(popupData, true)}><Edit size={16} /> Sửa</button>
               </div>
             </div>
           </div>

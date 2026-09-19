@@ -1,6 +1,7 @@
 import { db } from "@/db";
-import { eq } from "drizzle-orm";
-import { settings, wallets, customers, categories } from "@/db/schema";
+import { eq, desc } from "drizzle-orm";
+import { settings, wallets, customers, categories, aliases, aiLessons } from "@/db/schema";
+
 // Lấy config AI từ DB
 export async function getAiConfig() {
   const row = await db.select().from(settings).where(eq(settings.key, "gemini_config")).limit(1);
@@ -15,19 +16,62 @@ export async function getAiConfig() {
 }
 
 export async function getLiveData() {
-  const [walletList, customerList, categoryList] = await Promise.all([
+  const [walletList, customerList, categoryList, aliasList, lessonList] = await Promise.all([
     db.select({ name: wallets.name }).from(wallets).where(eq(wallets.isActive, true)),
     db.select({ name: customers.name }).from(customers).where(eq(customers.isActive, true)),
     db.select({ name: categories.name }).from(categories).where(eq(categories.isActive, true)),
+    db.select({ keyword: aliases.keyword, type: aliases.type, targetName: aliases.targetName }).from(aliases).where(eq(aliases.isActive, true)),
+    db.select({ sourceText: aiLessons.sourceText, field: aiLessons.field, aiGuess: aiLessons.aiGuess, userFix: aiLessons.userFix }).from(aiLessons).orderBy(desc(aiLessons.updatedAt)).limit(50),
   ]);
 
   return {
     wallets: walletList.map((w) => w.name),
     users: customerList.map((c) => c.name),
     categories: categoryList.map((c) => c.name),
-    aliases: [], // P2
-    lessons: [], // P2
+    aliases: aliasList.map((a) => `${a.keyword} -> ${a.targetName} (${a.type})`),
+    lessons: lessonList.map((l) => `Khi nội dung có "${l.sourceText}", AI đoán ${l.field} là "${l.aiGuess}" -> Sửa lại thành "${l.userFix}"`),
   };
+}
+
+export async function transcribeVoiceGemini(base64Audio: string, mimeType = "audio/ogg") {
+  const config = await getAiConfig();
+  if (!config || !config.keys || config.keys.length === 0) {
+    return { error: "Chưa cấu hình API Key Gemini." };
+  }
+
+  const payload = {
+    contents: [
+      {
+        parts: [
+          { inlineData: { mimeType, data: base64Audio } },
+          { text: "Hãy nghe và gõ lại chính xác toàn bộ nội dung tiếng Việt trong đoạn ghi âm sau đây để ghi sổ thu chi. Chỉ trả về văn bản đã nghe, không thêm lời giải thích hay bất kỳ thông tin nào khác." },
+        ],
+      },
+    ],
+  };
+
+  const keys = [...config.keys].filter(k => k.trim());
+  for (const key of keys) {
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${config.model}:generateContent?key=${key}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const data: any = await res.json();
+      if (data.error) continue;
+
+      const parts = (((data.candidates || [])[0] || {}).content || {}).parts || [];
+      const rawText = parts.map((p: any) => p.text || "").join("").trim();
+      if (rawText) return { text: rawText };
+    } catch (e) {}
+  }
+
+  return { error: "Không thể nhận diện giọng nói qua Gemini." };
 }
 
 export async function callGeminiAPI(text: string, base64Image?: string) {
@@ -55,6 +99,8 @@ QUY TẮC THU/CHI (Đặc biệt với Bill ngân hàng):
 - Danh sách Ví: [${liveData.wallets.join(", ")}]
 - Danh sách Đối tượng: [${liveData.users.join(", ")}]
 - Danh sách Danh mục: [${liveData.categories.join(", ")}]
+${liveData.aliases.length > 0 ? `\n* TỪ ĐIỂN TÊN GỌI KHÁC (ALIAS):\n${liveData.aliases.map((a) => `- ${a}`).join("\n")}` : ""}
+${liveData.lessons.length > 0 ? `\n* BÀI HỌC KINH NGHIỆM TỪ NGƯỜI DÙNG (AI LEARNING):\n${liveData.lessons.map((l) => `- ${l}`).join("\n")}` : ""}
 
 YÊU CẦU:
 1. Bóc tách toàn bộ giao dịch trong tin nhắn/ảnh. Nếu không có ngày, ghi "Hôm nay".

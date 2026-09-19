@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { callGeminiAPI } from "@/lib/ai-parser";
 
 function wantsJson(request: NextRequest): boolean {
   const format = request.nextUrl.searchParams.get("format");
@@ -16,40 +17,43 @@ export async function POST(request: NextRequest) {
     const useJson = wantsJson(request);
 
     if (!image) {
-      if (useJson) {
-        return NextResponse.json({ ok: false, error: "NoImage" }, { status: 400 });
-      }
+      if (useJson) return NextResponse.json({ ok: false, error: "NoImage" }, { status: 400 });
       return NextResponse.redirect(new URL("/share-preview?error=NoImage", request.url), 303);
     }
 
-    const name = image.name || "unknown.jpg";
-    const size = image.size || 0;
+    // Chuyển ảnh sang Base64 để gọi Gemini
+    const bytes = await image.arrayBuffer();
+    const buffer = Buffer.from(bytes);
+    const base64Image = buffer.toString("base64");
 
-    // TODO sau này: Save image to Storage, send to Gemini AI...
+    // Phân tích qua Gemini
+    const parseResult = await callGeminiAPI(text || "Trích xuất giao dịch từ ảnh", base64Image);
+
+    if (parseResult.error) {
+      if (useJson) return NextResponse.json({ ok: false, error: parseResult.error }, { status: 500 });
+      return NextResponse.redirect(new URL(`/share-preview?error=${encodeURIComponent(parseResult.error)}`, request.url), 303);
+    }
+
+    const txList = parseResult.giao_dich || [];
 
     if (useJson) {
       return NextResponse.json({
         ok: true,
-        name,
-        size,
-        title: title || null,
-        text: text || null,
-        message: "Nhận ảnh thành công (test)",
+        extracted: txList,
       });
     }
 
+    // Lưu tạm vào URL param để chuyển tiếp cho preview page
+    const txDataParam = encodeURIComponent(JSON.stringify(txList));
     return NextResponse.redirect(
-      new URL(
-        `/share-preview?name=${encodeURIComponent(name)}&size=${size}&text=${encodeURIComponent(text || "")}`,
-        request.url
-      ),
+      new URL(`/share-preview?data=${txDataParam}`, request.url),
       303
     );
-  } catch (err) {
+  } catch (err: any) {
     console.error("Share target error:", err);
     if (wantsJson(request)) {
-      return NextResponse.json({ ok: false, error: "Failed" }, { status: 500 });
+      return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
     }
-    return NextResponse.redirect(new URL("/share-preview?error=Failed", request.url), 303);
+    return NextResponse.redirect(new URL(`/share-preview?error=${encodeURIComponent(err.message)}`, request.url), 303);
   }
 }

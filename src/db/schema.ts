@@ -99,6 +99,30 @@ export const syncRuns = pgTable("sync_runs", {
 // 4. Danh mục Master Data
 // ==========================================
 
+export const aliases = pgTable("aliases", {
+  id: serial("id").primaryKey(),
+  keyword: varchar("keyword", { length: 255 }).notNull().unique(),
+  type: varchar("type", { length: 50 }).notNull(), // 'wallet', 'customer', 'category'
+  targetName: varchar("target_name", { length: 255 }).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const aiLessons = pgTable("ai_lessons", {
+  id: serial("id").primaryKey(),
+  sourceText: text("source_text").notNull(),
+  field: varchar("field", { length: 50 }).notNull(), // 'vi', 'doi_tuong', 'danh_muc_con'
+  aiGuess: varchar("ai_guess", { length: 255 }).notNull(),
+  userFix: varchar("user_fix", { length: 255 }).notNull(),
+  count: integer("count").default(1).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => {
+  return {
+    lessonUniqueIdx: uniqueIndex("ai_lessons_unique_idx").on(table.sourceText, table.field, table.aiGuess, table.userFix),
+  };
+});
+
 export const customers = pgTable("customers", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 50 }).unique(),
