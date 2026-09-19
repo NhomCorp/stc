@@ -130,7 +130,7 @@ async function processTelegramMessage(message: any, config: any) {
           customerId: matchedCustomer?.id || null,
           categoryId: matchedCategory?.id || null,
           note: item.ghi_chu || "",
-          rawData: item,
+          rawData: base64Image ? { ...item, _imageBase64: base64Image, _imageMimeType: "image/jpeg", _source: "telegram" } : item,
           status: hasCheck ? "draft" : "valid",
         })
         .returning();

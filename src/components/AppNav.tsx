@@ -76,42 +76,40 @@ export function AppNav({
   return (
     <header className="app-header">
       <div className="app-header-inner">
-        <div className="app-brand-container">
-          <button
-            type="button"
-            className="app-hamburger"
-            onClick={() => setIsOpen(!isOpen)}
-            aria-label="Toggle menu"
+        <Link href="/dashboard" className="app-brand">
+          <Wallet size={22} color="var(--primary)" />
+          <span>Sổ Thu Chi</span>
+        </Link>
+        <button
+          type="button"
+          className="app-hamburger"
+          onClick={() => setIsOpen(!isOpen)}
+          aria-label="Toggle menu"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            width="24"
+            height="24"
+            stroke="currentColor"
+            strokeWidth="2"
+            fill="none"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            <svg
-              viewBox="0 0 24 24"
-              width="24"
-              height="24"
-              stroke="currentColor"
-              strokeWidth="2"
-              fill="none"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              {isOpen ? (
-                <>
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </>
-              ) : (
-                <>
-                  <line x1="3" y1="12" x2="21" y2="12" />
-                  <line x1="3" y1="6" x2="21" y2="6" />
-                  <line x1="3" y1="18" x2="21" y2="18" />
-                </>
-              )}
-            </svg>
-          </button>
-          <Link href="/dashboard" className="app-brand">
-            <Wallet size={22} color="var(--primary)" />
-            <span>Sổ Thu Chi</span>
-          </Link>
-        </div>
+            {isOpen ? (
+              <>
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </>
+            ) : (
+              <>
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </>
+            )}
+          </svg>
+        </button>
 
         <nav className={`app-nav-links ${isOpen ? "app-nav-open" : ""}`}>
           <div className="app-nav-menu">

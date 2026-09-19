@@ -9,11 +9,24 @@ import {
 } from "@/db/schema";
 import { requireUser } from "@/lib/api-auth";
 
+function triggerBackgroundCleanup() {
+  // Dọn ngầm ảnh Base64 cũ quá 45 ngày
+  // Không cần await để tránh block request hiện tại
+  db.execute(sql`
+    UPDATE transactions 
+    SET raw_data = raw_data - '_imageBase64' - '_imageMimeType'
+    WHERE tx_date < NOW() - INTERVAL '45 days'
+      AND raw_data ? '_imageBase64'
+  `).catch(err => console.error("Auto cleanup background error:", err));
+}
+
 export async function GET(request: NextRequest) {
   const user = await requireUser(request);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  
+  triggerBackgroundCleanup();
 
   const { searchParams } = new URL(request.url);
   const limit = Math.min(Number(searchParams.get("limit") || 50), 200);
@@ -242,7 +255,10 @@ export async function PUT(request: NextRequest) {
     patch.note = body.note ? String(body.note).trim() : null;
   }
   if (body.status !== undefined) {
-    patch.status = String(body.status);
+    const newStatus = String(body.status);
+    patch.status = newStatus;
+    
+    // (Tạm thời không xóa ảnh khi duyệt valid để lưu trữ theo yêu cầu)
   }
   if (body.rawData !== undefined) {
     patch.rawData = body.rawData;

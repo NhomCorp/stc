@@ -131,6 +131,8 @@ export default function TransactionsPage() {
   const walletId = resolveMasterId(wallets, walletText);
   const categoryId = resolveMasterId(categories, categoryText);
 
+  const [draftCount, setDraftCount] = useState(0);
+
   async function loadMasters() {
     try {
       const [cus, wal, cat] = await Promise.all([
@@ -174,6 +176,12 @@ export default function TransactionsPage() {
       setTotal(data.total || 0);
       setTotalIncome(data.totalIncome || 0);
       setTotalExpense(data.totalExpense || 0);
+      
+      // Tự động kiểm tra số lượng giao dịch chờ duyệt
+      fetch("/api/transactions?limit=1&status=draft")
+        .then((r) => r.json())
+        .then((d) => setDraftCount(d.total || 0))
+        .catch(() => {});
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Lỗi tải giao dịch");
     } finally {
@@ -375,6 +383,23 @@ export default function TransactionsPage() {
   function handleRowClick(item: TxItem) {
     setPopupTxId(item.id);
     setPopupIsEditing(false);
+  }
+
+  async function handleApproveDraft(id: number) {
+    const loadingToast = toast.loading("Đang duyệt giao dịch...");
+    try {
+      const res = await fetch("/api/transactions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, status: "valid" }),
+      });
+      if (!res.ok) throw new Error("Không thể duyệt giao dịch");
+      toast.success("Đã duyệt và ghi sổ thành công!", { id: loadingToast });
+      setPopupTxId(null);
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Lỗi khi duyệt", { id: loadingToast });
+    }
   }
 
   function handleCancelForm() {
@@ -735,12 +760,37 @@ export default function TransactionsPage() {
           width: 100%;
           max-width: 460px;
           height: 100%;
-          overflow-y: auto;
-          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
           display: flex;
           flex-direction: column;
           animation: slideInRight 0.2s ease-out;
         }
+        
+        .tx-editor-drawer {
+          box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+        }
+        .tx-editor-header {
+          padding: 16px 24px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .tx-editor-body {
+          padding: 24px;
+          flex: 1;
+          overflow-y: auto;
+        }
+        .tx-editor-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+        }
+        .tx-editor-footer {
+          padding: 16px 24px;
+          border-top: 1px solid var(--border);
+          background: var(--card);
+        }
+
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
@@ -838,6 +888,14 @@ export default function TransactionsPage() {
         @media (max-width: 600px) {
           .hidden-mobile { display: none; }
           .mini-card { min-width: 100%; }
+          .tx-editor-overlay { align-items: flex-end; }
+          .tx-editor-drawer { height: 85vh; border-radius: 20px 20px 0 0; border-left: none; box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15); animation: slideUp 0.2s ease-out; }
+          .tx-editor-body { padding: 16px; }
+          .tx-editor-grid { gap: 12px; }
+        }
+        @keyframes slideUp {
+          from { transform: translateY(100%); }
+          to { transform: translateY(0); }
         }
       `}</style>
       
@@ -941,6 +999,13 @@ export default function TransactionsPage() {
           </div>
         </div>
       </div>
+
+      {draftCount > 0 && (
+        <div onClick={() => { setStatus("draft"); setFrom(""); setTo(""); }} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 16px", background: "rgba(234, 179, 8, 0.12)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: 12, marginTop: 16, cursor: "pointer" }}>
+          <div><b style={{ color: "#a16207" }}>⏳ Có {draftCount} giao dịch chờ duyệt</b><div style={{ fontSize: 12, color: "var(--muted-foreground)", marginTop: 3 }}>Mở để xem ảnh chứng từ và duyệt ghi sổ.</div></div>
+          <span style={{ fontSize: 13, fontWeight: 600, color: "#a16207" }}>Xem ngay →</span>
+        </div>
+      )}
 
       {/* Mini Summary Cards */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginTop: 16 }}>
@@ -1102,9 +1167,9 @@ export default function TransactionsPage() {
                 style={styles.control}
               >
                 <option value="">Tất cả</option>
-                <option value="ok">OK</option>
-                <option value="pending">Pending</option>
-                <option value="error">Lỗi</option>
+                <option value="valid">Đã duyệt (Valid)</option>
+                <option value="draft">Chờ duyệt (Draft)</option>
+                <option value="warning">Cảnh báo (Warning)</option>
               </select>
             </label>
           </div>
@@ -1112,14 +1177,18 @@ export default function TransactionsPage() {
       </div>
 
       {(showForm || popupIsEditing) && (
-        <div className="drawer-overlay" onMouseDown={handleCancelForm}>
-        <form ref={formRef} onSubmit={handleCreate} className="drawer-content" onMouseDown={(e) => e.stopPropagation()} style={{ padding: 24 }}>
-          <h3 style={{ marginTop: 0, marginBottom: 20, fontSize: 18, borderBottom: '1px solid var(--border)', paddingBottom: 16 }}>
-            {(editingId || popupIsEditing) ? `Chỉnh sửa giao dịch #${popupTxId || editingId}` : "Thêm giao dịch mới"}
-          </h3>
-          <div style={styles.formGrid}>
-            <label style={styles.field}>
-              <span style={styles.fieldLabel}>Ngày</span>
+        <div className="drawer-overlay tx-editor-overlay" onMouseDown={handleCancelForm}>
+        <form ref={formRef} onSubmit={handleCreate} className="drawer-content tx-editor-drawer" onMouseDown={(e) => e.stopPropagation()}>
+          <div className="tx-editor-header">
+            <h3 style={{ margin: 0, fontSize: 18 }}>
+              {(editingId || popupIsEditing) ? `Sửa #${popupTxId || editingId}` : "Thêm giao dịch"}
+            </h3>
+            <button type="button" className="feed-action-btn" onClick={handleCancelForm}><X size={20} /></button>
+          </div>
+          <div className="tx-editor-body">
+            <div className="tx-editor-grid">
+              <label style={styles.field}>
+                <span style={styles.fieldLabel}>Ngày</span>
               <input
                 type="date"
                 required
@@ -1199,21 +1268,19 @@ export default function TransactionsPage() {
             <label style={{ ...styles.field, gridColumn: "1 / -1" }}>
               <span style={styles.fieldLabel}>Ghi chú</span>
               <input
-                value={form.note}
+                value={form.note || ""}
                 onChange={(e) => setForm({ ...form, note: e.target.value })}
                 placeholder="Nhập ghi chú giao dịch..."
                 className="form-input"
                 style={styles.control}
               />
-            </label>
+              </label>
+            </div>
           </div>
-          <div style={{ display: 'flex', gap: 12, marginTop: 16, justifyContent: 'flex-end' }}>
-            <button type="button" className="btn-ghost" onClick={handleCancelForm}>
-              Huỷ
-            </button>
-            <button type="submit" className="btn-primary">
+          <div className="tx-editor-footer">
+            <button type="submit" className="btn-primary" style={{ width: '100%', justifyContent: 'center' }}>
               <CheckCircle2 size={16} />
-              <span>{(editingId || popupIsEditing) ? "Cập nhật giao dịch" : "Lưu giao dịch"}</span>
+              <span>{(editingId || popupIsEditing) ? "Cập nhật" : "Lưu"}</span>
             </button>
           </div>
         </form>
@@ -1236,11 +1303,34 @@ export default function TransactionsPage() {
                 <div className="transaction-detail-row"><span className="transaction-detail-label">Danh mục</span><span className="transaction-detail-value">{popupData.categoryName || "—"}</span></div>
                 <div className="transaction-detail-row"><span className="transaction-detail-label">Ví</span><span className="transaction-detail-value">{popupData.walletName || "—"}</span></div>
                 <div className="transaction-detail-subsection"><b>Ghi chú</b><p style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>{popupData.note || "—"}</p></div>
-                <div className="transaction-detail-subsection"><b>Trạng thái</b><p style={{ margin: "6px 0 0", color: popupData.status === "ok" ? "#16a34a" : "#b45309" }}>{popupData.status}</p></div>
+                <div className="transaction-detail-subsection">
+                  <b>Trạng thái</b>
+                  <p style={{ margin: "6px 0 0", color: popupData.status === "valid" ? "#16a34a" : popupData.status === "draft" ? "#b45309" : "#6b7280", fontWeight: 600 }}>
+                    {popupData.status === "valid" ? "✅ Đã duyệt" : popupData.status === "draft" ? "⏳ Chờ duyệt (Draft)" : popupData.status}
+                  </p>
+                </div>
+
+                {/* Bỏ kiểm tra status === "draft" để hiển thị ảnh cho cả giao dịch valid nếu có lưu ảnh */}
+                <div className="transaction-detail-subsection" style={{ marginTop: 12 }}>
+                  <b>Ảnh hóa đơn / chứng từ tạm</b>
+                  <div style={{ marginTop: 8, borderRadius: 8, overflow: "hidden", border: "1px solid var(--border)", background: "#000" }}>
+                    <img 
+                      src={`/api/transactions/image?id=${popupData.id}`} 
+                      alt="Ảnh chứng từ" 
+                      style={{ maxWidth: "100%", maxHeight: 300, display: "block", margin: "0 auto", objectFit: "contain" }}
+                      onError={(e) => { (e.target as HTMLElement).parentElement!.parentElement!.style.display = "none"; }}
+                    />
+                  </div>
+                </div>
               </div>
-              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 24 }}>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 24, flexWrap: "wrap" }}>
                 <button type="button" className="btn-ghost" onClick={(e) => requestDelete(popupData.id, e)}>Xóa</button>
-                <button type="button" className="btn-primary" onClick={() => handleEditClick(popupData, true)}><Edit size={16} /> Sửa</button>
+                <button type="button" className="btn-ghost" onClick={() => handleEditClick(popupData, true)}><Edit size={16} /> Sửa</button>
+                {popupData.status === "draft" && (
+                  <button type="button" className="btn-primary" onClick={() => handleApproveDraft(popupData.id)} style={{ background: "#16a34a", borderColor: "#16a34a" }}>
+                    <CheckCircle2 size={16} /> Duyệt ghi sổ
+                  </button>
+                )}
               </div>
             </div>
           </div>
