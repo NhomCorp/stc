@@ -75,13 +75,13 @@ export default function MailRulesPage() {
       const cols = line.split("\t");
       if (cols.length < 1) continue;
 
-      // Cấu trúc cũ: Keyword | Ghi chú | Ví | Đối tượng | Danh mục con
+      // Thứ tự: Keyword | Ví | Đối tượng | Danh mục con | Ghi chú
       parsedItems.push({
         keyword: cols[0]?.trim() || "",
-        note: cols[1]?.trim() || null,
-        walletName: cols[2]?.trim() || null,
-        customerName: cols[3]?.trim() || null,
-        categoryName: cols[4]?.trim() || null,
+        walletName: cols[1]?.trim() || null,
+        customerName: cols[2]?.trim() || null,
+        categoryName: cols[3]?.trim() || null,
+        note: cols[4]?.trim() || null,
       });
     }
 
@@ -248,10 +248,10 @@ export default function MailRulesPage() {
             <thead style={{ background: "var(--muted)", textAlign: "left" }}>
               <tr>
                 <th style={{ padding: 12, borderBottom: "1px solid var(--border)", minWidth: 200 }}>Keyword</th>
-                <th style={{ padding: 12, borderBottom: "1px solid var(--border)" }}>Ghi chú mặc định</th>
                 <th style={{ padding: 12, borderBottom: "1px solid var(--border)" }}>Ví</th>
                 <th style={{ padding: 12, borderBottom: "1px solid var(--border)" }}>Đối tượng</th>
                 <th style={{ padding: 12, borderBottom: "1px solid var(--border)" }}>Danh mục con</th>
+                <th style={{ padding: 12, borderBottom: "1px solid var(--border)" }}>Ghi chú</th>
                 <th style={{ padding: 12, borderBottom: "1px solid var(--border)", width: 80 }}>Trạng thái</th>
                 <th style={{ padding: 12, borderBottom: "1px solid var(--border)", width: 100 }}></th>
               </tr>
@@ -260,10 +260,10 @@ export default function MailRulesPage() {
               {items.map(item => (
                 <tr key={item.id} style={{ borderBottom: "1px solid var(--border)" }}>
                   <td style={{ padding: 12 }}><b>{item.keyword}</b></td>
-                  <td style={{ padding: 12, color: "var(--muted-foreground)" }}>{item.note || "—"}</td>
                   <td style={{ padding: 12 }}>{item.walletName || "—"}</td>
                   <td style={{ padding: 12 }}>{item.customerName || "—"}</td>
                   <td style={{ padding: 12 }}>{item.categoryName || "—"}</td>
+                  <td style={{ padding: 12, color: "var(--muted-foreground)" }}>{item.note || "—"}</td>
                   <td style={{ padding: 12 }}>{item.isActive ? <span style={{ color: "var(--success)" }}>Bật</span> : <span style={{ color: "var(--danger)" }}>Tắt</span>}</td>
                   <td style={{ padding: 12, textAlign: "right" }}>
                     <button onClick={() => setEditor(item)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--primary)", marginRight: 8 }}><Edit2 size={16} /></button>
