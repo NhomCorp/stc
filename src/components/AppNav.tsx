@@ -20,6 +20,7 @@ import {
   BookA,
   Settings2,
   ChevronDown,
+  Mail,
 } from "lucide-react";
 
 const links = [
@@ -66,6 +67,7 @@ export function AppNav({
         { href: "/admin/users", label: "Người dùng", icon: ShieldAlert },
         { href: "/admin/ai-config", label: "Cấu hình AI", icon: Bot },
         { href: "/admin/ai-dictionary", label: "Từ điển AI", icon: BookA },
+        { href: "/admin/mail-rules", label: "So khớp Mail / CSV", icon: Mail },
         { href: "/admin/telegram-config", label: "Cấu hình Telegram", icon: MessageSquare },
       ]
     : [];

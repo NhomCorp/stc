@@ -123,6 +123,18 @@ export const aiLessons = pgTable("ai_lessons", {
   };
 });
 
+export const mailRules = pgTable("mail_rules", {
+  id: serial("id").primaryKey(),
+  keyword: varchar("keyword", { length: 255 }).notNull().unique(),
+  walletName: varchar("wallet_name", { length: 255 }),
+  customerName: varchar("customer_name", { length: 255 }),
+  categoryName: varchar("category_name", { length: 255 }),
+  note: text("note"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const customers = pgTable("customers", {
   id: serial("id").primaryKey(),
   code: varchar("code", { length: 50 }).unique(),

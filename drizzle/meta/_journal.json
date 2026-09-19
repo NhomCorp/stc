@@ -57,6 +57,13 @@
       "when": 1789829449527,
       "tag": "0007_curved_shiver_man",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789841921165,
+      "tag": "0008_workable_thena",
+      "breakpoints": true
     }
   ]
 }
