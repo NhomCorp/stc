@@ -10,21 +10,33 @@ function wantsJson(request: NextRequest): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    const formData = await request.formData();
-    const image = formData.get("image") as File | null;
-    const title = formData.get("title") as string | null;
-    const text = formData.get("text") as string | null;
+    const contentType = request.headers.get("content-type") || "";
     const useJson = wantsJson(request);
 
-    if (!image) {
+    let base64Image: string | undefined = undefined;
+    let text = "";
+
+    if (contentType.includes("multipart/form-data") || contentType.includes("application/x-www-form-urlencoded")) {
+      const formData = await request.formData();
+      const image = (formData.get("image") || formData.get("file")) as File | null;
+      text = (formData.get("text") as string) || (formData.get("title") as string) || "";
+      
+      if (image && typeof image !== "string") {
+        const bytes = await image.arrayBuffer();
+        base64Image = Buffer.from(bytes).toString("base64");
+      }
+    } else {
+      // Nhận Raw Body (iOS Shortcut gửi Yêu cầu nội dung: Tệp)
+      const bytes = await request.arrayBuffer();
+      if (bytes.byteLength > 0) {
+        base64Image = Buffer.from(bytes).toString("base64");
+      }
+    }
+
+    if (!base64Image) {
       if (useJson) return NextResponse.json({ ok: false, error: "NoImage" }, { status: 400 });
       return NextResponse.redirect(new URL("/share-preview?error=NoImage", request.url), 303);
     }
-
-    // Chuyển ảnh sang Base64 để gọi Gemini
-    const bytes = await image.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-    const base64Image = buffer.toString("base64");
 
     // Phân tích qua Gemini
     const parseResult = await callGeminiAPI(text || "Trích xuất giao dịch từ ảnh", base64Image);
