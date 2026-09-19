@@ -1,52 +1,52 @@
 :root {
-  --background: #f5f7fb;
-  --foreground: #172033;
+  --background: #f1f5f9;
+  --foreground: #0f172a;
   
   --card: #ffffff;
-  --card-foreground: #172033;
-  --card-border: #b8c3d4;
+  --card-foreground: #0f172a;
+  --card-border: #94a3b8;
   
   --primary: #2563eb;
   --primary-foreground: #ffffff;
   --primary-hover: #1d4ed8;
   
-  --muted: #edf1f6;
-  --muted-foreground: #5a6b82;
+  --muted: #e2e8f0;
+  --muted-foreground: #475569;
   
-  --border: #b8c3d4;
-  --input: #b8c3d4;
+  --border: #cbd5e1;
+  --input: #cbd5e1;
   --ring: #3b82f6;
 
   --success: #15803d;
-  --danger: #ef4444;
+  --danger: #dc2626;
   --danger-foreground: #ffffff;
-  --danger-hover: #dc2626;
+  --danger-hover: #b91c1c;
 
   --radius: 0.5rem;
 }
 
 [data-theme="dark"] {
-  --background: #09090b;
-  --foreground: #f8fafc;
+  --background: #0b0f19;
+  --foreground: #ffffff;
   
-  --card: #18181b;
-  --card-foreground: #f8fafc;
-  --card-border: #27272a;
+  --card: #151c2e;
+  --card-foreground: #ffffff;
+  --card-border: #334155;
   
   --primary: #3b82f6;
   --primary-foreground: #ffffff;
   --primary-hover: #2563eb;
   
-  --muted: #27272a;
-  --muted-foreground: #a1a1aa;
+  --muted: #1e293b;
+  --muted-foreground: #cbd5e1;
   
-  --border: #27272a;
-  --input: #27272a;
+  --border: #334155;
+  --input: #334155;
   --ring: #3b82f6;
 
-  --success: #22c55e;
+  --success: #34d399;
   --danger: #f87171;
-  --danger-foreground: #09090b;
+  --danger-foreground: #0b0f19;
   --danger-hover: #ef4444;
 }
 

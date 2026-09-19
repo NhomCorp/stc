@@ -532,23 +532,29 @@ export default function TransactionsPage() {
         }
         .tx-amount.thu {
           color: #16a34a;
-          font-weight: 600;
+          font-weight: 700;
         }
         .tx-amount.chi {
           color: #dc2626;
+        }
+        [data-theme="dark"] .tx-amount.thu {
+          color: #4ade80;
+        }
+        [data-theme="dark"] .tx-amount.chi {
+          color: #f87171;
         }
         
         .wallet-badge {
           display: inline-flex;
           align-items: center;
-          gap: 4px;
-          padding: 2px 8px;
+          gap: 5px;
+          padding: 3px 9px;
           border-radius: 999px;
           border: 1px solid var(--border);
-          font-size: 12px;
-          font-weight: 500;
-          color: var(--muted-foreground);
-          background: var(--background);
+          font-size: 13px;
+          font-weight: 600;
+          color: var(--foreground);
+          background: var(--muted);
         }
         
         /* Feed View Styles */
@@ -576,21 +582,22 @@ export default function TransactionsPage() {
         .feed-item {
           display: flex;
           align-items: center;
-          padding: 12px 16px;
+          padding: 14px 18px;
           border-radius: 12px;
-          background: var(--background);
+          background: var(--card);
           border: 1px solid var(--border);
-          margin-bottom: 8px;
+          margin-bottom: 10px;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.05);
           transition: all 0.2s;
           position: relative;
         }
         .feed-item:hover {
           background: var(--muted);
-          border-color: var(--muted-foreground);
+          border-color: var(--primary);
         }
         .feed-icon {
-          width: 40px;
-          height: 40px;
+          width: 42px;
+          height: 42px;
           border-radius: 50%;
           display: flex;
           align-items: center;
@@ -599,12 +606,20 @@ export default function TransactionsPage() {
           flex-shrink: 0;
         }
         .feed-icon.thu {
-          background: #dcfce7;
+          background: rgba(22, 163, 74, 0.18);
           color: #16a34a;
         }
         .feed-icon.chi {
-          background: #fee2e2;
+          background: rgba(220, 38, 38, 0.18);
           color: #dc2626;
+        }
+        [data-theme="dark"] .feed-icon.thu {
+          background: rgba(74, 222, 128, 0.2);
+          color: #4ade80;
+        }
+        [data-theme="dark"] .feed-icon.chi {
+          background: rgba(248, 113, 113, 0.2);
+          color: #f87171;
         }
         .feed-content {
           flex: 1;
@@ -622,8 +637,9 @@ export default function TransactionsPage() {
         .feed-meta {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 12px;
           font-size: 13px;
+          font-weight: 600;
           color: var(--muted-foreground);
           flex-wrap: wrap;
         }
