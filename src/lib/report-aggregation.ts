@@ -29,9 +29,12 @@ function toReportRow(
 /** Tổng hợp báo cáo trực tiếp từ giao dịch hợp lệ theo múi giờ Việt Nam. */
 export async function aggregateTransactionReport(): Promise<ReportSummary> {
   const vietnamDate = sql`(${transactions.txDate} at time zone ${REPORT_TIME_ZONE})::date`;
-  const vietnamMonth = sql`date_trunc('month', ${transactions.txDate} at time zone ${REPORT_TIME_ZONE})::date`;
   const todayInVietnam = sql`(now() at time zone ${REPORT_TIME_ZONE})::date`;
   const firstReportMonth = sql`(date_trunc('month', now() at time zone ${REPORT_TIME_ZONE}) - interval '2 months')::date`;
+
+  const monthKey = sql<string>`to_char(date_trunc('month', ${transactions.txDate} at time zone ${REPORT_TIME_ZONE}), 'YYYY-MM-DD')`;
+  const monthLabel = sql<string>`'Tháng ' || to_char(date_trunc('month', ${transactions.txDate} at time zone ${REPORT_TIME_ZONE}), 'MM/YYYY')`;
+  const vietnamMonthRaw = sql`date_trunc('month', ${transactions.txDate} at time zone ${REPORT_TIME_ZONE})::date`;
 
   const [todayRows, monthRows] = await Promise.all([
     db
@@ -45,8 +48,8 @@ export async function aggregateTransactionReport(): Promise<ReportSummary> {
       ),
     db
       .select({
-        month: sql<string>`to_char(${vietnamMonth}, 'YYYY-MM-DD')`,
-        label: sql<string>`'Tháng ' || to_char(${vietnamMonth}, 'MM/YYYY')`,
+        month: monthKey,
+        label: monthLabel,
         thu: income,
         chi: expense,
         checkCount,
@@ -55,12 +58,12 @@ export async function aggregateTransactionReport(): Promise<ReportSummary> {
       .where(
         and(
           inArray(transactions.status, [...INCLUDED_STATUSES]),
-          sql`${vietnamMonth} >= ${firstReportMonth}`,
-          sql`${vietnamMonth} <= date_trunc('month', now() at time zone ${REPORT_TIME_ZONE})::date`,
+          sql`${vietnamMonthRaw} >= ${firstReportMonth}`,
+          sql`${vietnamMonthRaw} <= date_trunc('month', now() at time zone ${REPORT_TIME_ZONE})::date`,
         ),
       )
-      .groupBy(vietnamMonth)
-      .orderBy(vietnamMonth),
+      .groupBy(monthKey, monthLabel)
+      .orderBy(monthKey),
   ]);
 
   const monthMap = new Map(monthRows.map((row) => [row.month, row]));
