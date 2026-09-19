@@ -29,8 +29,15 @@ export async function GET(request: NextRequest) {
   const status = searchParams.get("status");
   const sourceSheet = searchParams.get("sourceSheet");
   const q = (searchParams.get("q") || "").trim();
+  const idStr = searchParams.get("id");
 
   const conditions = [];
+  if (idStr) {
+    const id = Number(idStr);
+    if (!Number.isNaN(id) && id > 0) {
+      conditions.push(eq(transactions.id, id));
+    }
+  }
   if (txType === "thu" || txType === "chi") {
     conditions.push(eq(transactions.txType, txType));
   }

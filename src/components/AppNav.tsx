@@ -15,6 +15,7 @@ import {
   Moon,
   Wallet,
   Bot,
+  MessageSquare,
 } from "lucide-react";
 
 const links = [
@@ -60,6 +61,7 @@ export function AppNav({
         ...links,
         { href: "/admin/users", label: "Người dùng", icon: ShieldAlert },
         { href: "/admin/ai-config", label: "Cấu hình AI", icon: Bot },
+        { href: "/admin/telegram-config", label: "Cấu hình Telegram", icon: MessageSquare },
       ]
     : links;
 

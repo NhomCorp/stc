@@ -47,6 +47,8 @@ export async function GET() {
     'GOOGLE_CLIENT_ID',
     'GOOGLE_CLIENT_SECRET',
     'TELEGRAM_BOT_TOKEN',
+    'TELEGRAM_ADMIN_ID',
+    'TELEGRAM_WEBHOOK_SECRET',
   ];
   const data: Record<string, string> = {};
   for (const key of allowed) {
@@ -70,6 +72,8 @@ export async function POST(request: Request) {
     'GOOGLE_CLIENT_ID',
     'GOOGLE_CLIENT_SECRET',
     'TELEGRAM_BOT_TOKEN',
+    'TELEGRAM_ADMIN_ID',
+    'TELEGRAM_WEBHOOK_SECRET',
   ];
   const updates: Record<string, string> = {};
   for (const key of allowed) {

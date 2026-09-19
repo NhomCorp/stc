@@ -24,7 +24,8 @@ import {
   CreditCard,
   Banknote,
   Smartphone,
-  CheckSquare
+  CheckSquare,
+  X
 } from "lucide-react";
 
 type TxItem = {
@@ -101,6 +102,12 @@ export default function TransactionsPage() {
   const [wallets, setWallets] = useState<MasterItem[]>([]);
   const [categories, setCategories] = useState<MasterItem[]>([]);
 
+  // Popup logic
+  const [popupTxId, setPopupTxId] = useState<number | null>(null);
+  const [popupData, setPopupData] = useState<TxItem | null>(null);
+  const [popupLoading, setPopupLoading] = useState(false);
+  const [popupIsEditing, setPopupIsEditing] = useState(false);
+
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showFilters, setShowFilters] = useState(false);
@@ -175,6 +182,57 @@ export default function TransactionsPage() {
   }, []);
 
   useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const txIdStr = urlParams.get("transaction");
+    if (txIdStr) {
+      const id = parseInt(txIdStr, 10);
+      if (!Number.isNaN(id)) {
+        setPopupTxId(id);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    async function loadPopupData(id: number) {
+      setPopupLoading(true);
+      try {
+        const res = await fetch(`/api/transactions?id=${id}&limit=1`);
+        if (!res.ok) throw new Error("Không tải được");
+        const data = await res.json();
+        if (data.items && data.items.length > 0) {
+          setPopupData(data.items[0]);
+        } else {
+          toast.error("Không tìm thấy giao dịch này");
+          setPopupTxId(null);
+        }
+      } catch (err) {
+        toast.error("Lỗi tải chi tiết giao dịch");
+        setPopupTxId(null);
+      } finally {
+        setPopupLoading(false);
+      }
+    }
+
+    if (popupTxId) {
+      const existing = items.find(i => i.id === popupTxId);
+      if (existing) {
+        setPopupData(existing);
+      } else {
+        loadPopupData(popupTxId);
+      }
+    } else {
+      setPopupData(null);
+      setPopupIsEditing(false);
+      // Remove query param safely without page reload
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("transaction")) {
+        url.searchParams.delete("transaction");
+        window.history.replaceState({}, "", url.toString());
+      }
+    }
+  }, [popupTxId, items]);
+
+  useEffect(() => {
     const t = setTimeout(() => setQ(qInput.trim()), 400);
     return () => clearTimeout(t);
   }, [qInput]);
@@ -188,15 +246,16 @@ export default function TransactionsPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    const loadingToast = toast.loading(editingId ? "Đang cập nhật..." : "Đang lưu giao dịch...");
+    const isPut = !!editingId || popupIsEditing;
+    const updateId = popupIsEditing ? popupTxId : editingId;
+    const loadingToast = toast.loading(isPut ? "Đang cập nhật..." : "Đang lưu giao dịch...");
     
     try {
-      const isPut = !!editingId;
       const res = await fetch("/api/transactions", {
         method: isPut ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          ...(isPut ? { id: editingId } : {}),
+          ...(isPut ? { id: updateId } : {}),
           ...form,
           amount: Number(form.amount),
         }),
@@ -207,10 +266,29 @@ export default function TransactionsPage() {
         throw new Error(d.error || (isPut ? "Không cập nhật được" : "Không tạo được"));
       }
       
+      const resData = await res.json();
+      
       toast.success(isPut ? "Đã cập nhật giao dịch" : "Đã thêm giao dịch thành công", { id: loadingToast });
       setShowForm(false);
       setEditingId(null);
       setForm({ ...form, amount: "", note: "", customerId: "", walletId: "", categoryId: "" });
+      
+      if (popupIsEditing) {
+        setPopupIsEditing(false);
+        // Cập nhật popupData ngay lập tức để không phải chờ load() xong
+        // Mặc dù load() cũng sẽ làm mới items
+        if (resData.item) {
+          const freshItem = {
+            ...popupData,
+            ...resData.item,
+            customerName: customers.find(c => c.id === resData.item.customerId)?.name || null,
+            walletName: wallets.find(w => w.id === resData.item.walletId)?.name || null,
+            categoryName: categories.find(c => c.id === resData.item.categoryId)?.name || null,
+          } as TxItem;
+          setPopupData(freshItem);
+        }
+      }
+      
       load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Lỗi", { id: loadingToast });
@@ -239,7 +317,8 @@ export default function TransactionsPage() {
   }
 
   function handleEditClick(item: TxItem) {
-    setEditingId(item.id);
+    setPopupTxId(item.id);
+    setPopupIsEditing(true);
     setForm({
       txDate: item.txDate ? new Date(item.txDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
       txType: item.txType,
@@ -249,8 +328,11 @@ export default function TransactionsPage() {
       walletId: item.walletId ? String(item.walletId) : "",
       categoryId: item.categoryId ? String(item.categoryId) : "",
     });
-    setShowForm(true);
-    setTimeout(() => formRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
+  }
+
+  function handleRowClick(item: TxItem) {
+    setPopupTxId(item.id);
+    setPopupIsEditing(false);
   }
 
   function handleCancelForm() {
@@ -446,6 +528,7 @@ export default function TransactionsPage() {
         .tx-amount {
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
           white-space: nowrap;
+          font-weight: 700;
         }
         .tx-amount.thu {
           color: #16a34a;
@@ -462,7 +545,8 @@ export default function TransactionsPage() {
           padding: 2px 8px;
           border-radius: 999px;
           border: 1px solid var(--border);
-          font-size: 11px;
+          font-size: 12px;
+          font-weight: 500;
           color: var(--muted-foreground);
           background: var(--background);
         }
@@ -480,13 +564,13 @@ export default function TransactionsPage() {
           border-bottom: 2px solid var(--border);
         }
         .feed-date {
-          font-weight: 600;
-          font-size: 15px;
+          font-weight: 700;
+          font-size: 16px;
           color: var(--foreground);
         }
         .feed-summary {
-          font-size: 13px;
-          font-weight: 500;
+          font-size: 14px;
+          font-weight: 600;
           color: var(--muted-foreground);
         }
         .feed-item {
@@ -527,10 +611,10 @@ export default function TransactionsPage() {
           min-width: 0;
         }
         .feed-title {
-          font-weight: 600;
-          font-size: 15px;
+          font-weight: 700;
+          font-size: 16px;
           color: var(--foreground);
-          margin-bottom: 4px;
+          margin-bottom: 6px;
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -538,8 +622,8 @@ export default function TransactionsPage() {
         .feed-meta {
           display: flex;
           align-items: center;
-          gap: 8px;
-          font-size: 12px;
+          gap: 10px;
+          font-size: 13px;
           color: var(--muted-foreground);
           flex-wrap: wrap;
         }
@@ -574,15 +658,49 @@ export default function TransactionsPage() {
           background: var(--border);
           color: var(--foreground);
         }
+
+        /* Popup Styles */
+        .popup-overlay {
+          position: fixed;
+          top: 0; left: 0; right: 0; bottom: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          padding: 16px;
+          backdrop-filter: blur(2px);
+        }
+        .popup-content {
+          background: var(--background);
+          border-radius: 16px;
+          width: 100%;
+          max-width: 500px;
+          max-height: 90vh;
+          overflow-y: auto;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+          display: flex;
+          flex-direction: column;
+        }
+        .popup-header {
+          padding: 16px 20px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+        .popup-body {
+          padding: 20px;
+        }
         
         /* Table Styles */
         table.tx-table th, table.tx-table td {
-          padding: 12px 16px;
+          padding: 14px 16px;
           border-bottom: 1px solid var(--border);
           text-align: left;
           white-space: nowrap;
         }
-        table.tx-table th { background: var(--muted); font-size: 13px; color: var(--muted-foreground); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+        table.tx-table th { background: var(--muted); font-size: 14px; color: var(--muted-foreground); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; }
         .tx-row:hover { background: var(--muted); }
         .tx-row { transition: background 0.15s; }
         .copy-btn { opacity: 0; background: transparent; border: none; cursor: pointer; color: var(--muted-foreground); padding: 4px; border-radius: 4px; margin-left: 4px; display: inline-flex; }
@@ -854,10 +972,11 @@ export default function TransactionsPage() {
         )}
       </div>
 
-      {showForm && (
-        <form ref={formRef} onSubmit={handleCreate} className="card-container" style={{ padding: 20, marginTop: 16 }}>
+      {(showForm || popupIsEditing) && (
+        <div className="popup-overlay" onMouseDown={() => { if (popupIsEditing) setPopupIsEditing(false); else handleCancelForm(); }}>
+        <form ref={formRef} onSubmit={handleCreate} className="popup-content" onMouseDown={(e) => e.stopPropagation()} style={{ padding: 20 }}>
           <h3 style={{ marginTop: 0, marginBottom: 16, fontSize: 16 }}>
-            {editingId ? `Chỉnh sửa giao dịch #${editingId}` : "Thêm giao dịch mới"}
+            {(editingId || popupIsEditing) ? `Chỉnh sửa giao dịch #${popupTxId || editingId}` : "Thêm giao dịch mới"}
           </h3>
           <div style={styles.formGrid}>
             <label style={styles.field}>
@@ -958,6 +1077,38 @@ export default function TransactionsPage() {
             </button>
           </div>
         </form>
+        </div>
+      )}
+
+      {popupTxId && popupData && !popupIsEditing && !showForm && (
+        <div className="popup-overlay" onMouseDown={() => setPopupTxId(null)}>
+          <div className="popup-content" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="popup-header">
+              <h3 style={{ margin: 0, fontSize: 18 }}>Chi tiết giao dịch #{popupData.id}</h3>
+              <button type="button" className="feed-action-btn" onClick={() => setPopupTxId(null)}><X size={20} /></button>
+            </div>
+            <div className="popup-body">
+              <div style={{ display: "grid", gap: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Ngày</b><span>{new Date(popupData.txDate).toLocaleDateString("vi-VN")}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Loại</b><span style={{ color: popupData.txType === "thu" ? "#16a34a" : "#dc2626", fontWeight: 600 }}>{popupData.txType === "thu" ? "Thu" : "Chi"}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Số tiền</b><strong className={`tx-amount ${popupData.txType}`}>{popupData.txType === "thu" ? "+" : "-"}{formatMoney(popupData.amount)} ₫</strong></div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Ví</b><span>{popupData.walletName || "—"}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Đối tượng</b><span>{popupData.customerName || "—"}</span></div>
+                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Danh mục</b><span>{popupData.categoryName || "—"}</span></div>
+                <div><b>Ghi chú</b><p style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>{popupData.note || "—"}</p></div>
+                <div><b>Trạng thái</b><p style={{ margin: "6px 0 0", color: popupData.status === "ok" ? "#16a34a" : "#b45309" }}>{popupData.status}</p></div>
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 24 }}>
+                <button type="button" className="btn-ghost" onClick={() => handleDelete(popupData.id)}>Xóa</button>
+                <button type="button" className="btn-primary" onClick={() => handleEditClick(popupData)}><Edit size={16} /> Sửa</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {popupTxId && popupLoading && (
+        <div className="popup-overlay"><div className="popup-content" style={{ padding: 40, textAlign: "center" }}><Loader2 size={24} style={{ animation: "spin 1s linear infinite", margin: "auto" }} /> Đang tải chi tiết...</div></div>
       )}
 
       <div style={{ marginTop: 16 }}>
@@ -985,7 +1136,12 @@ export default function TransactionsPage() {
                 </div>
                 <div>
                   {groupedItems[date].map((t) => (
-                    <div key={t.id} className="feed-item" style={t.status !== 'ok' ? { opacity: 0.7 } : {}}>
+                    <div 
+                      key={t.id} 
+                      className="feed-item" 
+                      style={{ cursor: "pointer", ...(t.status !== 'ok' ? { opacity: 0.7 } : {}) }}
+                      onClick={() => handleRowClick(t)}
+                    >
                       <div className={`feed-icon ${t.txType}`}>
                         {t.txType === 'thu' ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
                       </div>
@@ -1014,26 +1170,26 @@ export default function TransactionsPage() {
                         </div>
                       </div>
                       <div className="feed-right">
-                        <div className={`tx-amount ${t.txType}`} style={{ fontSize: 16 }}>
+                        <div className={`tx-amount ${t.txType}`} style={{ fontSize: 17 }}>
                           {t.txType === 'thu' ? '+' : '-'}{formatMoney(t.amount)} ₫
                         </div>
                         <div className="feed-actions">
                           {t.note && (
-                            <button className="feed-action-btn" title="Copy Ghi chú" onClick={() => copyText(t.note!)}>
+                            <button className="feed-action-btn" title="Copy Ghi chú" onClick={(e) => { e.stopPropagation(); copyText(t.note!); }}>
                               <Copy size={14} />
                             </button>
                           )}
                           <button
                             className="feed-action-btn"
                             title="Sửa giao dịch"
-                            onClick={() => handleEditClick(t)}
+                            onClick={(e) => { e.stopPropagation(); handleEditClick(t); }}
                           >
                             <Edit size={14} />
                           </button>
                           <button
                             className="feed-action-btn"
                             title="Xoá giao dịch"
-                            onClick={() => handleDelete(t.id)}
+                            onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
                             style={{ color: "#dc2626" }}
                           >
                             <Trash2 size={14} />
@@ -1049,7 +1205,7 @@ export default function TransactionsPage() {
         </div>
       ) : (
         <div className="card-container" style={{ marginTop: 16, padding: 0, overflowX: "auto" }}>
-          <table className="tx-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+          <table className="tx-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 15 }}>
             <thead>
               <tr>
                 <th style={{ textAlign: "center" }}>Ngày</th>
@@ -1083,7 +1239,12 @@ export default function TransactionsPage() {
                 </tr>
               ) : (
                 items.map((t) => (
-                  <tr key={t.id} className="tx-row" style={t.status !== 'ok' ? { backgroundColor: 'var(--muted)' } : {}}>
+                  <tr 
+                    key={t.id} 
+                    className="tx-row" 
+                    style={{ cursor: "pointer", ...(t.status !== 'ok' ? { backgroundColor: 'var(--muted)' } : {}) }}
+                    onClick={() => handleRowClick(t)}
+                  >
                     <td style={{ textAlign: "center" }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
                         <Calendar size={14} color="var(--muted-foreground)" />
@@ -1096,8 +1257,8 @@ export default function TransactionsPage() {
                         alignItems: 'center',
                         padding: '2px 8px',
                         borderRadius: 999,
-                        fontSize: 12,
-                        fontWeight: 600,
+                        fontSize: 13,
+                        fontWeight: 700,
                         backgroundColor: t.txType === "thu" ? '#dcfce7' : '#fee2e2',
                         color: t.txType === "thu" ? '#16a34a' : '#dc2626',
                       }}>
@@ -1128,13 +1289,13 @@ export default function TransactionsPage() {
                       <div style={{ display: 'flex', alignItems: 'center', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         <span title={t.note || ""}>{t.note || "—"}</span>
                         {t.note && (
-                          <button type="button" className="copy-btn" onClick={() => copyText(t.note!)} title="Copy">
+                          <button type="button" className="copy-btn" onClick={(e) => { e.stopPropagation(); copyText(t.note!); }} title="Copy">
                             <Copy size={12} />
                           </button>
                         )}
                       </div>
                     </td>
-                    <td style={{ fontSize: 12, color: "var(--muted-foreground)", textAlign: "center" }}>
+                    <td style={{ fontSize: 13, color: "var(--muted-foreground)", fontWeight: 500, textAlign: "center" }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                         <Hash size={12} />
                         <span title={t.sourceSheet}>{t.sourceSheet.length > 15 ? t.sourceSheet.substring(0, 15) + "..." : t.sourceSheet}</span>
@@ -1142,10 +1303,10 @@ export default function TransactionsPage() {
                     </td>
                     <td style={{ textAlign: "center" }}>
                       <div className="feed-actions" style={{ justifyContent: "center" }}>
-                        <button className="feed-action-btn" title="Sửa giao dịch" onClick={() => handleEditClick(t)}>
+                        <button className="feed-action-btn" title="Sửa giao dịch" onClick={(e) => { e.stopPropagation(); handleEditClick(t); }}>
                           <Edit size={14} />
                         </button>
-                        <button className="feed-action-btn" title="Xoá giao dịch" onClick={() => handleDelete(t.id)} style={{ color: "#dc2626" }}>
+                        <button className="feed-action-btn" title="Xoá giao dịch" onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} style={{ color: "#dc2626" }}>
                           <Trash2 size={14} />
                         </button>
                       </div>

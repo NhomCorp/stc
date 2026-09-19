@@ -242,17 +242,16 @@
   <div class="header">
     <h1>Deploy Sổ Thu Chi</h1>
     <div class="pipeline-badge">
-      <span>Local push</span><span class="pipeline-arrow">➔</span>
-      <span>VPS reset → origin/main</span><span class="pipeline-arrow">➔</span>
-      <span>docker-compose --build app</span><span class="pipeline-arrow">➔</span>
-      <span>verify SHA + health</span>
+      <span>Local push main</span><span class="pipeline-arrow">➔</span>
+      <span>GitHub Actions build image</span><span class="pipeline-arrow">➔</span>
+      <span>VPS docker-compose pull</span><span class="pipeline-arrow">➔</span>
+      <span>VPS docker-compose up</span>
     </div>
     <p class="header-desc">
-      Nguyên tắc chắc chắn: <strong>GitHub <code>main</code> là nguồn sự thật</strong> → VPS luôn khớp đúng commit đó (không giữ sửa tay trên server) → rebuild → đối chiếu SHA + health.
-      Repo VPS: <span class="highlight-badge">git@github.com:NhomCorp/stc.git</span> tại <code>/home/stcadmin/app</code>.
-      Luôn dùng <span class="highlight-badge">docker-compose</span> (có gạch) — <strong>không</strong> dùng <code>docker compose</code>.
+      Nguyên tắc chắc chắn: <strong>Không build trên VPS</strong>. Mọi thao tác build được đưa lên GitHub Actions. VPS chỉ việc kéo image đã hoàn thiện (GHCR) về và chạy để tiết kiệm tài nguyên.
+      Repo mã nguồn: <span class="highlight-badge">git@github.com:NhomCorp/stc.git</span>.
     </p>
-    <p class="updated">Cập nhật 19/09/2026 — quy trình chắc chắn: <code>fetch + reset --hard origin/main</code> (giữ <code>.env</code>).</p>
+    <p class="updated">Cập nhật 19/09/2026 — Kiến trúc mới: Build trên GHCR, VPS pull và run.</p>
     <div class="meta-grid">
       <div class="meta-item"><strong>Domain</strong><code>stc.acdagency.net</code></div>
       <div class="meta-item"><strong>App SSH</strong><code>ssh stc-vps</code> → <code>stcadmin</code></div>
@@ -289,159 +288,78 @@
   <section class="step-card quick-summary">
     <div class="step-header">
       <div class="step-number">⚡</div>
-      <h2 class="step-title">Quy trình chắc chắn nhất — mỗi lần up public</h2>
+      <h2 class="step-title">Quy trình chắc chắn nhất — mỗi lần deploy cập nhật</h2>
     </div>
     <p>
-      Mục tiêu: public = đúng commit trên GitHub <code>main</code>, không bị file bẩn trên VPS chặn pull / lẫn vào image.
-      Không đụng Nginx/SSL. <strong>Luôn giữ <code>.env</code></strong>. Không đụng container dự án khác.
+      Mục tiêu: Đưa cập nhật lên public mượt mà nhất. Không đụng Nginx/SSL. <strong>Luôn giữ <code>.env</code> và database</strong>.
     </p>
-    <div class="ok-box">
-      Dùng <code>git fetch</code> + <code>git reset --hard origin/main</code> thay vì <code>git pull</code>.
-      Pull có thể abort khi VPS còn sửa local; reset buộc tree khớp remote (xoá sửa tay trên VPS — đúng ý “server không phải nơi code”).
-    </div>
 
     <p><strong>0 — Phạm vi</strong></p>
     <ul>
-      <li>Dự án: Sổ Thu Chi · <code>/home/stcadmin/app</code></li>
-      <li>Service: <code>stc-app</code> · Port: <code>3000</code> · DB: <code>stc-postgres</code> / <code>stc</code></li>
+      <li>Dự án: Sổ Thu Chi · VPS Path: <code>/home/stcadmin/app</code></li>
+      <li>Service: <code>stc-app</code> · Port nội bộ: <code>3000</code></li>
     </ul>
 
-    <p><strong>1 — Local: sạch + đã push (ghi nhận SHA)</strong></p>
+    <p><strong>1 — Local: Đẩy code mới lên GitHub</strong></p>
     <div class="code-wrapper">
       <div class="code-header">
         <span>PowerShell — local</span>
         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
-      <pre><code>git status
-git add .
-git commit -m "mô tả ngắn"
-git push origin main
-git rev-parse --short HEAD
-git log -1 --oneline</code></pre>
+      <pre><code>git add .
+git commit -m "mô tả thay đổi"
+git push origin main</code></pre>
     </div>
     <div class="note">
-      Chỉ deploy khi local <code>main</code> đã push xong và <code>git status</code> sạch (không còn thay đổi chưa commit cần đưa lên).
+      Sau lệnh này, vào <a href="https://github.com/NhomCorp/stc/actions" target="_blank" style="color:var(--accent-primary)">GitHub Actions</a> chờ pipeline báo màu xanh (thành công) thì mới tiếp tục bước 2.
     </div>
 
-    <p><strong>2 — VPS: khớp cứng origin/main → rebuild</strong></p>
+    <p><strong>2 — VPS: Pull Image & Restart Container</strong></p>
     <div class="code-wrapper">
       <div class="code-header">
-        <span>PowerShell — lệnh chắc chắn (giữ .env)</span>
+        <span>PowerShell — Update VPS</span>
         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
-      <pre><code>ssh stc-vps "cd /home/stcadmin/app && test -f .env || { echo 'MISSING .env'; exit 1; } && git fetch origin main && git reset --hard origin/main && git clean -fd -e .env -e .env.local -e .env.production && git status --short && git log -1 --oneline && docker-compose up -d --build app"</code></pre>
+      <pre><code># Đẩy file docker-compose.yml mới lên (nếu có đổi)
+scp .\docker-compose.yml stc-vps:/home/stcadmin/app/docker-compose.yml
+
+# Chạy lệnh cập nhật
+ssh stc-vps "cd /home/stcadmin/app && docker-compose pull app && docker rm -f stc-app && docker-compose up -d app"</code></pre>
     </div>
     <ul>
-      <li><code>test -f .env</code> — dừng nếu mất env (tránh app chạy thiếu secret).</li>
-      <li><code>reset --hard origin/main</code> — xoá mọi sửa tracked trên VPS; không còn lỗi “would be overwritten by merge”.</li>
-      <li><code>git clean -fd -e .env ...</code> — xoá file/thư mục untracked (vd. <code>next.config.js</code> lạ), <strong>không</strong> xoá <code>.env</code>.</li>
-      <li>Sau đó mới <code>docker-compose up -d --build app</code>.</li>
+      <li><code>docker-compose pull app</code> — Lấy image đã hoàn thiện từ GitHub Packages về.</li>
+      <li><code>docker rm -f stc-app</code> — Xóa container cũ (an toàn, không mất DB).</li>
+      <li><code>docker-compose up -d app</code> — Chạy app bản mới ngay tức thì.</li>
     </ul>
 
-    <p><strong>3 — Theo dõi build</strong></p>
-    <ul>
-      <li>Log có thể im ở optimize — xem CPU time process build; im ~2 phút → huỷ, sang Plan B.</li>
-      <li>Không: <code>docker compose</code> · <code>docker-compose down -v</code> · prune toàn máy.</li>
-    </ul>
-
-    <p><strong>4 — Xác nhận chắc chắn đã lên đúng bản</strong></p>
+    <p><strong>3 — Xác nhận chắc chắn đã chạy bình thường</strong></p>
     <div class="code-wrapper">
       <div class="code-header">
-        <span>PowerShell — đối chiếu SHA + health</span>
+        <span>PowerShell — Đối chiếu health</span>
         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
-      <pre><code># Local SHA (đã push)
-git rev-parse --short HEAD
+      <pre><code># Xem log
+ssh stc-vps "docker logs --tail=30 stc-app"
 
-# VPS SHA + container
-ssh stc-vps "cd /home/stcadmin/app && git rev-parse --short HEAD && git status --short && docker ps -f name=stc-app --format '{{.Names}} {{.Status}}'"
-
-# Public
-curl.exe -sS https://stc.acdagency.net/api/health</code></pre>
-    </div>
-    <ul>
-      <li>SHA local = SHA VPS</li>
-      <li><code>git status --short</code> trên VPS trống</li>
-      <li><code>stc-app</code> Up (healthy), health public <code>"status":"ok"</code></li>
-    </ul>
-  </section>
-
-  <!-- PLAN B -->
-  <section class="step-card">
-    <div class="step-header">
-      <div class="step-number">B</div>
-      <h2 class="step-title">Plan B — khi Docker build treo ở next build <span class="badge badge-warn">DỰ PHÒNG</span></h2>
-    </div>
-    <p>Dùng khi <code>docker-compose up -d --build app</code> treo ở <code>npm run build</code> / <code>processChild</code> không tăng CPU.</p>
-    <ol style="color:#cbd5e1;margin:0 0 0.75rem 1.2rem;font-size:0.92rem">
-      <li>Huỷ build Docker đang treo; có thể <code>docker stop stc-app</code> tạm để giải phóng RAM (downtime ngắn).</li>
-      <li>Trên VPS host: <code>npm ci</code> (nếu thiếu) → <code>NODE_OPTIONS=--max-old-space-size=2048 npm run build</code>.</li>
-      <li>Copy <code>public</code>, <code>.next/standalone</code>, <code>.next/static</code> ra context tạm (vì <code>.dockerignore</code> chặn <code>.next</code>).</li>
-      <li><code>docker build -t stc-app:latest</code> từ context tạm (chỉ stage runner).</li>
-      <li>Chạy lại container <code>stc-app</code> trên network cùng postgres (<code>app_default</code>), port <code>127.0.0.1:3000</code>, giữ <code>DATABASE_URL</code> từ <code>.env</code> (không in secret ra log).</li>
-      <li>Health check public như bước 4.</li>
-    </ol>
-    <div class="code-wrapper">
-      <div class="code-header">
-        <span>stc-vps — host build + image runner (rút gọn)</span>
-        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-      </div>
-      <pre><code>cd /home/stcadmin/app
-# 1) Huỷ build treo (nếu còn)
-pkill -f 'docker-compose build app' || true
-
-# 2) Build trên host
-export NODE_OPTIONS=--max-old-space-size=2048
-export NEXT_TELEMETRY_DISABLED=1
-npm ci   # chỉ khi cần
-npm run build
-
-# 3) Context tạm (tránh .dockerignore)
-CTX=/tmp/stc-image-context
-rm -rf "$CTX" && mkdir -p "$CTX/.next/static"
-cp -a public "$CTX/public"
-cp -a .next/standalone/. "$CTX/"
-cp -a .next/static/. "$CTX/.next/static/"
-cat > "$CTX/Dockerfile" <<'EOF'
-FROM node:22-alpine
-RUN addgroup -S -g 1001 nextjs && adduser -S -u 1001 nextjs
-WORKDIR /app
-ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
-COPY --chown=nextjs:nextjs . .
-USER nextjs
-EXPOSE 3000
-CMD ["node", "server.js"]
-EOF
-docker build -t stc-app:latest "$CTX"
-
-# 4) Recreate container (network = network của stc-postgres)
-NET=$(docker inspect stc-postgres -f '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' | head -1)
-# DATABASE_URL lấy từ .env — không echo
-set -a; . ./.env; set +a
-docker rm -f stc-app
-docker run -d --name stc-app --restart unless-stopped \
-  --network "$NET" -p 127.0.0.1:3000:3000 \
-  -e DATABASE_URL="$DATABASE_URL" -e PORT=3000 \
-  stc-app:latest
-curl -sS http://127.0.0.1:3000/api/health</code></pre>
+# Test API
+ssh stc-vps "curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health"</code></pre>
     </div>
   </section>
 
-  <!-- Fallback tar -->
+  <!-- LẦN ĐẦU / ĐĂNG NHẬP -->
   <section class="step-card">
     <div class="step-header">
-      <div class="step-number">≈</div>
-      <h2 class="step-title">Dự phòng sync: tar + scp (khi git trên VPS lỗi)</h2>
+      <div class="step-number">!</div>
+      <h2 class="step-title">Xử lý lỗi Access Denied (Đăng nhập GHCR)</h2>
     </div>
-    <p>Không phải quy trình hàng ngày. Luôn <strong>giữ nguyên <code>.env</code></strong>.</p>
+    <p>Dùng khi VPS báo lỗi không có quyền pull image <code>ghcr.io/nhomcorp/stc-app</code>.</p>
     <div class="code-wrapper">
       <div class="code-header">
-        <span>Fallback — PowerShell</span>
+        <span>VPS — Xác thực Registry</span>
         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
       </div>
-      <pre><code>tar -czf deploy_bundle.tar.gz --exclude=.env --exclude=.git --exclude=node_modules --exclude=.next --exclude=data .
-scp deploy_bundle.tar.gz stc-vps:/home/stcadmin/app/
-ssh stc-vps "cd /home/stcadmin/app && tar -xzf deploy_bundle.tar.gz && rm -f deploy_bundle.tar.gz next.config.js && docker-compose up -d --build app"</code></pre>
+      <pre><code>ssh stc-vps "docker login ghcr.io -u <Tài_Khoản_GitHub>"
+# Paste Personal Access Token (PAT) có quyền read:packages vào phần password</code></pre>
     </div>
   </section>
 

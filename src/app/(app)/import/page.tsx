@@ -60,7 +60,7 @@ export default function ImportPage() {
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "var(--foreground)" }}>Nhập liệu</h1>
       </div>
       
-      <p style={{ color: "var(--muted-foreground)", fontSize: 14, lineHeight: 1.6, margin: "0 0 20px" }}>
+      <p style={{ color: "var(--muted-foreground)", fontSize: 15, fontWeight: 500, lineHeight: 1.6, margin: "0 0 20px" }}>
         Dán dữ liệu từ sheet Log (9 cột: Ngày, Thu/Chi, Số tiền, Ví, Đối tượng,
         Danh mục, Ghi chú, UNIQUE_KEY, Status). Danh mục dùng chung thu/chi;
         hệ thống tự tạo master còn thiếu và bỏ qua dòng trùng.
@@ -143,7 +143,7 @@ export default function ImportPage() {
           </div>
           
           {(result.masters.customersCreated > 0 || result.masters.walletsCreated > 0 || result.masters.categoriesCreated > 0) && (
-            <div style={{ marginTop: 16, padding: "12px 16px", background: "var(--muted)", borderRadius: 8, fontSize: 14 }}>
+            <div style={{ marginTop: 16, padding: "14px 18px", background: "var(--muted)", borderRadius: 8, fontSize: 15 }}>
               <strong>Tự động tạo danh mục mới: </strong>
               <span style={{ color: "var(--muted-foreground)" }}>
                 {result.masters.customersCreated} đối tượng,{" "}
@@ -226,12 +226,13 @@ const styles: Record<string, React.CSSProperties> = {
     background: "var(--background)",
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: 500,
     color: "var(--muted-foreground)",
-    marginBottom: 4,
+    marginBottom: 6,
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 700,
     color: "var(--foreground)",
   },

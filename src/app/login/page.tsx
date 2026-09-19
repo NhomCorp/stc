@@ -34,7 +34,13 @@ export default function LoginPage() {
       if (data.mustChangePassword) {
         router.push("/change-password");
       } else {
-        router.push("/dashboard");
+        const urlParams = new URLSearchParams(window.location.search);
+        const from = urlParams.get("from");
+        if (from) {
+          router.push(from);
+        } else {
+          router.push("/dashboard");
+        }
       }
       router.refresh();
     } catch {
