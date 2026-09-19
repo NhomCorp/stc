@@ -81,8 +81,6 @@ export default async function AdminUsersPage() {
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    maxWidth: 800,
-    margin: "0 auto",
     padding: "16px",
     display: "flex",
     flexDirection: "column",

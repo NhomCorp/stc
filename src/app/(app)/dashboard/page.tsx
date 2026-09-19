@@ -387,8 +387,6 @@ export default async function DashboardPage() {
 
 const styles: Record<string, React.CSSProperties> = {
   page: {
-    maxWidth: 1240,
-    margin: "0 auto",
     display: "flex",
     flexDirection: "column",
     gap: 20,

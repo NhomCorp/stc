@@ -13,7 +13,9 @@ export function AppShell({
   return (
     <div style={styles.shell}>
       <AppNav userLabel={userLabel} isAdmin={isAdmin} />
-      <main className="app-main" style={styles.main}>{children}</main>
+      <main className="app-main" style={styles.main}>
+        <div className="app-content">{children}</div>
+      </main>
     </div>
   );
 }
@@ -32,8 +34,5 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: "auto",
     padding: "20px",
     minHeight: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
   },
 };

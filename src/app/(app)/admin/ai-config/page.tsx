@@ -264,8 +264,6 @@ export default function AIConfigPage() {
 
 const styles: Record<string, React.CSSProperties> = {
   container: {
-    maxWidth: 900,
-    margin: "0 auto",
     padding: "16px",
     display: "flex",
     flexDirection: "column",

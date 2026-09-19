@@ -24,7 +24,7 @@ import {
   CreditCard,
   Banknote,
   Smartphone,
-  CheckSquare,
+  User,
   X
 } from "lucide-react";
 
@@ -113,6 +113,8 @@ export default function TransactionsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [form, setForm] = useState({
     txDate: new Date().toISOString().slice(0, 10),
     txType: "chi",
@@ -301,8 +303,17 @@ export default function TransactionsPage() {
     }
   }
 
-  async function handleDelete(id: number) {
-    if (!confirm("Bạn có chắc chắn muốn xoá giao dịch này?")) return;
+  function requestDelete(id: number, e?: React.MouseEvent) {
+    if (e) e.stopPropagation();
+    setDeleteConfirmId(id);
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirmId) return;
+    const id = deleteConfirmId;
+    setDeleteConfirmId(null);
+    
+    if (popupTxId === id) setPopupTxId(null);
     
     const loadingToast = toast.loading("Đang xoá giao dịch...");
     try {
@@ -320,6 +331,10 @@ export default function TransactionsPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Lỗi", { id: loadingToast });
     }
+  }
+
+  function cancelDelete() {
+    setDeleteConfirmId(null);
   }
 
   function handleEditClick(item: TxItem, fromDetail = false) {
@@ -768,7 +783,44 @@ export default function TransactionsPage() {
         .popup-body {
           padding: 20px;
         }
-        
+        .transaction-detail-list {
+          display: grid;
+          gap: 0;
+        }
+        .transaction-detail-row {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 24px;
+          padding: 11px 0;
+          border-bottom: 1px solid var(--border);
+        }
+        .transaction-detail-row:first-child {
+          padding-top: 0;
+        }
+        .transaction-detail-row:last-child {
+          border-bottom: none;
+        }
+        .transaction-detail-label {
+          flex-shrink: 0;
+          font-weight: 700;
+        }
+        .transaction-detail-value {
+          text-align: right;
+        }
+        .transaction-detail-subsection {
+          padding: 14px 0;
+          border-bottom: 1px solid var(--border);
+        }
+        .transaction-detail-subsection:last-child {
+          border-bottom: none;
+          padding-bottom: 0;
+        }
+        .transaction-detail-customer {
+          color: var(--primary);
+          font-weight: 700;
+        }
+
         /* Table Styles */
         table.tx-table th, table.tx-table td {
           padding: 14px 16px;
@@ -1176,18 +1228,18 @@ export default function TransactionsPage() {
               <button type="button" className="feed-action-btn" onClick={() => setPopupTxId(null)}><X size={20} /></button>
             </div>
             <div className="popup-body">
-              <div style={{ display: "grid", gap: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Ngày</b><span>{new Date(popupData.txDate).toLocaleDateString("vi-VN")}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Loại</b><span style={{ color: popupData.txType === "thu" ? "#16a34a" : "#dc2626", fontWeight: 600 }}>{popupData.txType === "thu" ? "Thu" : "Chi"}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Số tiền</b><strong className={`tx-amount ${popupData.txType}`}>{popupData.txType === "thu" ? "+" : "-"}{formatMoney(popupData.amount)} ₫</strong></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Ví</b><span>{popupData.walletName || "—"}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Đối tượng</b><span>{popupData.customerName || "—"}</span></div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}><b>Danh mục</b><span>{popupData.categoryName || "—"}</span></div>
-                <div><b>Ghi chú</b><p style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>{popupData.note || "—"}</p></div>
-                <div><b>Trạng thái</b><p style={{ margin: "6px 0 0", color: popupData.status === "ok" ? "#16a34a" : "#b45309" }}>{popupData.status}</p></div>
+              <div className="transaction-detail-list">
+                <div className="transaction-detail-row"><span className="transaction-detail-label">Ngày</span><span className="transaction-detail-value">{new Date(popupData.txDate).toLocaleDateString("vi-VN")}</span></div>
+                <div className="transaction-detail-row"><span className="transaction-detail-label">Loại</span><span className="transaction-detail-value" style={{ color: popupData.txType === "thu" ? "#16a34a" : "#dc2626", fontWeight: 600 }}>{popupData.txType === "thu" ? "Thu" : "Chi"}</span></div>
+                <div className="transaction-detail-row"><span className="transaction-detail-label">Số tiền</span><strong className={`transaction-detail-value tx-amount ${popupData.txType}`}>{popupData.txType === "thu" ? "+" : "-"}{formatMoney(popupData.amount)} ₫</strong></div>
+                <div className="transaction-detail-row"><span className="transaction-detail-label">Đối tượng</span><span className="transaction-detail-value transaction-detail-customer">{popupData.customerName || "—"}</span></div>
+                <div className="transaction-detail-row"><span className="transaction-detail-label">Danh mục</span><span className="transaction-detail-value">{popupData.categoryName || "—"}</span></div>
+                <div className="transaction-detail-row"><span className="transaction-detail-label">Ví</span><span className="transaction-detail-value">{popupData.walletName || "—"}</span></div>
+                <div className="transaction-detail-subsection"><b>Ghi chú</b><p style={{ margin: "6px 0 0", whiteSpace: "pre-wrap" }}>{popupData.note || "—"}</p></div>
+                <div className="transaction-detail-subsection"><b>Trạng thái</b><p style={{ margin: "6px 0 0", color: popupData.status === "ok" ? "#16a34a" : "#b45309" }}>{popupData.status}</p></div>
               </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 24 }}>
-                <button type="button" className="btn-ghost" onClick={() => handleDelete(popupData.id)}>Xóa</button>
+                <button type="button" className="btn-ghost" onClick={(e) => requestDelete(popupData.id, e)}>Xóa</button>
                 <button type="button" className="btn-primary" onClick={() => handleEditClick(popupData, true)}><Edit size={16} /> Sửa</button>
               </div>
             </div>
@@ -1234,11 +1286,13 @@ export default function TransactionsPage() {
                         {t.txType === 'thu' ? <TrendingUp size={20} /> : <TrendingDown size={20} />}
                       </div>
                       <div className="feed-content">
-                        <div className="feed-title">{t.note || t.categoryName || "Giao dịch không tên"}</div>
+                        <div className="feed-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <User size={16} /> {t.customerName || "Chưa có đối tượng"}
+                        </div>
                         <div className="feed-meta">
-                          {t.customerName && (
+                          {t.categoryName && (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              <CheckSquare size={12} /> {t.customerName}
+                              <Tag size={12} /> {t.categoryName}
                             </span>
                           )}
                           {t.walletName && (
@@ -1247,9 +1301,9 @@ export default function TransactionsPage() {
                               {t.walletName}
                             </span>
                           )}
-                          {t.categoryName && (
+                          {t.note && (
                             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                              <Tag size={12} /> {t.categoryName}
+                              <Edit size={12} /> {t.note}
                             </span>
                           )}
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
@@ -1277,7 +1331,7 @@ export default function TransactionsPage() {
                           <button
                             className="feed-action-btn"
                             title="Xoá giao dịch"
-                            onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }}
+                            onClick={(e) => requestDelete(t.id, e)}
                             style={{ color: "#dc2626" }}
                           >
                             <Trash2 size={14} />
@@ -1397,7 +1451,7 @@ export default function TransactionsPage() {
                         <button className="feed-action-btn" title="Sao chép giao dịch" onClick={(e) => { e.stopPropagation(); handleDuplicate(t); }}>
                           <Copy size={14} />
                         </button>
-                        <button className="feed-action-btn" title="Xoá giao dịch" onClick={(e) => { e.stopPropagation(); handleDelete(t.id); }} style={{ color: "#dc2626" }}>
+                        <button className="feed-action-btn" title="Xoá giao dịch" onClick={(e) => requestDelete(t.id, e)} style={{ color: "#dc2626" }}>
                           <Trash2 size={14} />
                         </button>
                       </div>
@@ -1458,6 +1512,23 @@ export default function TransactionsPage() {
       {items.length > 0 && (
         <div style={{ marginTop: 16 }}>
           <MonthNavigator />
+        </div>
+      )}
+
+      {deleteConfirmId && (
+        <div className="popup-overlay" onMouseDown={cancelDelete}>
+          <div className="popup-content" onMouseDown={(e) => e.stopPropagation()} style={{ maxWidth: 420, padding: 24 }}>
+            <h3 style={{ margin: "0 0 10px", fontSize: 18 }}>Xác nhận xoá giao dịch</h3>
+            <p style={{ margin: "0 0 24px", color: "var(--muted-foreground)", lineHeight: 1.5 }}>
+              Giao dịch này sẽ bị xoá và không thể khôi phục. Bạn có chắc chắn muốn tiếp tục?
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" className="btn-ghost" onClick={cancelDelete}>Huỷ</button>
+              <button type="button" className="btn-primary" onClick={confirmDelete} style={{ background: "#dc2626", borderColor: "#dc2626" }}>
+                Xác nhận xoá
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

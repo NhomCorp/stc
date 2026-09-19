@@ -18,6 +18,8 @@ import {
   Bot,
   MessageSquare,
   BookA,
+  Settings2,
+  ChevronDown,
 } from "lucide-react";
 
 const links = [
@@ -59,15 +61,14 @@ export function AppNav({
     }
   };
 
-  const allLinks = isAdmin
+  const adminLinks = isAdmin
     ? [
-        ...links,
         { href: "/admin/users", label: "Người dùng", icon: ShieldAlert },
         { href: "/admin/ai-config", label: "Cấu hình AI", icon: Bot },
         { href: "/admin/ai-dictionary", label: "Từ điển AI", icon: BookA },
         { href: "/admin/telegram-config", label: "Cấu hình Telegram", icon: MessageSquare },
       ]
-    : links;
+    : [];
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
@@ -114,7 +115,7 @@ export function AppNav({
 
         <nav className={`app-nav-links ${isOpen ? "app-nav-open" : ""}`}>
           <div className="app-nav-menu">
-            {allLinks.map((l) => {
+            {links.map((l) => {
               const Icon = l.icon;
               return (
                 <Link
@@ -128,6 +129,34 @@ export function AppNav({
                 </Link>
               );
             })}
+            {adminLinks.length > 0 && (
+              <div className="app-nav-dropdown">
+                <button
+                  type="button"
+                  className={`app-nav-link app-nav-dropdown-trigger ${adminLinks.some((l) => isActive(l.href)) ? "active" : ""}`}
+                >
+                  <Settings2 size={16} />
+                  <span>Quản trị</span>
+                  <ChevronDown size={14} />
+                </button>
+                <div className="app-nav-dropdown-menu">
+                  {adminLinks.map((l) => {
+                    const Icon = l.icon;
+                    return (
+                      <Link
+                        key={l.href}
+                        href={l.href}
+                        className={`app-nav-dropdown-item ${isActive(l.href) ? "active" : ""}`}
+                        onClick={() => setIsOpen(false)}
+                      >
+                        <Icon size={15} />
+                        <span>{l.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
           <div className="app-nav-right">
             <button
