@@ -872,19 +872,25 @@ export default function TransactionsPage() {
         }
 
         /* Table Styles */
+        table.tx-table { border: 1px solid var(--border); }
         table.tx-table th, table.tx-table td {
-          padding: 14px 16px;
+          padding: 12px 14px;
           border-bottom: 1px solid var(--border);
+          border-right: 1px solid var(--border);
           text-align: left;
           white-space: nowrap;
         }
-        table.tx-table th { background: var(--muted); font-size: 14px; color: var(--muted-foreground); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 2; }
+        table.tx-table th:last-child, table.tx-table td:last-child {
+          border-right: none;
+        }
+        table.tx-table th { background: var(--muted); font-size: 13px; color: var(--muted-foreground); font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; position: sticky; top: 0; z-index: 2; }
         .tx-row:hover { background: var(--muted); }
         .tx-row { transition: background 0.15s; }
-        .copy-btn { opacity: 0; background: transparent; border: none; cursor: pointer; color: var(--muted-foreground); padding: 4px; border-radius: 4px; margin-left: 4px; display: inline-flex; }
+        .copy-btn { opacity: 0; background: transparent; border: none; cursor: pointer; color: var(--muted-foreground); padding: 4px; border-radius: 4px; margin-left: 4px; display: inline-flex; flex-shrink: 0; }
         .tx-row:hover .copy-btn { opacity: 1; }
         .copy-btn:hover { background: var(--border); color: var(--foreground); }
         .text-right { text-align: right !important; }
+        .truncate-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         @media (max-width: 600px) {
           .hidden-mobile { display: none; }
           .mini-card { min-width: 100%; }
@@ -1440,15 +1446,15 @@ export default function TransactionsPage() {
           <table className="tx-table" style={{ width: "100%", borderCollapse: "collapse", fontSize: 15 }}>
             <thead>
               <tr>
-                <th style={{ textAlign: "center" }}>Ngày</th>
-                <th style={{ textAlign: "center" }}>Loại</th>
-                <th className="text-right">Số tiền</th>
-                <th>Đối tượng</th>
-                <th>Ví</th>
-                <th>Danh mục</th>
-                <th>Ghi chú</th>
-                <th style={{ textAlign: "center" }}>Nguồn</th>
-                <th style={{ textAlign: "center" }}>Thao tác</th>
+                <th style={{ textAlign: "center", width: 110 }}>Ngày</th>
+                <th style={{ textAlign: "center", width: 70 }}>Loại</th>
+                <th className="text-right" style={{ width: 130 }}>Số tiền</th>
+                <th style={{ width: 160 }}>Đối tượng</th>
+                <th style={{ width: 140 }}>Ví</th>
+                <th style={{ width: 150 }}>Danh mục</th>
+                <th style={{ width: 240 }}>Ghi chú</th>
+                <th style={{ textAlign: "center", width: 100 }}>Nguồn</th>
+                <th style={{ textAlign: "center", width: 120 }}>Thao tác</th>
               </tr>
             </thead>
             <tbody>
@@ -1502,24 +1508,24 @@ export default function TransactionsPage() {
                         {t.txType === "thu" ? "+" : "-"}{formatMoney(t.amount)} ₫
                       </span>
                     </td>
-                    <td>{t.customerName || "—"}</td>
-                    <td>
+                    <td className="truncate-text" style={{ maxWidth: 160 }} title={t.customerName || ""}>{t.customerName || "—"}</td>
+                    <td className="truncate-text" style={{ maxWidth: 140 }} title={t.walletName || ""}>
                       {t.walletName ? (
-                        <span className="wallet-badge" style={{ padding: '4px 8px' }}>
+                        <span className="wallet-badge" style={{ padding: '4px 8px', maxWidth: '100%' }}>
                           {getWalletIcon(t.walletName)}
-                          {t.walletName}
+                          <span className="truncate-text">{t.walletName}</span>
                         </span>
                       ) : "—"}
                     </td>
-                    <td>
+                    <td className="truncate-text" style={{ maxWidth: 150 }} title={t.categoryName || ""}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        {t.categoryName && <Tag size={14} color="var(--muted-foreground)" />}
-                        <span>{t.categoryName || "—"}</span>
+                        {t.categoryName && <Tag size={14} color="var(--muted-foreground)" style={{ flexShrink: 0 }} />}
+                        <span className="truncate-text">{t.categoryName || "—"}</span>
                       </div>
                     </td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        <span title={t.note || ""}>{t.note || "—"}</span>
+                    <td style={{ maxWidth: 240 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                        <span className="truncate-text" title={t.note || ""} style={{ flex: 1 }}>{t.note || "—"}</span>
                         {t.note && (
                           <button type="button" className="copy-btn" onClick={(e) => { e.stopPropagation(); copyText(t.note!); }} title="Copy">
                             <Copy size={12} />
@@ -1527,10 +1533,10 @@ export default function TransactionsPage() {
                         )}
                       </div>
                     </td>
-                    <td style={{ fontSize: 13, color: "var(--muted-foreground)", fontWeight: 500, textAlign: "center" }}>
+                    <td style={{ fontSize: 13, color: "var(--muted-foreground)", fontWeight: 500, textAlign: "center", maxWidth: 100 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-                        <Hash size={12} />
-                        <span title={t.sourceSheet}>{t.sourceSheet.length > 15 ? t.sourceSheet.substring(0, 15) + "..." : t.sourceSheet}</span>
+                        <Hash size={12} style={{ flexShrink: 0 }} />
+                        <span className="truncate-text" title={t.sourceSheet}>{t.sourceSheet}</span>
                       </div>
                     </td>
                     <td style={{ textAlign: "center" }}>

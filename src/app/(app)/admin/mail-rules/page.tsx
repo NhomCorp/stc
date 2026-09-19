@@ -62,6 +62,20 @@ export default function MailRulesPage() {
     } catch (e) {}
   };
 
+  const handleToggle = async (item: any) => {
+    try {
+      const res = await fetch("/api/admin/mail-rules", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: item.id, isActive: !item.isActive }),
+      });
+      if (!res.ok) throw new Error("Không đổi được trạng thái");
+      setItems((prev) => prev.map((r) => r.id === item.id ? { ...r, isActive: !r.isActive } : r));
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Lỗi đổi trạng thái");
+    }
+  };
+
   const handleImport = async () => {
     if (!pasteData.trim()) return;
     
@@ -264,7 +278,29 @@ export default function MailRulesPage() {
                   <td style={{ padding: 12 }}>{item.customerName || "—"}</td>
                   <td style={{ padding: 12 }}>{item.categoryName || "—"}</td>
                   <td style={{ padding: 12, color: "var(--muted-foreground)" }}>{item.note || "—"}</td>
-                  <td style={{ padding: 12 }}>{item.isActive ? <span style={{ color: "var(--success)" }}>Bật</span> : <span style={{ color: "var(--danger)" }}>Tắt</span>}</td>
+                  <td style={{ padding: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleToggle(item)}
+                      aria-label={item.isActive ? "Tắt quy tắc" : "Bật quy tắc"}
+                      title={item.isActive ? "Đang bật" : "Đang tắt"}
+                      style={{
+                        width: 44,
+                        height: 24,
+                        borderRadius: 999,
+                        border: "none",
+                        padding: 2,
+                        background: item.isActive ? "var(--success)" : "var(--muted)",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: item.isActive ? "flex-end" : "flex-start",
+                        transition: "all 0.2s",
+                      }}
+                    >
+                      <span style={{ width: 20, height: 20, borderRadius: "50%", background: "white", display: "block", boxShadow: "0 1px 3px rgba(0,0,0,0.25)" }} />
+                    </button>
+                  </td>
                   <td style={{ padding: 12, textAlign: "right" }}>
                     <button onClick={() => setEditor(item)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--primary)", marginRight: 8 }}><Edit2 size={16} /></button>
                     <button onClick={() => handleDelete(item.id)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)" }}><Trash2 size={16} /></button>
