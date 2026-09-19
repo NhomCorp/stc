@@ -7,91 +7,71 @@ import { eq, inArray } from "drizzle-orm";
 import crypto from "crypto";
 import { getTelegramConfig } from "@/lib/telegram-config";
 
-export async function POST(req: NextRequest) {
+async function processTelegramCallback(cq: any, config: any) {
+  const chatId = cq.message?.chat?.id;
+  if (config.adminId && String(chatId) !== String(config.adminId)) return;
+
+  const data = cq.data || "";
+  const messageId = cq.message?.message_id;
+
+  if (data.startsWith("CONFIRM_")) {
+    const txIds = data.replace("CONFIRM_", "").split(",").map(Number);
+    await db.update(transactions).set({ status: "valid" }).where(inArray(transactions.id, txIds));
+    await editMessage(chatId, messageId, cq.message.text.replace("⚠️ CẦN XÁC NHẬN", "✅ Đã ghi sổ"), { reply_markup: { inline_keyboard: [] } });
+  } else if (data.startsWith("CANCEL_")) {
+    const txIds = data.replace("CANCEL_", "").split(",").map(Number);
+    await db.delete(transactions).where(inArray(transactions.id, txIds));
+    await editMessage(chatId, messageId, "❌ Đã hủy giao dịch.", { reply_markup: { inline_keyboard: [] } });
+  } else if (data.startsWith("UNDO_")) {
+    const txIds = data.replace("UNDO_", "").split(",").map(Number);
+    await db.delete(transactions).where(inArray(transactions.id, txIds));
+    await editMessage(chatId, messageId, "↩️ Đã hoàn tác (xóa) giao dịch.", { reply_markup: { inline_keyboard: [] } });
+  }
+}
+
+async function processTelegramMessage(message: any, config: any) {
+  const chatId = message.chat.id;
+  if (config.adminId && String(chatId) !== String(config.adminId)) return;
+
+  let text = message.text || message.caption || "";
+  let base64Image: string | undefined = undefined;
+
+  if (message.voice) {
+    const voiceFile = await getFile(message.voice.file_id);
+    if (voiceFile) {
+      const transcribeResult = await transcribeVoiceGemini(voiceFile, message.voice.mime_type || "audio/ogg");
+      if (transcribeResult.error) {
+        await sendMessage(chatId, `❌ Lỗi nghe giọng nói: ${transcribeResult.error}`);
+        return;
+      }
+      text = transcribeResult.text || "";
+    }
+  }
+
+  if (message.photo && message.photo.length > 0) {
+    const highestResPhoto = message.photo[message.photo.length - 1];
+    const base64 = await getFile(highestResPhoto.file_id);
+    if (base64) base64Image = base64;
+  }
+
+  if (!text && !base64Image) return;
+
+  // Thông báo chờ
+  const pendingMsg = await sendMessage(chatId, "🧠 Đang phân tích giao dịch qua Gemini AI...");
+  const pendingMsgId = pendingMsg?.result?.message_id;
+
   try {
-    const config = await getTelegramConfig();
-    const requestSecret = req.nextUrl.searchParams.get("secret");
-    if (!config.secret || requestSecret !== config.secret) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await req.json();
-
-    // -- XỬ LÝ CALLBACK QUERY (Nút bấm) --
-    if (body.callback_query) {
-      const cq = body.callback_query;
-      const chatId = cq.message?.chat?.id;
-      if (config.adminId && String(chatId) !== String(config.adminId)) {
-        return NextResponse.json({ ok: true });
-      }
-
-      const data = cq.data || "";
-      const messageId = cq.message?.message_id;
-
-      if (data.startsWith("CONFIRM_")) {
-        const txIds = data.replace("CONFIRM_", "").split(",").map(Number);
-        await db.update(transactions).set({ status: "valid" }).where(inArray(transactions.id, txIds));
-        await editMessage(chatId, messageId, cq.message.text.replace("⚠️ CẦN XÁC NHẬN", "✅ Đã ghi sổ"), { reply_markup: { inline_keyboard: [] } });
-      } else if (data.startsWith("CANCEL_")) {
-        const txIds = data.replace("CANCEL_", "").split(",").map(Number);
-        await db.delete(transactions).where(inArray(transactions.id, txIds));
-        await editMessage(chatId, messageId, "❌ Đã hủy giao dịch.", { reply_markup: { inline_keyboard: [] } });
-      } else if (data.startsWith("UNDO_")) {
-        const txIds = data.replace("UNDO_", "").split(",").map(Number);
-        await db.delete(transactions).where(inArray(transactions.id, txIds));
-        await editMessage(chatId, messageId, "↩️ Đã hoàn tác (xóa) giao dịch.", { reply_markup: { inline_keyboard: [] } });
-      }
-
-      return NextResponse.json({ ok: true });
-    }
-
-    // -- XỬ LÝ TIN NHẮN (Text / Photo) --
-    const message = body.message;
-    if (!message) return NextResponse.json({ ok: true });
-
-    const chatId = message.chat.id;
-    if (config.adminId && String(chatId) !== String(config.adminId)) {
-      return NextResponse.json({ ok: true });
-    }
-
-    let text = message.text || message.caption || "";
-    let base64Image: string | undefined = undefined;
-
-    if (message.voice) {
-      const voiceFile = await getFile(message.voice.file_id);
-      if (voiceFile) {
-        const transcribeResult = await transcribeVoiceGemini(voiceFile, message.voice.mime_type || "audio/ogg");
-        if (transcribeResult.error) {
-          await sendMessage(chatId, `❌ Lỗi nghe giọng nói: ${transcribeResult.error}`);
-          return NextResponse.json({ ok: true });
-        }
-        text = transcribeResult.text || "";
-      }
-    }
-
-    if (message.photo && message.photo.length > 0) {
-      const highestResPhoto = message.photo[message.photo.length - 1];
-      const base64 = await getFile(highestResPhoto.file_id);
-      if (base64) base64Image = base64;
-    }
-
-    if (!text && !base64Image) return NextResponse.json({ ok: true });
-
-    // Thông báo chờ
-    const pendingMsg = await sendMessage(chatId, "🧠 Đang phân tích giao dịch qua Gemini AI...");
-    const pendingMsgId = pendingMsg?.result?.message_id;
-
     // AI Phân tích
     const parseResult = await callGeminiAPI(text, base64Image);
     if (parseResult.error) {
       if (pendingMsgId) await editMessage(chatId, pendingMsgId, `❌ Lỗi AI: ${parseResult.error}`);
-      return NextResponse.json({ ok: true });
+      return;
     }
 
     const txList = parseResult.giao_dich || [];
     if (txList.length === 0) {
       if (pendingMsgId) await editMessage(chatId, pendingMsgId, "⚠️ Không tìm thấy giao dịch nào hợp lệ trong tin nhắn.");
-      return NextResponse.json({ ok: true });
+      return;
     }
 
     // Load Master Data
@@ -202,11 +182,36 @@ export async function POST(req: NextRequest) {
         });
       }
     }
-
-    return NextResponse.json({ ok: true });
   } catch (error: any) {
-    console.error("Telegram Webhook Error:", error);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    console.error("Telegram webhook process error:", error);
+    if (pendingMsgId) {
+      await editMessage(chatId, pendingMsgId, `❌ Lỗi hệ thống: ${error.message}`);
+    }
+  }
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const config = await getTelegramConfig();
+    const requestSecret = req.nextUrl.searchParams.get("secret");
+    if (!config.secret || requestSecret !== config.secret) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+
+    const body = await req.json();
+
+    // Xử lý background không đợi để tránh Telegram retry timeout
+    if (body.callback_query) {
+      processTelegramCallback(body.callback_query, config).catch(console.error);
+    } else if (body.message) {
+      processTelegramMessage(body.message, config).catch(console.error);
+    }
+
+    // Trả về 200 OK ngay lập tức để Telegram không retry tin nhắn gây spam
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    console.error("Telegram webhook error:", error);
+    return NextResponse.json({ ok: false, error: "Internal Error" }, { status: 500 });
   }
 }
 

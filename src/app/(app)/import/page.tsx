@@ -55,7 +55,7 @@ export default function ImportPage() {
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", width: "100%" }}>
+    <div style={{ width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "var(--foreground)" }}>Nhập liệu</h1>
       </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Save, Plus, Trash2, Key, User, Bot, AlertCircle } from "lucide-react";
 
 interface AIConfig {
@@ -11,6 +11,8 @@ interface AIConfig {
   prompt: string;
 }
 
+const MASKED_KEY_PLACEHOLDER = "••••••••••••••••••••••••••••••••";
+
 export default function AIConfigPage() {
   const [config, setConfig] = useState<AIConfig>({
     model: "gemini-2.5-flash",
@@ -20,9 +22,14 @@ export default function AIConfigPage() {
     prompt: "",
   });
 
+  const [initialConfig, setInitialConfig] = useState<AIConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingModel, setSavingModel] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  // Computed state để xác định nút lưu Model có cần sáng không
+  const isModelChanged = initialConfig ? config.model !== initialConfig.model : false;
 
   useEffect(() => {
     fetchConfig();
@@ -34,13 +41,15 @@ export default function AIConfigPage() {
       if (!res.ok) throw new Error("Lỗi mạng");
       const data = await res.json();
       if (data.config) {
-        setConfig({
+        const fetchedConfig = {
           model: data.config.model || "gemini-2.5-flash",
           keys: data.config.keys?.length ? data.config.keys : [""],
           key_labels: data.config.key_labels?.length ? data.config.key_labels : [""],
           owner_names: data.config.owner_names || "",
           prompt: data.config.prompt || "",
-        });
+        };
+        setConfig(fetchedConfig);
+        setInitialConfig(fetchedConfig);
       }
     } catch (err: any) {
       setMessage({ text: "Lỗi tải cấu hình AI: " + err.message, type: "error" });
@@ -49,9 +58,20 @@ export default function AIConfigPage() {
     }
   };
 
-  const handleSave = async (e: React.FormEvent) => {
+  const handleSaveAll = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaving(true);
+    await saveConfigToServer(false);
+  };
+
+  const handleSaveModel = async () => {
+    if (!isModelChanged) return;
+    await saveConfigToServer(true);
+  };
+
+  const saveConfigToServer = async (isModelOnly: boolean) => {
+    if (isModelOnly) setSavingModel(true);
+    else setSaving(true);
+    
     setMessage(null);
 
     const validKeys: string[] = [];
@@ -59,7 +79,12 @@ export default function AIConfigPage() {
     config.keys.forEach((key, index) => {
       const trimmed = key.trim();
       if (trimmed) {
-        validKeys.push(trimmed);
+        // Nếu user để nguyên dạng masked (••••...), ta lấy lại giá trị gốc từ initialConfig nếu có
+        let finalKey = trimmed;
+        if (trimmed.includes("••••") && initialConfig && initialConfig.keys[index]) {
+          finalKey = initialConfig.keys[index];
+        }
+        validKeys.push(finalKey);
         validLabels.push(config.key_labels[index]?.trim() || "");
       }
     });
@@ -79,18 +104,21 @@ export default function AIConfigPage() {
       const data = await res.json();
       if (res.ok && data.success) {
         setMessage({ text: "Lưu cấu hình AI thành công!", type: "success" });
-        setConfig((prev) => ({
-          ...prev,
+        const savedConfig = {
+          ...config,
           keys: validKeys.length ? validKeys : [""],
           key_labels: validLabels.length ? validLabels : [""],
-        }));
+        };
+        setConfig(savedConfig);
+        setInitialConfig(savedConfig); // Cập nhật lại initialConfig để reset trạng thái nút Lưu model
       } else {
         throw new Error(data.error || "Không thể lưu cấu hình");
       }
     } catch (err: any) {
       setMessage({ text: err.message, type: "error" });
     } finally {
-      setSaving(false);
+      if (isModelOnly) setSavingModel(false);
+      else setSaving(false);
     }
   };
 
@@ -117,11 +145,47 @@ export default function AIConfigPage() {
   const removeKeyRow = (index: number) => {
     const newKeys = config.keys.filter((_, i) => i !== index);
     const newLabels = config.key_labels.filter((_, i) => i !== index);
+    
+    // Nếu xóa key đã lưu, cũng cần loại bỏ nó khỏi initialConfig để tránh lệch index
+    // Nhưng vì UI state đã tách rời khỏi DB tới khi save, cách tốt nhất là chỉ update `config`
+    // Khi save, nó sẽ lấy các giá trị hiện tại.
+    
     if (newKeys.length === 0) {
       newKeys.push("");
       newLabels.push("");
     }
     setConfig({ ...config, keys: newKeys, key_labels: newLabels });
+  };
+
+  // Helper để hiển thị key đã che 
+  const displayKey = (key: string, index: number) => {
+    if (!key) return "";
+    
+    // Nếu key đã bị sửa đổi và khác với initial (đang gõ mới) -> hiện nguyên bản
+    if (initialConfig && initialConfig.keys[index] !== key) {
+       return key;
+    }
+    
+    // Nếu là key cũ từ DB, che ở giữa
+    if (key.length > 8) {
+      const first4 = key.substring(0, 4);
+      const last4 = key.substring(key.length - 4);
+      return `${first4}••••••••••••••••••••••••••••••••${last4}`;
+    }
+    
+    return key;
+  };
+
+  const handleKeyFocus = (index: number) => {
+    // Khi focus vào ô, nếu đang là dạng che, ta hiển thị dạng chuỗi rỗng để người dùng dễ nhập mới
+    // (hoặc nếu muốn họ có thể xoá đi nhập lại)
+    const currentKey = config.keys[index];
+    if (initialConfig && currentKey === initialConfig.keys[index]) {
+       // Optional: clear on focus or keep original. Here we keep it but it will show actual value
+       // because we bind value={config.keys[index]} below instead of displayKey for focus state
+       // Actually, to make it simple, we don't change state on focus, just bind input value to displayKey
+       // and handle changes carefully.
+    }
   };
 
   if (loading) {
@@ -160,10 +224,27 @@ export default function AIConfigPage() {
         </div>
       )}
 
-      <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+      <form onSubmit={handleSaveAll} style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
         {/* Model */}
         <div style={styles.card}>
-          <label style={styles.label}>Mô hình AI Gemini</label>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+            <label style={{ ...styles.label, marginBottom: 0 }}>Mô hình AI Gemini</label>
+            <button 
+              type="button" 
+              onClick={handleSaveModel}
+              disabled={!isModelChanged || savingModel} 
+              style={{
+                ...styles.saveButton, 
+                padding: "6px 12px", 
+                fontSize: "12px",
+                opacity: isModelChanged ? 1 : 0.5,
+                cursor: isModelChanged ? "pointer" : "not-allowed"
+              }}
+            >
+              <Save size={14} />
+              {savingModel ? "Đang lưu..." : "Lưu Model"}
+            </button>
+          </div>
           <input
             type="text"
             value={config.model}
@@ -201,9 +282,10 @@ export default function AIConfigPage() {
                   style={{ ...styles.input, width: "30%" }}
                 />
                 <input
-                  type="password"
-                  value={key}
+                  type="text" // Đổi từ password sang text để hiển thị chuỗi đã che
+                  value={displayKey(key, i)}
                   onChange={(e) => updateKey(i, e.target.value)}
+                  onFocus={() => handleKeyFocus(i)}
                   placeholder="Điền API Key (AIzaSy...)"
                   style={{ ...styles.input, flex: 1, fontFamily: "monospace" }}
                 />

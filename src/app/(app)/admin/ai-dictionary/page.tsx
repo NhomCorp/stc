@@ -8,7 +8,7 @@ export default function AIDictionaryPage() {
   const [activeTab, setActiveTab] = useState<"alias" | "lesson">("alias");
 
   return (
-    <div style={{ maxWidth: 1000, margin: "0 auto", padding: 20 }}>
+    <div style={{ width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
         <div style={{ backgroundColor: "var(--muted)", padding: 12, borderRadius: 10 }}>
           <BookA size={24} color="var(--primary)" />

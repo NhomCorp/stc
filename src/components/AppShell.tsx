@@ -32,7 +32,6 @@ const styles: Record<string, React.CSSProperties> = {
   main: {
     flex: 1,
     overflow: "auto",
-    padding: "20px",
     minHeight: 0,
   },
 };

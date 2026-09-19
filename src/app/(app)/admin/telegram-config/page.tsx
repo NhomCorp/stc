@@ -86,7 +86,7 @@ export default function TelegramConfigPage() {
   if (loading) return <div style={{ padding: 20 }}>Đang tải...</div>;
 
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto", padding: 20 }}>
+    <div style={{ width: "100%" }}>
       <h1 style={{ fontSize: 24, fontWeight: "bold", marginBottom: 20 }}>Cấu hình Telegram</h1>
       
       {message && (

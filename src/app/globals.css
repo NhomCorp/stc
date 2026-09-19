@@ -145,7 +145,16 @@ button, a {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
+}
+
+/* Khung nội dung thống nhất: tối đa 1200px, co giãn theo viewport */
+.app-main {
+  padding: 24px clamp(16px, 3vw, 32px);
+}
+
+.app-content > * {
+  min-width: 0;
 }
 
 /* Header & Nav */
@@ -164,7 +173,7 @@ button, a {
 }
 
 .app-header-inner {
-  max-width: 1400px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
   width: 100%;
@@ -375,6 +384,21 @@ button, a {
 }
 
 /* Responsive */
+@media (max-width: 1024px) {
+  .app-header-inner {
+    padding-inline: 20px;
+  }
+
+  .app-nav-link {
+    padding-inline: 9px;
+  }
+
+  .app-nav-links {
+    gap: 6px;
+    padding-left: 12px;
+  }
+}
+
 @media (max-width: 768px) {
   .app-main {
     padding: 16px;

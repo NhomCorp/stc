@@ -74,7 +74,7 @@ export default function HomePage() {
   }
 
   return (
-    <main style={{ padding: "2rem", maxWidth: "900px", margin: "0 auto" }}>
+    <main style={{ padding: "24px clamp(16px, 3vw, 32px)", maxWidth: "1200px", margin: "0 auto", width: "100%" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
         <h1 style={{ margin: 0, fontSize: 24, fontWeight: 700, color: "#0f172a" }}>Sổ Thu Chi</h1>
         <div style={{ display: "flex", gap: 8 }}>
